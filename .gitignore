@@ -10,6 +10,10 @@ dist/
 .ruff_cache/
 .venv/
 .cache/
+.nitro/
+.output/
+.agent-native/
+agent/data/
 __pycache__/
 *.py[cod]
 *.egg-info/

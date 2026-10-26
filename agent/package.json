@@ -1,0 +1,35 @@
+{
+  "name": "kinu-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nitro dev --port 8001",
+    "start": "node --env-file-if-exists=.env .output/server/index.mjs",
+    "build": "nitro build",
+    "check": "tsc --noEmit && oxlint",
+    "test": "tsx --test tests/*.test.ts",
+    "test:storage": "tsx tests/storage.ts",
+    "test:integration": "tsx tests/integration.ts",
+    "db": "pglite-server --db ../.cache/db --host 127.0.0.1 --port 5433 --max-connections 5"
+  },
+  "dependencies": {
+    "@agent-native/core": "0.220.0",
+    "h3": "^2.0.1",
+    "nitro": "3.0.260903-beta",
+    "zod": "^4.6.7"
+  },
+  "overrides": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@anthropic-ai/sdk": "0.91.1"
+  },
+  "devDependencies": {
+    "@agent-native/agentkit": "0.220.0",
+    "@electric-sql/pglite": "0.5.12",
+    "@electric-sql/pglite-socket": "0.2.15",
+    "@types/node": "^24.13.3",
+    "oxlint": "^1.75.0",
+    "tsx": "^4.20.3",
+    "typescript": "~6.0.2"
+  }
+}
