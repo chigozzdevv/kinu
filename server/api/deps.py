@@ -11,7 +11,10 @@ from browser.setup import BrowserSetupApi
 from core.account import AccountService
 from core.approval import ApprovalService
 from core.audit import AuditWriter
-from core.auth import AccessControl, AuthenticatedIdentity, IdentityTokenVerifier
+from core.auth import AccessControl, AuthenticatedIdentity
+from core.auth.browser import BrowserAuth
+from core.auth.session import BrowserSession
+from core.config import Settings
 from core.errors import AuthenticationError, IntegrationNotConfiguredError
 from core.github import GitHubOnboardingService
 from core.history import RunHistoryService
@@ -27,8 +30,8 @@ from fastapi import Depends, Header, Request
 
 @dataclass(frozen=True, slots=True)
 class ApiServices:
-    workflow: RunWorkflow
     access: AccessControl
+    workflow: RunWorkflow | None = None
     inventory: InventoryService | None = None
     playbooks: PlaybookService | None = None
     approvals: ApprovalService | None = None
@@ -56,15 +59,40 @@ def services(request: Request) -> ApiServices:
 
 
 async def authenticated_identity(
-    request: Request, authorization: Annotated[str | None, Header()] = None
+    request: Request,
 ) -> AuthenticatedIdentity:
-    if authorization is None:
-        raise AuthenticationError("bearer identity token is required")
-    scheme, separator, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not separator or (not token):
-        raise AuthenticationError("authorization must use a bearer token")
-    verifier = cast(IdentityTokenVerifier | None, request.app.state.tokens)
-    return await required(verifier, "identity verification").verify(token)
+    session = await browser_session(request)
+    return session.identity
+
+
+async def browser_session(request: Request) -> BrowserSession:
+    config = cast(Settings, request.app.state.config)
+    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
+    token = session_cookie(request, name)
+    if not token:
+        raise AuthenticationError("session cookie is required")
+    browser = required(
+        cast(BrowserAuth | None, request.app.state.browser), "browser authentication"
+    )
+    session = await browser.store.get(token)
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        browser.require_csrf(
+            session, request.headers.get("origin"), request.headers.get("x-csrf-token")
+        )
+    return session
+
+
+def session_cookie(request: Request, name: str) -> str | None:
+    values = [
+        value.strip()
+        for header in request.headers.getlist("cookie")
+        for part in header.split(";")
+        for key, separator, value in [part.strip().partition("=")]
+        if separator and key == name
+    ]
+    if len(values) > 1:
+        raise AuthenticationError("duplicate session cookies are not accepted")
+    return values[0] if values else None
 
 
 def idempotency_key(

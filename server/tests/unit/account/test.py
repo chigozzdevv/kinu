@@ -21,6 +21,7 @@ from core.errors import ResourceConflictError, ResourceNotFoundError
 from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.workflow import RunWorkflow
 from testkit import MemoryRunRepository
+from tests.browser import HEADERS, make_browser
 
 NOW = datetime(2026, 8, 23, 12, tzinfo=UTC)
 IDENTITY = AuthenticatedIdentity(
@@ -315,11 +316,6 @@ async def test_settings_api_exposes_profile_and_team_mutations() -> None:
         ),
     )
 
-    class Tokens:
-        async def verify(self, token: str) -> AuthenticatedIdentity:
-            assert token == "valid-token"
-            return IDENTITY
-
     application = create_app(
         ApiServices(
             workflow=RunWorkflow(MemoryRunRepository()),
@@ -327,11 +323,11 @@ async def test_settings_api_exposes_profile_and_team_mutations() -> None:
             accounts=service,
             notifications=notifications,
         ),
-        tokens=Tokens(),
+        browser=make_browser(IDENTITY),
     )
     transport = httpx.ASGITransport(app=application)
     async with httpx.AsyncClient(transport=transport, base_url="https://kinu.test") as client:
-        headers = {"Authorization": "Bearer valid-token"}
+        headers = HEADERS
         profile = await client.get("/v1/organisations/org_one/settings/profile", headers=headers)
         invited = await client.post(
             "/v1/organisations/org_one/settings/team/invitations",

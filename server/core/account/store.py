@@ -29,7 +29,18 @@ class AccountStore:
         memberships = []
         for row in rows:
             grant = PrincipalGrant.model_validate(row["member"])
-            role = next((role for role in MemberRole if Role(role.value) in grant.roles), None)
+            role = next(
+                (
+                    role
+                    for role in (
+                        MemberRole.ADMINISTRATOR,
+                        MemberRole.OPERATOR,
+                        MemberRole.VIEWER,
+                    )
+                    if Role(role.value) in grant.roles
+                ),
+                None,
+            )
             if role is not None:
                 memberships.append(
                     OrganisationMembership(

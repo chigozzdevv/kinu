@@ -38,6 +38,7 @@ from api.deps import (
     IdempotencyKey,
     Identity,
     command_id,
+    required,
     services,
 )
 
@@ -148,7 +149,7 @@ async def create_run(
             received_at=body.received_at,
         ),
     )
-    result = await api.workflow.create(command)
+    result = await required(api.workflow, "workflow").create(command)
     response.status_code = status.HTTP_201_CREATED if result.applied else status.HTTP_200_OK
     return _response(result)
 
@@ -164,7 +165,7 @@ async def list_runs(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     statuses = frozenset(run_status) if run_status is not None else None
-    return await api.workflow.list_runs(organisation_id, statuses, limit)
+    return await required(api.workflow, "workflow").list_runs(organisation_id, statuses, limit)
 
 
 @router.post("/reap", response_model=ReapResponse)
@@ -175,7 +176,9 @@ async def reap_runs(
 ) -> ReapResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.reap_expired(organisation_id, identity.actor_id)
+    result = await required(api.workflow, "workflow").reap_expired(
+        organisation_id, identity.actor_id
+    )
     if api.browser_setup is not None:
         await api.browser_setup.reap_expired(organisation_id)
     return ReapResponse(
@@ -195,7 +198,7 @@ async def get_run(
 ) -> RotationRun:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
-    return await api.workflow.get(organisation_id, run_id)
+    return await required(api.workflow, "workflow").get(organisation_id, run_id)
 
 
 @router.get("/{run_id}/history", response_model=RotationHistory)
@@ -247,7 +250,7 @@ async def start_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.start(
+    result = await required(api.workflow, "workflow").start(
         StartRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -272,7 +275,7 @@ async def renew_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.renew(
+    result = await required(api.workflow, "workflow").renew(
         RenewLeaseCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -307,7 +310,7 @@ async def complete_stage(
         actor_id=identity.actor_id,
         recorded_at=body.proof.recorded_at,
     )
-    result = await api.workflow.complete(
+    result = await required(api.workflow, "workflow").complete(
         CompleteStageCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -333,7 +336,7 @@ async def pause_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.pause(
+    result = await required(api.workflow, "workflow").pause(
         PauseRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -357,7 +360,7 @@ async def cancel_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.cancel(
+    result = await required(api.workflow, "workflow").cancel(
         CancelRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -380,9 +383,9 @@ async def resume_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    run = await api.workflow.get(organisation_id, run_id)
+    run = await required(api.workflow, "workflow").get(organisation_id, run_id)
     await _require_ready_browser_session(api, run)
-    result = await api.workflow.resume(
+    result = await required(api.workflow, "workflow").resume(
         ResumeRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -407,7 +410,7 @@ async def cleanup_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.cleanup(
+    result = await required(api.workflow, "workflow").cleanup(
         CleanupRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -432,7 +435,7 @@ async def fail_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.fail(
+    result = await required(api.workflow, "workflow").fail(
         FailRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -457,7 +460,7 @@ async def recover_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.recover(
+    result = await required(api.workflow, "workflow").recover(
         RecoverRunCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,
@@ -482,7 +485,7 @@ async def complete_recovery(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await api.workflow.complete_recovery(
+    result = await required(api.workflow, "workflow").complete_recovery(
         CompleteRecoveryCommand(
             id=command_id(identity, organisation_id, key),
             organisation_id=organisation_id,

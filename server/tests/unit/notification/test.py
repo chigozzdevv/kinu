@@ -8,7 +8,6 @@ from api.deps import ApiServices
 from contracts import Notification, NotificationEndpoint, NotificationKind, Severity
 from core.auth import AccessControl, AuthenticatedIdentity, Permission
 from core.errors import (
-    AuthenticationError,
     AuthorizationError,
     ResourceConflictError,
     ResourceNotFoundError,
@@ -18,6 +17,7 @@ from core.workflow import RunWorkflow
 from fastapi import FastAPI
 from pydantic import ValidationError
 from testkit import MemoryRunRepository
+from tests.browser import HEADERS, make_browser
 
 NOW = datetime(2026, 8, 14, 12, tzinfo=UTC)
 pytestmark = pytest.mark.anyio
@@ -168,13 +168,6 @@ IDENTITY = AuthenticatedIdentity(
 )
 
 
-class Tokens:
-    async def verify(self, token: str) -> AuthenticatedIdentity:
-        if token != "valid-token":
-            raise AuthenticationError("identity token is invalid")
-        return IDENTITY
-
-
 class TopicAccess:
     allowed = frozenset({Permission.NOTIFICATION_READ, Permission.APPROVAL_DECIDE})
 
@@ -208,13 +201,13 @@ def notification_app() -> FastAPI:
             access=cast(AccessControl, TopicAccess()),
             notifications=notifications,
         ),
-        tokens=Tokens(),
+        browser=make_browser(IDENTITY),
     )
 
 
 async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
     transport = httpx.ASGITransport(app=notification_app(), raise_app_exceptions=False)
-    headers = {"Authorization": "Bearer valid-token"}
+    headers = HEADERS
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         topics = await client.get("/v1/organisations/org_one/notifications/topics", headers=headers)
         forbidden = await client.post(

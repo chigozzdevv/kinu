@@ -1,6 +1,6 @@
 from contracts import AccountSession, Contract, OrganisationMembership
 from core.ids import new_id
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Request, status
 from pydantic import Field
 
 from api.deps import Identity, required, services
@@ -42,11 +42,3 @@ async def create_organisation(
             {"revision": membership.organisation.revision},
         )
     return membership
-
-
-@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout() -> Response:
-    response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
-    response.delete_cookie("__session", path="/", secure=True, httponly=True, samesite="lax")
-    return response

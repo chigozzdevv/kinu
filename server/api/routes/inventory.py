@@ -825,11 +825,11 @@ async def archive_credential(
             changed.revision,
         )
         return changed
-    all_runs = await api.workflow.list_runs(organisation_id, None, 500)
+    all_runs = await required(api.workflow, "workflow").list_runs(organisation_id, None, 500)
     related_runs = tuple(run for run in all_runs if run.credential_id == credential_id)
     active_runs = tuple(run for run in related_runs if run.status in _ACTIVE_RUN_STATUSES)
     for run in active_runs:
-        await api.workflow.cancel(
+        await required(api.workflow, "workflow").cancel(
             CancelRunCommand(
                 id=_delete_command_id(credential_id, run.id),
                 organisation_id=organisation_id,

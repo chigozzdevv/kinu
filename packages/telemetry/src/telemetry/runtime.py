@@ -77,7 +77,13 @@ def instrument(app: Starlette, service: str) -> TelemetryConfig:
             app,
             tracer_provider=tracer_provider,
             meter_provider=meter_provider,
-            excluded_urls="/health/live",
+            excluded_urls="/health/live,/auth/",
+            http_capture_headers_sanitize_fields=[
+                "authorization",
+                "cookie",
+                "set-cookie",
+                "x-csrf-token",
+            ],
             exclude_spans=["receive", "send"],
         )
     else:

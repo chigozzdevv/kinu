@@ -35,13 +35,14 @@ from contracts.incident import Confidence
 from core.approval import ApprovalService
 from core.audit import AuditWriter
 from core.auth import AccessControl, AuthenticatedIdentity, PrincipalGrant, Role
-from core.errors import AuthenticationError, ResourceNotFoundError
+from core.errors import ResourceNotFoundError
 from core.incident import IncidentService
 from core.inventory import InventoryService
 from core.overview import OverviewService
 from core.playbook import PlaybookService
 from core.workflow import RunWorkflow
 from testkit import MemoryRunRepository, make_control_version, make_http_provider_api
+from tests.browser import HEADERS, make_browser
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 IDENTITY = AuthenticatedIdentity(
@@ -49,13 +50,6 @@ IDENTITY = AuthenticatedIdentity(
     issuer="https://identity.example.com",
     email="workflow@example.identity.example.com",
 )
-
-
-class TokenVerifier:
-    async def verify(self, token: str) -> AuthenticatedIdentity:
-        if token != "valid-token":
-            raise AuthenticationError("identity token is invalid")
-        return IDENTITY
 
 
 class AccessRepository:
@@ -538,7 +532,7 @@ class InventoryRepository:
 
 
 def headers(key: str = "request-one") -> dict[str, str]:
-    return {"Authorization": "Bearer valid-token", "Idempotency-Key": key}
+    return {**HEADERS, "Idempotency-Key": key}
 
 
 def _incident(
@@ -661,7 +655,7 @@ async def test_setup_without_browser_runtime_is_a_conflict() -> None:
         ),
     )
     transport = httpx.ASGITransport(
-        app=create_app(services, tokens=TokenVerifier()), raise_app_exceptions=False
+        app=create_app(services, browser=make_browser(IDENTITY)), raise_app_exceptions=False
     )
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         begun = await client.post(
@@ -684,6 +678,6 @@ async def test_unconfigured_api_reports_readiness_without_accepting_identity() -
         assert readiness.status_code == 503
         assert readiness.json() == {"status": "unconfigured"}
         assert (await client.get("/v1/session")).status_code == 401
-        response = await client.get("/v1/session", headers={"Authorization": "Bearer arbitrary"})
+        response = await client.get("/v1/session", headers={"Cookie": "kinu.session=arbitrary"})
         assert response.status_code == 503
         assert response.json()["code"] == "integration-not-configured"

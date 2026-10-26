@@ -11,7 +11,7 @@ async def live() -> dict[str, str]:
 
 @router.get("/ready")
 async def ready(request: Request) -> JSONResponse:
-    configured = request.app.state.services is not None and request.app.state.tokens is not None
+    configured = request.app.state.services is not None and request.app.state.browser is not None
     return JSONResponse(
         status_code=200 if configured else 503,
         content={"status": "ready" if configured else "unconfigured"},

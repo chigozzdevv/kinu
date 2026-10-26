@@ -1,9 +1,6 @@
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 
-import httpx
-from core.auth import IdentityTokenVerifier
-from core.auth.cognito import CognitoTokenVerifier
+from core.auth.browser import BrowserAuth
 from core.config import Settings
 from core.errors import (
     ActiveRunConflictError,
@@ -21,9 +18,10 @@ from core.errors import (
     RevisionConflictError,
     RunNotFoundError,
     StorageIntegrityError,
+    StorageUnavailableError,
     TransitionRejectedError,
 )
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from policy import PolicyViolationError
 from telemetry import instrument
@@ -47,6 +45,8 @@ from api.routes import (
     settings_router,
     walkthroughs_router,
 )
+from api.routes.auth import router as auth_router
+from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 
@@ -54,26 +54,22 @@ ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 def create_app(
     services: ApiServices | None = None,
     *,
-    tokens: IdentityTokenVerifier | None = None,
+    browser: BrowserAuth | None = None,
     settings: Settings | None = None,
 ) -> FastAPI:
     config = settings or Settings()
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if tokens is not None or config.cognito is None:
-            yield
-            return
-        async with httpx.AsyncClient() as http:
-            app.state.tokens = CognitoTokenVerifier(config.cognito, http)
-            try:
-                yield
-            finally:
-                app.state.tokens = None
-
-    app = FastAPI(title="Kinu", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app = FastAPI(
+        title="Kinu",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lambda app: runtime(app, config, services, browser),
+    )
     app.state.services = services
-    app.state.tokens = tokens
+    app.state.browser = browser
+    app.state.config = config
+    app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(session_router)
     app.include_router(github_router)
@@ -92,8 +88,20 @@ def create_app(
     app.include_router(settings_router)
     app.add_exception_handler(KinuError, _kinu_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)
+    app.middleware("http")(_private_responses)
     instrument(app, "kinu-api")
     return app
+
+
+async def _private_responses(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    response = await call_next(request)
+    if request.url.path.startswith(("/auth/", "/v1/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
@@ -102,6 +110,8 @@ async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
         return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "integration-not-configured", str(error))
     if isinstance(error, IdentityUnavailableError):
         return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "identity-unavailable", str(error))
+    if isinstance(error, StorageUnavailableError):
+        return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "storage-unavailable", str(error))
     if isinstance(error, AuthenticationError):
         return _error(status.HTTP_401_UNAUTHORIZED, "unauthenticated", str(error))
     if isinstance(error, AuthorizationError):
