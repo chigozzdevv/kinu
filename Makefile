@@ -1,4 +1,4 @@
-.PHONY: lock sync format lint type test client verify api image
+.PHONY: lock sync format lint type test client native storage integration verify api agent db migrate image
 
 UV_CACHE_DIR ?= .cache/uv
 UV_PYTHON_INSTALL_DIR ?= .cache/python
@@ -10,6 +10,7 @@ lock:
 sync:
 	$(UV_ENV) uv sync --all-packages --all-extras --locked
 	npm --prefix client ci
+	npm --prefix agent ci
 
 format:
 	$(UV_ENV) uv run ruff format server packages
@@ -28,10 +29,30 @@ test:
 client:
 	npm --prefix client run check
 
-verify: lint type test client
+native:
+	npm --prefix agent run check
+	npm --prefix agent test
+	npm --prefix agent run build
+
+storage:
+	npm --prefix agent run test:storage
+
+integration:
+	npm --prefix agent run test:integration
+
+verify: lint type test client native storage integration
 
 api:
-	$(UV_ENV) uv run uvicorn api.main:app --host 127.0.0.1 --port 8000
+	$(UV_ENV) uv run --env-file .env uvicorn api.main:app --host 127.0.0.1 --port 8000 --no-access-log
+
+agent:
+	npm --prefix agent run dev
+
+db:
+	npm --prefix agent run db
+
+migrate:
+	$(UV_ENV) uv run --env-file .env python -m core.storage.migrate
 
 image:
 	docker build --file server/api/Dockerfile --tag kinu-api:local .
