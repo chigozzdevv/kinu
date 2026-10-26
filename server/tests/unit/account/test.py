@@ -324,10 +324,10 @@ async def test_settings_api_exposes_profile_and_team_mutations() -> None:
         ApiServices(
             workflow=RunWorkflow(MemoryRunRepository()),
             access=AccessControl(repository),
-            tokens=Tokens(),
             accounts=service,
             notifications=notifications,
-        )
+        ),
+        tokens=Tokens(),
     )
     transport = httpx.ASGITransport(app=application)
     async with httpx.AsyncClient(transport=transport, base_url="https://kinu.test") as client:

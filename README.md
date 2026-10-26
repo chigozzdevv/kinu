@@ -2,8 +2,8 @@
 
 Credential rotation and verification, with policy gates, approvals, and evidence.
 
-Kinu includes the dashboard, domain services, and provider interfaces. AWS integrations
-and the Agent-Native runtime are not implemented yet.
+Kinu includes the dashboard, domain services, provider interfaces, and Cognito identity
+verification. AWS storage and deployment adapters and the Agent-Native runtime are pending.
 
 ## What is retained
 
@@ -16,14 +16,15 @@ and the Agent-Native runtime are not implemented yet.
 
 ## Current runtime status
 
-The frontend builds and the API can start without cloud credentials. Authentication and
-backend services are unconfigured. Sign-in stays disabled, protected operations stay gated,
-and `/health/ready` returns HTTP 503 until real services are supplied to `create_app`.
+The frontend builds and the API can start without cloud credentials. Cognito verification
+requires a configured user pool and application client. Browser sign-in and sessions are
+pending. Protected operations stay gated, and `/health/ready` returns HTTP 503 until both
+identity verification and real services are configured.
 `/health/live` only confirms that the API process is running.
 
-The next implementation work is AWS storage, secret management, identity, event delivery,
-runtime provisioning, and Agent-Native integration. There are no deployment resources,
-working AWS adapters, live service URLs, or configured credentials in this baseline.
+The next implementation work is browser authentication, AWS storage, secret management,
+event delivery, runtime provisioning, and Agent-Native integration. No infrastructure is
+deployed and no cloud credentials are configured.
 The retained landing-page content is awaiting the planned UI review.
 
 ## Local development
@@ -52,6 +53,14 @@ make verify
 
 This checks Python formatting, lint, types, tests, and the frontend lint/type/build.
 `make image` builds the API container when Docker is available. No deployment is performed.
+
+## Identity verification
+
+Set `KINU_COGNITO_POOL_ID` and `KINU_COGNITO_CLIENT_ID` in the API process environment.
+Both values are required together. The API accepts signed Cognito ID tokens from that pool
+and client with a verified email address. Workspace permissions are checked separately.
+Signing keys are fetched from the configured pool's AWS endpoint and cached in memory.
+No user pool or application client is created by starting the API.
 
 ## Layout
 

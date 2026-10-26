@@ -206,9 +206,9 @@ def notification_app() -> FastAPI:
         ApiServices(
             workflow=RunWorkflow(MemoryRunRepository(), clock=lambda: NOW),
             access=cast(AccessControl, TopicAccess()),
-            tokens=Tokens(),
             notifications=notifications,
-        )
+        ),
+        tokens=Tokens(),
     )
 
 

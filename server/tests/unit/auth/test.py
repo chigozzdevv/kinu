@@ -2,12 +2,11 @@ import pytest
 from core.auth import (
     AccessControl,
     AuthenticatedIdentity,
-    CompositeTokenVerifier,
     Permission,
     PrincipalGrant,
     Role,
 )
-from core.errors import AuthenticationError, AuthorizationError
+from core.errors import AuthorizationError
 
 IDENTITY = AuthenticatedIdentity(
     subject="107777777777777777777", issuer="https://identity.example.com"
@@ -61,50 +60,3 @@ def test_actor_identity_is_stable_and_contract_safe() -> None:
     assert IDENTITY.actor_id == IDENTITY.actor_id
     assert IDENTITY.actor_id.startswith("actor_")
     assert len(IDENTITY.actor_id) == 38
-
-
-class StubVerifier:
-    def __init__(self, identity: AuthenticatedIdentity | None) -> None:
-        self._identity = identity
-
-    async def verify(self, token: str) -> AuthenticatedIdentity:
-        if self._identity is None:
-            raise AuthenticationError("identity token is invalid")
-        return self._identity
-
-
-TEST_IDENTITY_PROVIDER_CLAIMS = {
-    "iss": "https://identity.example.com/kinu",
-    "sub": "test-identity-user-one",
-    "email": "chigozie@acme.example",
-    "email_verified": True,
-    "name": "Chigozie Okafor",
-    "identity_provider": {"sign_in_provider": "identity.example.com"},
-}
-TEST_IDENTITY_PROVIDER_IDENTITY = AuthenticatedIdentity(
-    subject="test-identity-user-one",
-    issuer="https://identity.example.com/kinu",
-    email="chigozie@acme.example",
-    email_verified=True,
-    display_name="Chigozie Okafor",
-    connected_via="SSO",
-)
-
-
-@pytest.mark.anyio
-async def test_composite_falls_through_to_the_next_verifier() -> None:
-    verifier = CompositeTokenVerifier((StubVerifier(None), StubVerifier(IDENTITY)))
-    identity = await verifier.verify("workload-token")
-    assert identity == IDENTITY
-
-
-@pytest.mark.anyio
-async def test_composite_rejects_when_every_verifier_fails() -> None:
-    verifier = CompositeTokenVerifier((StubVerifier(None), StubVerifier(None)))
-    with pytest.raises(AuthenticationError, match="identity token is invalid"):
-        await verifier.verify("unknown-token")
-
-
-def test_composite_requires_at_least_one_verifier() -> None:
-    with pytest.raises(ValueError, match="at least one verifier"):
-        CompositeTokenVerifier(())

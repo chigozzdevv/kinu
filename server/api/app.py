@@ -1,5 +1,10 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
+import httpx
+from core.auth import IdentityTokenVerifier
+from core.auth.cognito import CognitoTokenVerifier
+from core.config import Settings
 from core.errors import (
     ActiveRunConflictError,
     AuthenticationError,
@@ -46,9 +51,29 @@ from api.routes import (
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
 
 
-def create_app(services: ApiServices | None = None) -> FastAPI:
-    app = FastAPI(title="Kinu", version="0.1.0", docs_url=None, redoc_url=None)
+def create_app(
+    services: ApiServices | None = None,
+    *,
+    tokens: IdentityTokenVerifier | None = None,
+    settings: Settings | None = None,
+) -> FastAPI:
+    config = settings or Settings()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if tokens is not None or config.cognito is None:
+            yield
+            return
+        async with httpx.AsyncClient() as http:
+            app.state.tokens = CognitoTokenVerifier(config.cognito, http)
+            try:
+                yield
+            finally:
+                app.state.tokens = None
+
+    app = FastAPI(title="Kinu", version="0.1.0", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.services = services
+    app.state.tokens = tokens
     app.include_router(health_router)
     app.include_router(session_router)
     app.include_router(github_router)

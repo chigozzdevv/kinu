@@ -29,7 +29,6 @@ from fastapi import Depends, Header, Request
 class ApiServices:
     workflow: RunWorkflow
     access: AccessControl
-    tokens: IdentityTokenVerifier
     inventory: InventoryService | None = None
     playbooks: PlaybookService | None = None
     approvals: ApprovalService | None = None
@@ -64,7 +63,8 @@ async def authenticated_identity(
     scheme, separator, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not separator or (not token):
         raise AuthenticationError("authorization must use a bearer token")
-    return await services(request).tokens.verify(token)
+    verifier = cast(IdentityTokenVerifier | None, request.app.state.tokens)
+    return await required(verifier, "identity verification").verify(token)
 
 
 def idempotency_key(

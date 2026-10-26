@@ -651,7 +651,6 @@ async def test_setup_without_browser_runtime_is_a_conflict() -> None:
     services = ApiServices(
         workflow=workflow,
         access=AccessControl(AccessRepository(Role.ADMINISTRATOR)),
-        tokens=TokenVerifier(),
         inventory=InventoryService(inventory),
         playbooks=PlaybookService(PlaybookRepository(), clock=lambda: NOW),
         approvals=ApprovalService(ApprovalRepository(), clock=lambda: NOW),
@@ -661,7 +660,9 @@ async def test_setup_without_browser_runtime_is_a_conflict() -> None:
             inventory, repository, IncidentRepository(), ApprovalRepository(), lambda: NOW
         ),
     )
-    transport = httpx.ASGITransport(app=create_app(services), raise_app_exceptions=False)
+    transport = httpx.ASGITransport(
+        app=create_app(services, tokens=TokenVerifier()), raise_app_exceptions=False
+    )
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         begun = await client.post(
             "/v1/organisations/org_one/inventory/connections/connection_browser/setup",
