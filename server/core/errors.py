@@ -42,6 +42,10 @@ class IdentityUnavailableError(KinuError):
     pass
 
 
+class StorageUnavailableError(KinuError):
+    pass
+
+
 class AuthorizationError(KinuError):
     pass
 

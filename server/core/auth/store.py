@@ -1,0 +1,90 @@
+import hashlib
+import re
+from collections.abc import Callable
+from dataclasses import asdict
+from datetime import datetime
+
+from psycopg.types.json import Jsonb
+
+from core.auth.identity import AuthenticatedIdentity
+from core.auth.session import BrowserSession, LoginAttempt
+from core.errors import AuthenticationError
+from core.storage.database import Database
+
+
+class SessionStore:
+    def __init__(self, database: Database, clock: Callable[[], datetime]) -> None:
+        self._database = database
+        self._clock = clock
+
+    async def begin(self, state: str, browser: str, attempt: LoginAttempt) -> None:
+        async with self._database.connection() as connection, connection.transaction():
+            await connection.execute(
+                "DELETE FROM kinu.logins WHERE expires_at <= %s", (self._clock(),)
+            )
+            await connection.execute(
+                "INSERT INTO kinu.logins VALUES (%s, %s, %s, %s, %s, %s)",
+                (
+                    _hash(state),
+                    _hash(browser),
+                    attempt.verifier,
+                    attempt.nonce,
+                    attempt.return_path,
+                    attempt.expires_at,
+                ),
+            )
+
+    async def consume(self, state: str, browser: str) -> LoginAttempt:
+        async with self._database.connection() as connection:
+            cursor = await connection.execute(
+                "DELETE FROM kinu.logins WHERE state_hash = %s AND browser_hash = %s "
+                "AND expires_at > %s RETURNING verifier, nonce, return_path, expires_at",
+                (_hash(state), _hash(browser), self._clock()),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise AuthenticationError("sign-in attempt is invalid or expired")
+        return LoginAttempt(**row)
+
+    async def save(self, token: str, session: BrowserSession) -> None:
+        async with self._database.connection() as connection, connection.transaction():
+            await connection.execute(
+                "DELETE FROM kinu.sessions WHERE expires_at <= %s", (self._clock(),)
+            )
+            await connection.execute(
+                "INSERT INTO kinu.sessions VALUES (%s, %s, %s, %s)",
+                (
+                    _hash(token),
+                    Jsonb(asdict(session.identity)),
+                    session.csrf_token,
+                    session.expires_at,
+                ),
+            )
+
+    async def get(self, token: str) -> BrowserSession:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+            raise AuthenticationError("session is invalid or expired")
+        async with self._database.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT identity, csrf_token, expires_at FROM kinu.sessions "
+                "WHERE token_hash = %s AND expires_at > %s",
+                (_hash(token), self._clock()),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise AuthenticationError("session is invalid or expired")
+        return BrowserSession(
+            identity=AuthenticatedIdentity(**row["identity"]),
+            csrf_token=row["csrf_token"],
+            expires_at=row["expires_at"],
+        )
+
+    async def delete(self, token: str) -> None:
+        async with self._database.connection() as connection:
+            await connection.execute(
+                "DELETE FROM kinu.sessions WHERE token_hash = %s", (_hash(token),)
+            )
+
+
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
