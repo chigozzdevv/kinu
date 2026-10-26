@@ -5,6 +5,7 @@ from core.errors import (
     AuthenticationError,
     AuthorizationError,
     IdempotencyConflictError,
+    IdentityUnavailableError,
     IntegrationNotConfiguredError,
     KinuError,
     LeaseConflictError,
@@ -74,6 +75,8 @@ async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
     del request
     if isinstance(error, IntegrationNotConfiguredError):
         return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "integration-not-configured", str(error))
+    if isinstance(error, IdentityUnavailableError):
+        return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "identity-unavailable", str(error))
     if isinstance(error, AuthenticationError):
         return _error(status.HTTP_401_UNAUTHORIZED, "unauthenticated", str(error))
     if isinstance(error, AuthorizationError):

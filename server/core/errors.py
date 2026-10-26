@@ -38,6 +38,10 @@ class AuthenticationError(KinuError):
     pass
 
 
+class IdentityUnavailableError(KinuError):
+    pass
+
+
 class AuthorizationError(KinuError):
     pass
 
