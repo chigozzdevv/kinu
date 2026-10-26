@@ -23,7 +23,7 @@ import type {
   TeamMember,
   MemberRole,
 } from "../types";
-import { identityToken, signOutIdentity } from "./auth"
+import { clearSession, sessionHeaders } from "./auth"
 
 let organisationId = ""
 let ROOT = ""
@@ -268,19 +268,19 @@ export class ApiError extends Error {
 }
 
 class ApiClient {
-  private async authenticatedFetch(path: string, options?: RequestInit, forceRefresh = false): Promise<Response> {
-    const token = await identityToken(forceRefresh)
+  private async authenticatedFetch(path: string, options?: RequestInit): Promise<Response> {
     const headers = new Headers(options?.headers)
-    headers.set("Authorization", `Bearer ${token}`)
+    const authentication = await sessionHeaders(options?.method)
+    authentication.forEach((value, name) => headers.set(name, value))
     if (options?.body) headers.set("Content-Type", "application/json")
 
-    const response = await fetch(`${import.meta.env.VITE_API_URL ?? ""}${path}`, {
+    const response = await fetch(path, {
       ...options,
+      credentials: "same-origin",
       headers,
     })
-    if (response.status === 401 && !forceRefresh) return this.authenticatedFetch(path, options, true)
     if (response.status === 401) {
-      await signOutIdentity().catch(() => undefined)
+      clearSession()
       window.location.assign("/auth")
     }
     return response

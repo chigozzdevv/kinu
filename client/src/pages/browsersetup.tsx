@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 import { api } from "../lib/api"
-import { identityToken } from "../lib/auth"
+import { readSession } from "../lib/auth"
 
 export type BrowserSetupCapability = {
   gatewayUrl: string
@@ -41,6 +41,7 @@ function capabilityFromFragment(): BrowserSetupCapability {
 
 function socketUrl(gatewayUrl: string): string {
   const url = new URL(gatewayUrl)
+  if (url.origin !== window.location.origin) throw new Error("Browser gateway must share the Kinu origin")
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
   url.pathname = `${url.pathname.replace(/\/$/, "")}/v1/setup/live`
   url.search = ""
@@ -174,9 +175,8 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
       opened.binaryType = "arraybuffer"
       opened.onopen = async () => {
         if (!active || opened !== socket.current) return
-        let applicationToken: string
         try {
-          applicationToken = await identityToken()
+          if (!await readSession()) throw new Error("Sign-in is required")
         } catch {
           if (!active) return
           setStatus("closed")
@@ -189,7 +189,6 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
           organisation_id: organisationId,
           setup_id: setupId,
           token,
-          identity_token: applicationToken,
         }))
 
         if (providerUrl) opened.send(JSON.stringify({ type: "action", action: { kind: "navigate", url: providerUrl } }))

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react"
-import type { Identity } from "./lib/auth"
+import type { Authentication } from "./lib/auth"
 import kinuLogo from "./assets/kinu-logo.svg"
-import { observeIdentity } from "./lib/auth"
+import { readAuthentication } from "./lib/auth"
 import { activateOrganisation, storedOrganisation } from "./lib/organisationstate"
 import { api } from "./lib/api"
 import type { AccountSession, OrganisationMembership } from "./types"
@@ -25,16 +25,23 @@ function LoadingScreen() {
 }
 
 export function AuthenticationBoundary() {
-  const [identity, setIdentity] = useState<Identity | null>(null)
+  const [authentication, setAuthentication] = useState<Authentication | null>(null)
+  const [authError, setAuthError] = useState("")
+  const identity = authentication?.session?.identity ?? null
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState<AccountSession | null>(null)
   const [active, setActive] = useState<OrganisationMembership | null>(null)
   const [sessionError, setSessionError] = useState("")
 
-  useEffect(() => observeIdentity((user) => {
-    setIdentity(user)
-    setLoading(false)
-  }), [])
+  useEffect(() => {
+    let current = true
+    void readAuthentication().then((value) => {
+      if (current) setAuthentication(value)
+    }).catch((reason: unknown) => {
+      if (current) setAuthError(reason instanceof Error ? reason.message : "Sign-in is unavailable")
+    }).finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [])
 
   useEffect(() => {
     if (!identity || window.location.pathname === "/") {
@@ -47,6 +54,7 @@ export function AuthenticationBoundary() {
     setSessionError("")
     void api.getSession().then((value) => {
       if (!current) return
+      sessionStorage.removeItem(dashboardReturnKey)
       const membership = storedOrganisation(value.organisations)
       if (membership) activateOrganisation(membership)
       setSession(value)
@@ -63,13 +71,14 @@ export function AuthenticationBoundary() {
     return <LoadingScreen />
   }
   if (window.location.pathname === "/") return <Suspense fallback={<LoadingScreen />}><HomePage authenticated={Boolean(identity)} /></Suspense>
+  if (authError) return <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6"><div className="text-center"><p role="alert" className="text-[12px] text-[var(--red)]">{authError}</p><Button className="mt-4" onClick={() => window.location.reload()}>Try again</Button></div></main>
   if (window.location.pathname === "/auth") {
     if (identity) {
       const returnLocation = dashboardReturnLocation()
       window.location.replace(connectionCallbackIntegration() ? dashboardLocation() : returnLocation ?? dashboardLocation())
       return <LoadingScreen />
     }
-    return <SignInPage />
+    return <SignInPage configured={authentication?.configured ?? false} returnTo={sessionStorage.getItem(dashboardReturnKey) ?? "/dashboard"} />
   }
   if (!identity) {
     if (window.location.pathname.startsWith("/dashboard")) {

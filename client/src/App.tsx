@@ -39,6 +39,7 @@ export function App({
     ? { section: "connections" as const }
     : dashboardRoute()
   const [route, setRoute] = useState<DashboardRoute>(currentRoute)
+  const [logoutError, setLogoutError] = useState("")
   const currentNav = route.section
 
   useEffect(() => {
@@ -84,11 +85,12 @@ export function App({
 
   const handleLogout = async () => {
     try {
-      await signOutIdentity()
-    } finally {
+      const destination = await signOutIdentity()
       clearOrganisation()
       queryClient.clear()
-      window.location.assign("/auth")
+      window.location.assign(destination)
+    } catch (reason) {
+      setLogoutError(reason instanceof Error ? reason.message : "Sign-out could not be completed")
     }
   }
 
@@ -124,6 +126,7 @@ export function App({
     <OrganisationProvider active={activeOrganisation} memberships={memberships}>
       <QueryClientProvider client={queryClient}>
         <Shell currentNav={currentNav} onNavigate={handleNavigate} onLogout={() => { void handleLogout() }}>
+          {logoutError && <p role="alert" className="px-6 py-3 text-[12px] text-[var(--red)]">{logoutError}</p>}
           {renderContent()}
         </Shell>
       </QueryClientProvider>

@@ -1,71 +1,71 @@
 export interface Identity {
   uid: string
-  email: string | null
+  email: string
   emailVerified: boolean
   displayName: string | null
 }
 
-export interface AuthenticationAdapter {
-  observeIdentity(listener: (identity: Identity | null) => void): () => void
-  signInWithEmail(email: string, password: string): Promise<void>
-  signInWithSSO(): Promise<void>
-  createEmailAccount(email: string, password: string): Promise<void>
-  resetEmailPassword(email: string): Promise<void>
-  identityToken(forceRefresh: boolean): Promise<string>
-  signOut(): Promise<void>
+export interface BrowserSession {
+  identity: Identity
+  csrf_token: string
+  expires_at: string
 }
 
-let adapter: AuthenticationAdapter | null = null
-export let authenticationConfigured = false
-
-export function configureAuthentication(authentication: AuthenticationAdapter): void {
-  if (adapter) throw new Error("Authentication is already configured")
-  adapter = authentication
-  authenticationConfigured = true
+export interface Authentication {
+  configured: boolean
+  session: BrowserSession | null
 }
 
-export class EmailVerificationRequiredError extends Error {
-  constructor() {
-    super("Verify your email before signing in")
-    this.name = "EmailVerificationRequiredError"
+let cachedSession: BrowserSession | null = null
+
+export function clearSession(): void {
+  cachedSession = null
+}
+
+export async function readSession(): Promise<BrowserSession | null> {
+  const response = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
+  if (response.status === 401) {
+    clearSession()
+    return null
   }
+  if (!response.ok) throw new Error("Your sign-in could not be checked. Try again.")
+  cachedSession = await response.json() as BrowserSession
+  return cachedSession
 }
 
-function configuredAuth(): AuthenticationAdapter {
-  if (!adapter) throw new Error("Kinu authentication is not configured")
-  return adapter
+export async function readAuthentication(): Promise<Authentication> {
+  const response = await fetch("/auth/status", { credentials: "same-origin", cache: "no-store" })
+  if (!response.ok) throw new Error("Sign-in is temporarily unavailable. Try again.")
+  const status = await response.json() as { configured: boolean }
+  return { configured: status.configured, session: status.configured ? await readSession() : null }
 }
 
-export function observeIdentity(listener: (identity: Identity | null) => void): () => void {
-  if (!adapter) {
-    listener(null)
-    return () => undefined
+export function signIn(returnTo = "/dashboard"): void {
+  window.location.assign(`/auth/login?${new URLSearchParams({ return_to: returnTo })}`)
+}
+
+export async function sessionHeaders(method = "GET"): Promise<Headers> {
+  const headers = new Headers()
+  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return headers
+  const current = cachedSession && Date.parse(cachedSession.expires_at) > Date.now()
+    ? cachedSession : await readSession()
+  if (!current) {
+    window.location.assign("/auth")
+    throw new Error("Sign in to continue")
   }
-  return adapter.observeIdentity(listener)
+  headers.set("X-CSRF-Token", current.csrf_token)
+  return headers
 }
 
-export async function signInWithSSO(): Promise<void> {
-  await configuredAuth().signInWithSSO()
-}
-
-export async function signInWithEmail(email: string, password: string): Promise<void> {
-  await configuredAuth().signInWithEmail(email.trim(), password)
-}
-
-export async function createEmailAccount(email: string, password: string): Promise<void> {
-  await configuredAuth().createEmailAccount(email.trim(), password)
-}
-
-export async function resetEmailPassword(email: string): Promise<void> {
-  await configuredAuth().resetEmailPassword(email.trim())
-}
-
-export async function identityToken(forceRefresh = false): Promise<string> {
-  const token = await configuredAuth().identityToken(forceRefresh)
-  if (!token) throw new Error("Authentication required")
-  return token
-}
-
-export async function signOutIdentity(): Promise<void> {
-  if (adapter) await adapter.signOut()
+export async function signOutIdentity(): Promise<string> {
+  const current = cachedSession ?? await readSession()
+  const response = await fetch("/auth/logout", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: current ? { "X-CSRF-Token": current.csrf_token } : {},
+  })
+  if (!response.ok) throw new Error("Sign-out could not be completed. Try again.")
+  const result = await response.json() as { logout_url: string }
+  clearSession()
+  return result.logout_url
 }

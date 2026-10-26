@@ -9,11 +9,13 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     server: {
-      host: "127.0.0.1",
+      host: "localhost",
       port: 5173,
       proxy: {
         "/v1": apiTarget,
         "/health": apiTarget,
+        "/auth/": apiTarget,
+        "/_agent-native": env.KINU_AGENT_URL || "http://127.0.0.1:8001",
       },
     },
   }
