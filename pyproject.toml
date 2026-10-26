@@ -1,0 +1,72 @@
+[project]
+name = "kinu"
+version = "0.1.0"
+description = "Enterprise credential rotation and verification platform"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "mypy>=1.17,<2",
+    "pytest>=8.4,<9",
+    "pytest-cov>=6.2,<7",
+    "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "server",
+    "packages/contracts",
+    "packages/policy",
+    "packages/telemetry",
+    "packages/testkit",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers"]
+python_files = ["test.py"]
+pythonpath = [
+    "server",
+    "packages/contracts/src",
+    "packages/policy/src",
+    "packages/telemetry/src",
+    "packages/testkit/src",
+]
+testpaths = ["server/tests", "packages"]
+
+[tool.ruff]
+extend-exclude = [".cache", ".venv", "node_modules", "dist"]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+explicit_package_bases = true
+warn_unreachable = true
+mypy_path = [
+    "server",
+    "packages/contracts/src",
+    "packages/policy/src",
+    "packages/telemetry/src",
+    "packages/testkit/src",
+]
+
+[tool.pyrefly]
+project-includes = ["server", "packages"]
+python-version = "3.12"
+python-interpreter-path = ".venv/bin/python"
+search-path = [
+    "server",
+    "packages/contracts/src",
+    "packages/policy/src",
+    "packages/telemetry/src",
+    "packages/testkit/src",
+]

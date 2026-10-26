@@ -1,0 +1,30 @@
+[project]
+name = "kinu-server"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "cryptography>=46,<48",
+    "fastapi>=0.116,<1",
+    "kinu-contracts",
+    "kinu-policy",
+    "kinu-telemetry",
+    "httpx>=0.28,<1",
+    "pydantic-settings>=2.10,<3",
+    "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.55,<2", "websockets>=15,<17"]
+mcp = ["httpx2>=2,<3", "mcp>=2,<3"]
+
+[tool.uv.sources]
+kinu-contracts = { workspace = true }
+kinu-policy = { workspace = true }
+kinu-telemetry = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agents", "api", "broker", "browser", "capture", "connectors", "core", "ingestion", "notification", "verifier"]

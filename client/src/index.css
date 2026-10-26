@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --canvas: #f5f6f7;
+    --workspace: #f5f6f7;
+    --sidebar: #eceeef;
+    --surface: #ffffff;
+    --surface-soft: #f7f8f8;
+    --surface-active: #ffffff;
+    --border: #dfe2e4;
+    --border-soft: #eaeced;
+    --ink: #191b1e;
+    --ink-soft: #5f646b;
+    --ink-muted: #8a9097;
+    --accent: #24272b;
+    --accent-soft: #e9ebed;
+    --green: #1f7a56;
+    --green-soft: #e5f2eb;
+    --amber: #9a651c;
+    --amber-soft: #f7ecd9;
+    --red: #a5424c;
+    --red-soft: #f7e7e9;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--canvas);
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: -0.015em;
+    min-height: 100vh;
+    margin: 0;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+}
+
+@layer components {
+  .app-shell {
+    background: var(--workspace);
+    display: flex;
+    gap: 0;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .page {
+    margin: 0 auto;
+    max-width: 1440px;
+    padding: 24px 48px 72px;
+    width: 100%;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(25, 27, 30, 0.035);
+  }
+
+  .panel-subtle {
+    background: var(--surface-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+  }
+
+  .panel-grid {
+    display: grid;
+    gap: 16px;
+  }
+
+  .subheading {
+    color: var(--ink);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    margin: 0;
+  }
+
+  .eyebrow {
+    color: var(--ink-muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mono-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  .nav-children {
+    padding-left: 32px;
+  }
+
+  .resource-toolbar {
+    margin-bottom: 24px;
+  }
+
+  .resource-toolbar .focus-ring:focus-visible {
+    outline-color: var(--ink-muted);
+    outline-offset: 1px;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--ink-muted);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-shell {
+    padding: 0;
+  }
+}
+
+@media (max-width: 920px) {
+  .page {
+    padding: 32px 22px 64px;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-top: 24px;
+  }
+
+  .resource-toolbar {
+    margin-bottom: 24px;
+  }
+}
