@@ -4,7 +4,7 @@ Credential rotation and verification, with policy gates, approvals, and evidence
 
 The app includes the operator dashboard, Cognito browser sign-in, PostgreSQL sessions,
 workspace access and inventory, and an Agent-Native service that shares the authenticated identity.
-Credential rotation, mailbox connections, AWS secret storage, and deployment are still pending.
+Credential rotation, mailbox connections, AWS secret storage, and application hosting are still pending.
 
 ## Local development
 
@@ -46,8 +46,8 @@ Neither service needs database credentials. Public `VITE_` variables must never 
 ## Sign-in and sessions
 
 Create a Cognito user pool and a **public app client without a client secret**. Enable the
-authorization code grant and `openid`, `email`, and `profile` scopes. Configure a managed
-login domain, require email verification, and register these exact local URLs:
+authorization code grant and `openid`, `email`, and `profile` scopes. Configure a
+hosted sign-in domain, require email verification, and register these exact local URLs:
 
 | Setting | URL |
 | --- | --- |
@@ -111,7 +111,8 @@ Login tests use a simulated Cognito provider with real signed tokens; they do no
 explicit through `make migrate`; API startup does not modify the database schema.
 `/health/live` confirms process health. API `/health/ready` requires browser authentication
 and account services to be configured; it does not certify credential rotation readiness.
-No AWS infrastructure has been deployed by this repository setup.
+`infra/auth.yaml` provisions the AWS sign-in resources. Application hosting and the
+AgentCore workflow are not included in that stack.
 
 ## Layout
 
