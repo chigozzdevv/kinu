@@ -225,9 +225,9 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   const [reason, setReason] = useState("Routine credential rotation")
   const [urgency, setUrgency] = useState<"routine" | "urgent" | "emergency">("routine")
   const [runs, graph, history, connections] = useQueries({ queries: [
-    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: (query) => selectedId && finished(query.state.data?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
+    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: (): number | false => selectedId && finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
-    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: () => finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
+    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
   ] })
   const create = useMutation({ mutationFn: () => {
