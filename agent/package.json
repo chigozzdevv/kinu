@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@agent-native/core": "0.220.0",
+    "@aws-sdk/client-rds-data": "^3.1157.0",
+    "@aws-sdk/client-secrets-manager": "^3.1157.0",
+    "@opentelemetry/api": "^1.10.0",
     "h3": "^2.0.1",
     "nitro": "3.0.260903-beta",
     "zod": "^4.6.7"

@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu Agent-Native model connection with isolated credential storage
+Parameters:
+  ApiId: {Type: String}
+  PublicUrl: {Type: String}
+  ClusterArn: {Type: String}
+  CodeBucket: {Type: String}
+  CodeKey: {Type: String}
+Resources:
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Kinu native database login
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"kinu_native"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludePunctuation: true
+  Seal:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Kinu model connection encryption
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: native-storage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BeginTransaction, rds-data:CommitTransaction, rds-data:RollbackTransaction]
+                Resource: !Ref ClusterArn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref DatabaseSecret, !Ref Seal]
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kinu-native:*'
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kinu-assess:*'
+              - Effect: Deny
+                Action: sts:AssumeRole
+                Resource: '*'
+  HttpLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/kinu-native, RetentionInDays: 3}
+  AssessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/kinu-assess, RetentionInDays: 3}
+  Http:
+    Type: AWS::Lambda::Function
+    DependsOn: HttpLogs
+    Properties:
+      FunctionName: kinu-native
+      Runtime: nodejs22.x
+      Handler: server/index.handler
+      MemorySize: 512
+      Timeout: 29
+      Role: !GetAtt Role.Arn
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          NODE_ENV: production
+          KINU_ENVIRONMENT: production
+          KINU_PUBLIC_URL: !Ref PublicUrl
+          KINU_API_URL: !Ref PublicUrl
+          KINU_NATIVE_CLUSTER_ARN: !Ref ClusterArn
+          KINU_NATIVE_SECRET_ARN: !Ref DatabaseSecret
+          KINU_NATIVE_SEAL_ARN: !Ref Seal
+  Assess:
+    Type: AWS::Lambda::Function
+    DependsOn: AssessLogs
+    Properties:
+      FunctionName: kinu-assess
+      Runtime: nodejs22.x
+      Handler: assessment.handler
+      MemorySize: 512
+      Timeout: 60
+      Role: !GetAtt Role.Arn
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          NODE_ENV: production
+          KINU_NATIVE_CLUSTER_ARN: !Ref ClusterArn
+          KINU_NATIVE_SECRET_ARN: !Ref DatabaseSecret
+          KINU_NATIVE_SEAL_ARN: !Ref Seal
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Http.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 29000
+  Route:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ApiId
+      RouteKey: 'ANY /_agent-native/{proxy+}'
+      Target: !Sub 'integrations/${Integration}'
+  Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Http
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*'
+Outputs:
+  DatabaseSecretArn: {Value: !Ref DatabaseSecret}
+  SealArn: {Value: !Ref Seal}
+  AssessArn: {Value: !GetAtt Assess.Arn}
+  RoleArn: {Value: !GetAtt Role.Arn}

@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["nitro.config.ts", "server/**/*.ts", "tests/**/*.ts"]
+  "include": ["nitro.config.ts", "actions/**/*.ts", "cloud/**/*.ts", "server/**/*.ts", "tests/**/*.ts"]
 }

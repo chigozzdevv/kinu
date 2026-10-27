@@ -88,6 +88,18 @@ try {
   assert.equal(session.token, undefined)
   assert.equal(JSON.stringify(session).includes(csrf), false)
   assert.equal(JSON.stringify(session).includes(token), false)
+  const tools = await fetch(`${agentUrl}/_agent-native/kinu/tools`, { headers })
+  assert.equal(tools.status, 200)
+  assert.deepEqual((await tools.json() as { name: string }[]).map((item) => item.name), ["context", "rotation", "alert"])
+  const capabilityUrl = `${agentUrl}/_agent-native/kinu/actions/context`
+  const nativeHeaders = { ...writeHeaders, "x-kinu-workspace": workspace }
+  const context = await fetch(capabilityUrl, { method: "POST", headers: nativeHeaders, body: JSON.stringify({ resource: "inventory" }) })
+  assert.equal(context.status, 200, await context.text())
+  assert.equal((await fetch(capabilityUrl, { method: "POST", headers, body: JSON.stringify({ resource: "inventory" }) })).status, 403)
+  const forged = await fetch(capabilityUrl, { method: "POST", headers: { ...nativeHeaders, "x-csrf-token": "forged" }, body: JSON.stringify({ resource: "inventory" }) })
+  assert.equal(forged.status, 403)
+  assert.equal((await fetch(`${agentUrl}/_agent-native/kinu/actions/assessment`, { method: "POST", headers: nativeHeaders, body: "{}" })).status, 404)
+  assert.equal((await fetch(`${agentUrl}/_agent-native/kinu/builder/connect`, { method: "POST", headers: { ...nativeHeaders, origin: "https://other.example" }, body: "{}" })).status, 403)
   assert.equal(response.headers.getSetCookie().every((value) => value.includes("=1;")), true)
   assert.equal((await fetch(sessionUrl)).status, 401)
   assert.equal((await fetch(sessionUrl, { headers: { authorization: "Bearer arbitrary" } })).status, 401)

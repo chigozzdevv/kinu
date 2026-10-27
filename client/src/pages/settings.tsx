@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
+import { AiSettings } from "../components/ai"
 import { Detail, DetailList, DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { IdentityProvider } from "../components/identity"
@@ -14,7 +15,7 @@ import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 import type { EmailNotificationEndpoint, MemberRole, NotificationTopic, TeamMember } from "../types"
 
-type Tab = "profile" | "team" | "notifications"
+type Tab = "profile" | "team" | "notifications" | "ai"
 
 const roles: Array<{ value: MemberRole; label: string }> = [
   { value: "viewer", label: "Viewer" },
@@ -35,7 +36,7 @@ function topicLabels(endpoint: EmailNotificationEndpoint, topics: NotificationTo
 }
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("profile")
+  const [tab, setTab] = useState<Tab>(() => new URLSearchParams(window.location.search).get("tab") === "ai" ? "ai" : "profile")
   const [inviting, setInviting] = useState(false)
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
   const [addingEmail, setAddingEmail] = useState(false)
@@ -48,8 +49,8 @@ export function SettingsPage() {
     if (profile.data && !administrator && tab === "team") setTab("profile")
   }, [administrator, profile.data, tab])
   const tabs = administrator
-    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }]
-    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }]
+    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
+    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
   const actions = tab === "team"
     ? <Button onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
     : tab === "notifications"
@@ -65,6 +66,7 @@ export function SettingsPage() {
     <PageHeader title="Settings" actions={actions} />
     <DetailTabs items={tabs} value={tab} onChange={setTab} />
     {tab === "profile" && <ProfileSettings profile={profile.data!} />}
+    {tab === "ai" && <AiSettings administrator={administrator} />}
     {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
     {tab === "notifications" && <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />}
     {inviting && <InviteMemberModal onClose={() => setInviting(false)} />}
