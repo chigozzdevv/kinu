@@ -13,7 +13,8 @@ class Database:
     def __init__(self, url: str) -> None:
         self._pool = AsyncConnectionPool[AsyncConnection[DictRow]](
             url,
-            kwargs={"row_factory": dict_row, "autocommit": True},
+            # Keep statement names safe when a proxy multiplexes connections.
+            kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None},
             min_size=1,
             max_size=5,
             timeout=5,

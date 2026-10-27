@@ -10,6 +10,8 @@ from core.auth.browser import BrowserAuth
 from core.auth.cognito import CognitoTokenVerifier
 from core.auth.store import SessionStore
 from core.config import Settings
+from core.inventory import InventoryService
+from core.inventory.store import InventoryStore
 from core.storage.database import Database
 from fastapi import FastAPI
 
@@ -32,7 +34,9 @@ async def runtime(
             accounts = AccountStore(database, _now)
             if services is None:
                 app.state.services = ApiServices(
-                    access=AccessControl(accounts), accounts=AccountService(accounts, _now)
+                    access=AccessControl(accounts),
+                    accounts=AccountService(accounts, _now),
+                    inventory=InventoryService(InventoryStore(database), _now),
                 )
             if browser is None and config.browser:
                 app.state.browser = BrowserAuth(

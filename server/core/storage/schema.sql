@@ -40,3 +40,18 @@ CREATE TABLE IF NOT EXISTS kinu.logins (
     expires_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS logins_expiry ON kinu.logins(expires_at);
+
+CREATE TABLE IF NOT EXISTS kinu.inventory (
+    organisation_id text NOT NULL REFERENCES kinu.organisations(id),
+    kind text NOT NULL,
+    id text NOT NULL,
+    revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, kind, id),
+    CHECK ((data->>'organisation_id') IS NOT DISTINCT FROM organisation_id),
+    CHECK ((data->>'id') IS NOT DISTINCT FROM id),
+    CHECK (coalesce((data->>'revision')::integer, 0) = revision)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS inventory_control_number
+    ON kinu.inventory (organisation_id, (data->>'credential_id'), (data->>'number'))
+    WHERE kind = 'controls';

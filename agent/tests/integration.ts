@@ -52,6 +52,29 @@ try {
   const membership = await create.json() as { organisation: { id: string } }
   assert.equal(create.status, 201, JSON.stringify(membership))
   const workspace = membership.organisation.id
+  const inventoryUrl = `${apiUrl}/v1/organisations/${workspace}/inventory`
+  const graph = await fetch(`${inventoryUrl}/graph`, { headers: { cookie } })
+  assert.equal(graph.status, 200)
+  assert.deepEqual(await graph.json(), { credentials: [], services: [], bindings: [] })
+  const connection = {
+    id: "connection_browser", organisation_id: workspace, platform: "example", display_name: "Example",
+    roles: ["provider"], interface: "browser", authorization: "browser-session",
+    capabilities: ["browser.execute"], allowed_resources: ["example.com"], status: "setup-required",
+    region: "eu-west-2", created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }
+  const saved = await fetch(`${inventoryUrl}/connections`, {
+    method: "POST", headers: writeHeaders, body: JSON.stringify(connection),
+  })
+  assert.equal(saved.status, 201, await saved.text())
+  const stored = await fetch(`${inventoryUrl}/connections`, { headers: { cookie } })
+  assert.equal(stored.status, 200)
+  const records = await stored.json() as { id: string }[]
+  assert.equal(records[0]?.id, connection.id)
+  const persisted = await db.query<{ count: number }>(
+    "SELECT count(*)::int AS count FROM kinu.inventory WHERE organisation_id = $1 AND kind = 'connection'", [workspace],
+  )
+  assert.equal(persisted.rows[0]?.count, 1)
+  assert.equal((await fetch(`${apiUrl}/v1/organisations/org_other/inventory/connections`, { headers: { cookie } })).status, 403)
   const sessionUrl = `${agentUrl}/_agent-native/auth/session`
   const headers = { cookie, "x-kinu-workspace": workspace }
   const response = await fetch(sessionUrl, { headers })
@@ -90,7 +113,7 @@ try {
     digest, JSON.stringify(identity), csrf, new Date(Date.now() - 1000),
   ])
   assert.equal((await fetch(sessionUrl, { headers })).status, 401)
-  process.stdout.write("API and Agent-Native integration passed: identity, workspace isolation, CSRF, expiry, and revocation.\n")
+  process.stdout.write("API and Agent-Native integration passed: inventory persistence, identity, workspace isolation, CSRF, expiry, and revocation.\n")
 } finally {
   await Promise.all(children.map(({ child }) => stop(child)))
   await socket.stop()
