@@ -99,7 +99,7 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
     <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6 py-12">
       <section className="w-full max-w-[440px] rounded-[22px] border border-[var(--border)] bg-white px-8 py-10 shadow-[0_14px_40px_rgba(25,27,30,0.05)] sm:px-10" aria-labelledby="auth-title">
         <h1 id="auth-title" className="flex items-center justify-center gap-4 text-[20px] font-semibold tracking-[-0.035em] text-[var(--ink)]">
-          <img className="h-auto w-[132px]" src={kinuLogo} alt="Kinu" />
+          <img className="h-[46px] w-[80px] shrink-0 object-cover object-left" src={kinuLogo} alt="Kinu" />
           <span className="h-7 w-px bg-[var(--border)]" aria-hidden="true" />
           <span>{titles[mode]}</span>
         </h1>
