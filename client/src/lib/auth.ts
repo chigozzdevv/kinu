@@ -40,8 +40,23 @@ export async function readAuthentication(): Promise<Authentication> {
   return { configured: status.configured, session: status.configured ? await readSession() : null }
 }
 
-export function signIn(returnTo = "/dashboard"): void {
-  window.location.assign(`/auth/login?${new URLSearchParams({ return_to: returnTo })}`)
+export interface AuthResult {
+  next: "complete" | "signin" | "verify" | "forgot" | "reset"
+  return_to?: string
+}
+
+export async function submitAuth(action: "signin" | "signup" | "verify" | "resend" | "forgot" | "reset", body: Record<string, string>): Promise<AuthResult> {
+  const form = await fetch("/auth/form", { credentials: "same-origin", cache: "no-store" })
+  if (!form.ok) throw new Error("Sign-in is temporarily unavailable. Please try again.")
+  const state = await form.json() as { csrf_token: string }
+  const response = await fetch(`/auth/${action}`, {
+    method: "POST", credentials: "same-origin", cache: "no-store",
+    headers: { "content-type": "application/json", "x-csrf-token": state.csrf_token },
+    body: JSON.stringify(body),
+  })
+  const result = await response.json().catch(() => null) as (AuthResult & { message?: string }) | null
+  if (!response.ok || !result) throw new Error(result?.message ?? "Sign-in could not be completed. Please try again.")
+  return result
 }
 
 export async function sessionHeaders(method = "GET"): Promise<Headers> {
