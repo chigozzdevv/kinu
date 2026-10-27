@@ -2,7 +2,7 @@
 
 Credential rotation with verified consumer updates, policy gates and an audit trail.
 
-Kinu runs on AWS. Cognito provides browser sign-in; the API stores opaque cookie sessions,
+Kinu runs on AWS. Kinu provides its own email/password forms backed by Cognito; the API stores opaque cookie sessions,
 workspace permissions and inventory in PostgreSQL. Agent-Native shares that identity and
 exposes the same scoped actions used by the dashboard.
 
@@ -63,8 +63,7 @@ Open http://localhost:5173. The local database binds to `127.0.0.1:5433`.
 
 Keep root environment values out of the frontend and Agent-Native process. Local Agent-Native
 storage uses its own `DATABASE_URL`; deployed storage uses a separate database and IAM role.
-No `VITE_` value may contain a secret. Production requires HTTPS and matching Cognito callback
-and sign-out URLs. Sessions expire within one hour; writes require Origin and CSRF checks.
+No `VITE_` value may contain a secret. Production requires HTTPS and a Cognito public app client with `ALLOW_USER_PASSWORD_AUTH`. Sessions expire within one hour; writes require Origin and CSRF checks.
 
 ```sh
 make verify
@@ -93,3 +92,6 @@ arbitrary production provider connections are not implemented.
 | `infra/` | AWS templates, packaging and deployment |
 
 Licensed under Apache 2.0. See [LICENSE](LICENSE).
+
+Sign-up, email verification, code resend and password reset use the same Cognito pool. Passwords
+and provider tokens stay out of Kinu storage. A password reset revokes existing Kinu sessions.

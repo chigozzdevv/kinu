@@ -38,7 +38,6 @@ async def main() -> None:
         "DatabaseSecretArn": outputs["store"]["AppSecretArn"],
         "CognitoPool": outputs["auth"]["PoolId"],
         "CognitoClient": outputs["auth"]["ClientId"],
-        "CognitoDomain": outputs["auth"]["DomainUrl"],
         "CodeBucket": bucket,
         "CodeKey": key,
     }

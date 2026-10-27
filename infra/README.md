@@ -5,7 +5,7 @@ access keys are required. Keep stack outputs and local deployment files outside 
 
 | Stack | Resources |
 | --- | --- |
-| `kinu-auth` | Cognito Lite pool, public PKCE client and classic hosted sign-in |
+| `kinu-auth` | Cognito Lite pool and public password-auth client |
 | `kinu-store` | Private Aurora PostgreSQL, Data API and separate database login secrets |
 | `kinu-artifacts` | Private encrypted deployment bucket with a 14-day artifact expiry |
 | `kinu-app` | HTTP API Gateway, Python Lambda and private frontend bucket |
@@ -41,10 +41,10 @@ python infra/deploy.py
 python infra/native.py
 ```
 
-`deploy.py` saves the HTTPS origin to `/private/tmp/kinu-aws/app.json`. Update `kinu-auth` with
-that origin as `PublicUrl`, which registers `/auth/callback` and `/auth` as the exact Cognito
-callback and sign-out URLs. Upload `client/dist` after `npm --prefix client run build` to the
-private frontend bucket returned by `kinu-app`. Keep old hashed assets for existing tabs.
+`deploy.py` saves the HTTPS origin to `/private/tmp/kinu-aws/app.json`. Upload `client/dist`
+after `npm --prefix client run build` to the private frontend bucket returned by `kinu-app`.
+Keep old hashed assets for existing tabs. Sign-in uses Kinu's own forms and the Cognito user
+pools API; a hosted sign-in domain and OAuth callback URLs are not required.
 
 `native.py` builds the Node Lambda and private inference bundle, initializes `kinu_native`
 and grants it access only to that database. Builder OAuth tokens and pending authorization
@@ -82,3 +82,16 @@ attempt safe rollback, and interrupted mutations can require operator recovery.
 `browser.yaml` defines a custom AgentCore Browser with raw recording disabled. Deploy it
 only after AWS grants the required configuration and session quotas. Browser execution is
 not a prerequisite for the API demo.
+
+## Account forms
+
+Kinu handles sign-in, sign-up, email confirmation, code resend and password reset through its
+own API. Enable `ALLOW_USER_PASSWORD_AUTH` on the public Cognito client. The API validates
+Cognito's signed ID token, requires verified email and creates the existing opaque session.
+Passwords and Cognito tokens are not persisted in Kinu or returned to browser JavaScript.
+
+Pre-authentication forms use a browser-bound CSRF token with a ten-minute lifetime. PostgreSQL
+limits attempts by hashed email and client address. A successful sign-in consumes its form;
+a successful password reset revokes the account's Kinu sessions across devices. Cognito sends
+verification and reset codes through its configured email service. Local tests exercise signed
+provider responses; verify actual email delivery using an address you control.

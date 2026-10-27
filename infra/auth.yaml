@@ -6,11 +6,6 @@ Parameters:
     Type: String
     Default: demo
     AllowedValues: [demo, production]
-  PublicUrl:
-    Type: String
-    Default: http://localhost:5173
-    Description: Public app origin without a trailing slash
-    AllowedPattern: '^(https://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?|http://localhost(:[0-9]+)?)$'
 
 Resources:
   Pool:
@@ -56,13 +51,8 @@ Resources:
       UserPoolId: !Ref Pool
       ClientName: !Sub kinu-${Stage}-web
       GenerateSecret: false
-      AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthFlows: [code]
-      AllowedOAuthScopes: [openid, email, profile]
-      CallbackURLs: [!Sub '${PublicUrl}/auth/callback']
-      LogoutURLs: [!Sub '${PublicUrl}/auth']
-      SupportedIdentityProviders: [COGNITO]
-      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
+      AllowedOAuthFlowsUserPoolClient: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH]
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
       IdTokenValidity: 1
@@ -73,17 +63,8 @@ Resources:
         AccessToken: hours
         RefreshToken: days
 
-  Domain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      UserPoolId: !Ref Pool
-      Domain: !Sub kinu-${Stage}-${AWS::AccountId}-${AWS::Region}
-      ManagedLoginVersion: 1
-
 Outputs:
   PoolId:
     Value: !Ref Pool
   ClientId:
     Value: !Ref Client
-  DomainUrl:
-    Value: !Sub https://${Domain}.auth.${AWS::Region}.amazoncognito.com
