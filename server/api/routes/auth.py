@@ -1,23 +1,77 @@
+import re
 from datetime import UTC, datetime
-from typing import cast
+from typing import Annotated, cast
 
-from core.auth.browser import BrowserAuth
+from contracts import Contract
+from core.auth.browser import BrowserAuth, return_path
+from core.auth.forms import Attempt
 from core.errors import AuthenticationError, AuthorizationError
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse
+from pydantic import AfterValidator, Field, SecretStr, StringConstraints
 
 from api.deps import browser_session, required, services, session_cookie
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+Email = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        to_lower=True,
+        min_length=3,
+        max_length=254,
+        pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$",
+    ),
+]
+Password = Annotated[SecretStr, Field(min_length=1, max_length=256)]
 
 
-@router.post("/check", status_code=204)
-async def check(request: Request) -> None:
-    await browser_session(request)
+def _code(value: SecretStr) -> SecretStr:
+    if not re.fullmatch(r"[0-9]{6}", value.get_secret_value()):
+        raise ValueError("Enter the six-digit code")
+    return value
+
+
+Code = Annotated[SecretStr, Field(min_length=6, max_length=6), AfterValidator(_code)]
+
+
+class EmailRequest(Contract):
+    email: Email
+
+
+class SignInRequest(EmailRequest):
+    password: Password
+    return_to: str = Field(default="/dashboard", max_length=2048)
+
+
+class SignUpRequest(EmailRequest):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    password: Password
+
+
+class VerifyRequest(EmailRequest):
+    code: Code
+
+
+class ResetRequest(VerifyRequest):
+    password: Password
 
 
 def _browser(request: Request) -> BrowserAuth:
     return required(cast(BrowserAuth | None, request.app.state.browser), "browser authentication")
+
+
+async def _guard(request: Request, email: str, action: Attempt) -> BrowserAuth:
+    browser = _browser(request)
+    await browser.guard(
+        session_cookie(request, browser.options.form_cookie) or "",
+        request.headers.get("origin"),
+        request.headers.get("x-csrf-token"),
+        email,
+        request.client.host if request.client else "unknown",
+        action,
+    )
+    return browser
 
 
 @router.get("/status")
@@ -25,56 +79,99 @@ async def status(request: Request) -> dict[str, bool]:
     return {"configured": request.app.state.browser is not None}
 
 
-@router.get("/login")
-async def login(request: Request, return_to: str = "/dashboard") -> RedirectResponse:
+@router.get("/form")
+async def form(request: Request, response: Response) -> dict[str, str]:
     browser = _browser(request)
-    url, binding = await browser.begin(return_to)
-    response = RedirectResponse(url, status_code=303)
+    token, current = await browser.prepare(session_cookie(request, browser.options.form_cookie))
     response.set_cookie(
-        browser.options.login_cookie,
-        binding,
-        max_age=600,
+        browser.options.form_cookie,
+        token,
+        max_age=max(1, int((current.expires_at - datetime.now(UTC)).total_seconds())),
         secure=browser.options.secure,
         httponly=True,
         samesite="lax",
         path="/",
     )
-    return response
+    return {"csrf_token": current.csrf_token}
 
 
-@router.get("/callback")
-async def callback(
-    request: Request, code: str = "", state: str = "", error: str = ""
-) -> RedirectResponse:
-    browser = _browser(request)
-    binding = session_cookie(request, browser.options.login_cookie) or ""
-    previous = session_cookie(request, browser.options.cookie_name)
-    try:
-        if error:
-            await browser.store.consume(state, binding)
-            raise AuthenticationError("sign-in was not completed")
-        token, session, return_path = await browser.complete(code, state, binding, previous)
-    except AuthenticationError:
-        response = RedirectResponse(f"{browser.options.origin}/auth?error=signin", status_code=303)
-    else:
-        response = RedirectResponse(f"{browser.options.origin}{return_path}", status_code=303)
+@router.post("/signin")
+async def signin(body: SignInRequest, request: Request, response: Response) -> dict[str, str]:
+    browser = await _guard(request, body.email, "signin")
+    destination = return_path(body.return_to)
+    token, current, step = await browser.signin(
+        body.email,
+        body.password,
+        session_cookie(request, browser.options.form_cookie) or "",
+        request.headers["x-csrf-token"],
+        session_cookie(request, browser.options.cookie_name),
+    )
+    if token is not None and current is not None:
         response.set_cookie(
             browser.options.cookie_name,
             token,
-            max_age=max(1, int((session.expires_at - datetime.now(UTC)).total_seconds())),
+            max_age=max(1, int((current.expires_at - datetime.now(UTC)).total_seconds())),
             secure=browser.options.secure,
             httponly=True,
             samesite="lax",
             path="/",
         )
+        response.delete_cookie(
+            browser.options.form_cookie,
+            secure=browser.options.secure,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+    return {"next": step, "return_to": destination}
+
+
+@router.post("/signup", status_code=202)
+async def signup(body: SignUpRequest, request: Request) -> dict[str, str]:
+    browser = await _guard(request, body.email, "email")
+    confirmed = await browser.passwords.signup(body.email, body.name, body.password)
+    return {"next": "signin" if confirmed else "verify"}
+
+
+@router.post("/verify")
+async def verify(body: VerifyRequest, request: Request) -> dict[str, str]:
+    browser = await _guard(request, body.email, "code")
+    await browser.passwords.verify(body.email, body.code)
+    return {"next": "signin"}
+
+
+@router.post("/resend", status_code=202)
+async def resend(body: EmailRequest, request: Request) -> dict[str, str]:
+    browser = await _guard(request, body.email, "email")
+    await browser.passwords.resend(body.email)
+    return {"next": "verify"}
+
+
+@router.post("/forgot", status_code=202)
+async def forgot(body: EmailRequest, request: Request) -> dict[str, str]:
+    browser = await _guard(request, body.email, "email")
+    await browser.passwords.forgot(body.email)
+    return {"next": "reset"}
+
+
+@router.post("/reset")
+async def reset(body: ResetRequest, request: Request, response: Response) -> dict[str, str]:
+    browser = await _guard(request, body.email, "code")
+    await browser.passwords.reset(body.email, body.code, body.password)
+    await browser.store.revoke(body.email, browser.options.cognito.issuer)
     response.delete_cookie(
-        browser.options.login_cookie,
+        browser.options.cookie_name,
         secure=browser.options.secure,
         httponly=True,
         samesite="lax",
         path="/",
     )
-    return response
+    return {"next": "signin"}
+
+
+@router.post("/check", status_code=204)
+async def check(request: Request) -> None:
+    await browser_session(request)
 
 
 @router.get("/session")
@@ -110,8 +207,7 @@ async def session(request: Request) -> JSONResponse:
 @router.post("/logout")
 async def logout(request: Request) -> JSONResponse:
     browser = _browser(request)
-    if request.headers.get("origin") != browser.options.origin:
-        raise AuthorizationError("request origin is invalid")
+    browser.require_origin(request.headers.get("origin"))
     token = session_cookie(request, browser.options.cookie_name)
     if token:
         try:
@@ -123,7 +219,7 @@ async def logout(request: Request) -> JSONResponse:
                 current, request.headers.get("origin"), request.headers.get("x-csrf-token")
             )
         await browser.store.delete(token)
-    response = JSONResponse({"logout_url": browser.logout_url})
+    response = JSONResponse({"logout_url": browser.options.origin + "/auth"})
     response.delete_cookie(
         browser.options.cookie_name,
         secure=browser.options.secure,

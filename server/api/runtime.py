@@ -11,6 +11,7 @@ from core.audit.writer import AuditWriter
 from core.auth import AccessControl
 from core.auth.browser import BrowserAuth
 from core.auth.cognito import CognitoTokenVerifier
+from core.auth.forms import FormStore
 from core.auth.store import SessionStore
 from core.config import Settings
 from core.incident.service import IncidentService
@@ -73,6 +74,7 @@ async def runtime(
                 app.state.browser = BrowserAuth(
                     config.browser,
                     SessionStore(database, _now),
+                    FormStore(database, _now),
                     CognitoTokenVerifier(config.browser.cognito, http),
                     http,
                     _now,

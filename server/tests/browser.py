@@ -4,8 +4,9 @@ import httpx
 from core.auth import AuthenticatedIdentity
 from core.auth.browser import BrowserAuth
 from core.auth.cognito import CognitoConfig
+from core.auth.forms import Attempt, AuthForm
 from core.auth.options import BrowserOptions
-from core.auth.session import BrowserSession, LoginAttempt
+from core.auth.session import BrowserSession
 from core.errors import AuthenticationError
 
 HEADERS = {
@@ -17,17 +18,7 @@ HEADERS = {
 
 class MemorySessions:
     def __init__(self) -> None:
-        self.attempts: dict[tuple[str, str], LoginAttempt] = {}
         self.sessions: dict[str, BrowserSession] = {}
-
-    async def begin(self, state: str, browser: str, attempt: LoginAttempt) -> None:
-        self.attempts[state, browser] = attempt
-
-    async def consume(self, state: str, browser: str) -> LoginAttempt:
-        attempt = self.attempts.pop((state, browser), None)
-        if attempt is None or attempt.expires_at <= datetime.now(UTC):
-            raise AuthenticationError("sign-in attempt is invalid or expired")
-        return attempt
 
     async def save(self, token: str, session: BrowserSession) -> None:
         self.sessions[token] = session
@@ -41,9 +32,40 @@ class MemorySessions:
     async def delete(self, token: str) -> None:
         self.sessions.pop(token, None)
 
+    async def revoke(self, email: str, issuer: str) -> None:
+        self.sessions = {
+            token: session
+            for token, session in self.sessions.items()
+            if session.identity.issuer != issuer
+            or (session.identity.email or "").casefold() != email.casefold()
+        }
+
+
+class MemoryForms:
+    def __init__(self) -> None:
+        self.values: dict[str, AuthForm] = {}
+
+    async def save(self, token: str, form: AuthForm) -> None:
+        self.values[token] = form
+
+    async def get(self, token: str) -> AuthForm:
+        form = self.values.get(token)
+        if not form or form.expires_at <= datetime.now(UTC):
+            raise AuthenticationError("Sign-in form expired. Please try again.")
+        return form
+
+    async def consume(self, token: str, csrf: str) -> None:
+        form = await self.get(token)
+        if form.csrf_token != csrf:
+            raise AuthenticationError("Form does not match")
+        del self.values[token]
+
+    async def limit(self, email: str, address: str, action: Attempt) -> None:
+        pass
+
 
 class UnusedLogin:
-    async def verify_login(self, token: str, nonce: str) -> tuple[AuthenticatedIdentity, datetime]:
+    async def verify_login(self, token: str) -> tuple[AuthenticatedIdentity, datetime]:
         raise AssertionError("login is not part of this test")
 
 
@@ -55,10 +77,10 @@ def make_browser(identity: AuthenticatedIdentity) -> BrowserAuth:
     return BrowserAuth(
         BrowserOptions(
             CognitoConfig("us-east-1_example", "kinuclient"),
-            "https://login.example.com",
             "http://localhost:5173",
         ),
         store,
+        MemoryForms(),
         UnusedLogin(),
         httpx.AsyncClient(),
         lambda: datetime.now(UTC),

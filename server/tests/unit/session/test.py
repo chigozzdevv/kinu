@@ -118,7 +118,6 @@ async def test_browser_authentication_follows_application_lifecycle(
         settings=Settings(
             cognito_pool_id="us-east-1_example",
             cognito_client_id="kinuclient",
-            cognito_domain="https://login.example.com",
             database_url=SecretStr("postgresql://test"),
         )
     )
@@ -139,7 +138,6 @@ async def test_browser_authentication_follows_application_lifecycle(
         {"cognito_client_id": "kinuclient"},
         {"cognito_pool_id": "https://attacker.example", "cognito_client_id": "kinuclient"},
         {"cognito_pool_id": "us-east-1_example", "cognito_client_id": "bad/client"},
-        {"cognito_domain": "https://login.example.com"},
         {"environment": "production", "public_url": "http://localhost:5173"},
     ],
 )

@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     environment: str = "development"
     cognito_pool_id: str | None = None
     cognito_client_id: str | None = None
-    cognito_domain: str | None = None
     database_url: SecretStr | None = None
     aws_region: str = "eu-west-2"
     data_api_cluster_arn: str | None = None
@@ -32,11 +31,6 @@ class Settings(BaseSettings):
         if self.cognito_pool_id is not None or self.cognito_client_id is not None:
             CognitoConfig(self.cognito_pool_id or "", self.cognito_client_id or "")
         self.public_url = validate_origin(self.public_url, self.environment == "development")
-        if self.cognito_domain is not None:
-            if self.cognito is None or not self.has_storage:
-                raise ValueError("browser sign-in requires Cognito and application storage")
-            if self.browser is None:
-                raise ValueError("browser sign-in configuration is incomplete")
         return self
 
     @property
@@ -51,10 +45,9 @@ class Settings(BaseSettings):
 
     @property
     def browser(self) -> BrowserOptions | None:
-        if self.cognito is None or self.cognito_domain is None:
+        if self.cognito is None or not self.has_storage:
             return None
         return BrowserOptions(
             self.cognito,
-            self.cognito_domain,
             self.public_url,
         )

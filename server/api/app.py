@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
 
 from core.auth.browser import BrowserAuth
+from core.auth.forms import AttemptLimitError, FormError
 from core.config import Settings
 from core.errors import (
     ActiveRunConflictError,
@@ -22,6 +23,8 @@ from core.errors import (
     TransitionRejectedError,
 )
 from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from policy import PolicyViolationError
 from telemetry import instrument
@@ -91,6 +94,7 @@ def create_app(
     app.include_router(settings_router)
     app.include_router(demo_router)
     app.add_exception_handler(KinuError, _kinu_error)
+    app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)
     app.middleware("http")(_private_responses)
     instrument(app, "kinu-api")
@@ -100,6 +104,12 @@ def create_app(
 async def _private_responses(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
+    if (
+        request.url.path.startswith("/auth/")
+        and request.method == "POST"
+        and len(await request.body()) > 4096
+    ):
+        return _error(413, "invalid-input", "The sign-in form is too large.")
     response = await call_next(request)
     if request.url.path.startswith(("/auth/", "/v1/")):
         response.headers["Cache-Control"] = "no-store"
@@ -110,6 +120,12 @@ async def _private_responses(
 
 async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
     del request
+    if isinstance(error, FormError):
+        return _error(error.status, "invalid-input", str(error))
+    if isinstance(error, AttemptLimitError):
+        response = _error(429, "attempt-limit", str(error))
+        response.headers["Retry-After"] = str(error.retry_after)
+        return response
     if isinstance(error, IntegrationNotConfiguredError):
         return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "integration-not-configured", str(error))
     if isinstance(error, IdentityUnavailableError):
@@ -158,4 +174,15 @@ async def _controls_error(request: Request, error: Exception) -> JSONResponse:
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"code": code, "message": message})
+    return JSONResponse(
+        status_code=status_code,
+        content={"code": code, "message": message},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def _validation_error(request: Request, error: Exception) -> JSONResponse:
+    if request.url.path.startswith("/auth/"):
+        return _error(422, "invalid-input", "Check the form fields and try again.")
+    assert isinstance(error, RequestValidationError)
+    return await request_validation_exception_handler(request, error)

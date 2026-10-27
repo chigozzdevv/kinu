@@ -1,5 +1,4 @@
 import re
-import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
@@ -38,17 +37,9 @@ class CognitoTokenVerifier:
     async def verify(self, token: str) -> AuthenticatedIdentity:
         return self._identity(await self._claims(token))
 
-    async def verify_login(self, token: str, nonce: str) -> tuple[AuthenticatedIdentity, datetime]:
+    async def verify_login(self, token: str) -> tuple[AuthenticatedIdentity, datetime]:
         claims = await self._claims(token)
-        identity = self._identity(claims)
-        received = claims.get("nonce")
-        if (
-            not isinstance(received, str)
-            or not received.isascii()
-            or not secrets.compare_digest(received, nonce)
-        ):
-            raise AuthenticationError("sign-in nonce is invalid")
-        return identity, datetime.fromtimestamp(cast(int, claims["exp"]), UTC)
+        return self._identity(claims), datetime.fromtimestamp(cast(int, claims["exp"]), UTC)
 
     async def _claims(self, token: str) -> dict[str, object]:
         if not token or len(token) > 32_768:

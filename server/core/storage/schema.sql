@@ -31,15 +31,21 @@ CREATE TABLE IF NOT EXISTS kinu.sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_expiry ON kinu.sessions(expires_at);
 
-CREATE TABLE IF NOT EXISTS kinu.logins (
-    state_hash text PRIMARY KEY,
-    browser_hash text NOT NULL,
-    verifier text NOT NULL,
-    nonce text NOT NULL,
-    return_path text NOT NULL,
+DROP TABLE IF EXISTS kinu.logins;
+CREATE TABLE IF NOT EXISTS kinu.auth_forms (
+    token_hash text PRIMARY KEY,
+    csrf_token text NOT NULL,
     expires_at timestamptz NOT NULL
 );
-CREATE INDEX IF NOT EXISTS logins_expiry ON kinu.logins(expires_at);
+CREATE INDEX IF NOT EXISTS auth_forms_expiry ON kinu.auth_forms(expires_at);
+CREATE TABLE IF NOT EXISTS kinu.auth_limits (
+    key text NOT NULL,
+    bucket bigint NOT NULL,
+    attempts integer NOT NULL CHECK (attempts>0),
+    expires_at timestamptz NOT NULL,
+    PRIMARY KEY (key,bucket)
+);
+CREATE INDEX IF NOT EXISTS auth_limits_expiry ON kinu.auth_limits(expires_at);
 
 CREATE TABLE IF NOT EXISTS kinu.inventory (
     organisation_id text NOT NULL REFERENCES kinu.organisations(id),

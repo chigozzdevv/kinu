@@ -31,7 +31,6 @@ try {
     KINU_ENVIRONMENT: "development", KINU_PUBLIC_URL: publicUrl,
     KINU_DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?sslmode=disable`, KINU_TELEMETRY_ENABLED: "false",
     KINU_COGNITO_POOL_ID: "us-east-1_example", KINU_COGNITO_CLIENT_ID: "kinuclient",
-    KINU_COGNITO_DOMAIN: "https://login.example.com",
   })
   children.push(api)
   await api.ready(`${apiUrl}/health/ready`)

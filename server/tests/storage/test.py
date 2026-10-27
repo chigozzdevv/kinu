@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -7,7 +8,8 @@ from core.account import AccountService
 from core.account.service import principal_id
 from core.account.store import AccountStore
 from core.auth import AccessControl, AuthenticatedIdentity, Permission, Role
-from core.auth.session import BrowserSession, LoginAttempt
+from core.auth.forms import AttemptLimitError, AuthForm, FormStore
+from core.auth.session import BrowserSession
 from core.auth.store import SessionStore
 from core.errors import AuthenticationError, AuthorizationError, ResourceConflictError
 from core.storage.database import Database
@@ -49,17 +51,59 @@ async def test_expired_session_is_rejected(
         await store.get(token)
 
 
-async def test_login_is_browser_bound_and_single_use(database: Database) -> None:
+async def test_forms_are_browser_bound_expiring_and_single_use(database: Database) -> None:
     now = datetime.now(UTC)
-    state, binding = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    token = secrets.token_urlsafe(32)
+    store = FormStore(database, lambda: now)
+    form = AuthForm(secrets.token_urlsafe(32), now + timedelta(minutes=10))
+    await store.save(token, form)
+    assert await store.get(token) == form
+    with pytest.raises(AuthenticationError):
+        await store.consume(token, "another-browser")
+    await store.consume(token, form.csrf_token)
+    with pytest.raises(AuthenticationError):
+        await store.consume(token, form.csrf_token)
+    await store.save(token, form)
+    now += timedelta(minutes=11)
+    with pytest.raises(AuthenticationError):
+        await store.get(token)
+
+
+async def test_attempt_limits_are_atomic_shared_and_expire(database: Database) -> None:
+    now = datetime.now(UTC)
+    store = FormStore(database, lambda: now)
+    email = secrets.token_hex(8) + "@example.com"
+    results = await asyncio.gather(
+        *(store.limit(email, "127.0.0.1", "signin") for _ in range(15)), return_exceptions=True
+    )
+    assert sum(item is None for item in results) == 10
+    assert sum(isinstance(item, AttemptLimitError) for item in results) == 5
+    now += timedelta(minutes=16)
+    await FormStore(database, lambda: now).limit(email, "127.0.0.1", "signin")
+    async with database.connection() as sql:
+        row = await (await sql.execute("SELECT key FROM kinu.auth_limits LIMIT 1")).fetchone()
+        assert row and email not in row["key"]
+
+
+async def test_password_reset_revokes_only_matching_account_sessions(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    now = datetime.now(UTC)
     store = SessionStore(database, lambda: now)
-    attempt = LoginAttempt("verifier", "nonce", "/dashboard", now + timedelta(minutes=10))
-    await store.begin(state, binding, attempt)
+    assert identity.email
+    own, other = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    await store.save(own, BrowserSession(identity, "csrf", now + timedelta(hours=1)))
+    another = AuthenticatedIdentity(
+        subject="other#user",
+        issuer="https://other.example",
+        email=identity.email,
+        email_verified=True,
+    )
+    await store.save(other, BrowserSession(another, "csrf", now + timedelta(hours=1)))
+    await store.revoke(identity.email.upper(), identity.issuer)
     with pytest.raises(AuthenticationError):
-        await store.consume(state, "another-browser")
-    assert await store.consume(state, binding) == attempt
-    with pytest.raises(AuthenticationError):
-        await store.consume(state, binding)
+        await store.get(own)
+    assert (await store.get(other)).identity == another
 
 
 async def test_workspace_owner_is_persisted_and_scoped(

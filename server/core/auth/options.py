@@ -29,11 +29,9 @@ def validate_origin(value: str, development: bool) -> str:
 @dataclass(frozen=True, slots=True)
 class BrowserOptions:
     cognito: CognitoConfig
-    domain: str
     origin: str
 
     def __post_init__(self) -> None:
-        validate_origin(self.domain, False)
         validate_origin(self.origin, True)
 
     @property
@@ -45,9 +43,5 @@ class BrowserOptions:
         return "__Host-kinu" if self.secure else "kinu.session"
 
     @property
-    def login_cookie(self) -> str:
-        return "__Host-kinu.login" if self.secure else "kinu.login"
-
-    @property
-    def callback_url(self) -> str:
-        return f"{self.origin}/auth/callback"
+    def form_cookie(self) -> str:
+        return "__Host-kinu.form" if self.secure else "kinu.form"

@@ -12,21 +12,11 @@ class BrowserSession:
     expires_at: datetime
 
 
-@dataclass(frozen=True, slots=True)
-class LoginAttempt:
-    verifier: str
-    nonce: str
-    return_path: str
-    expires_at: datetime
-
-
 class SessionRepository(Protocol):
-    async def begin(self, state: str, browser: str, attempt: LoginAttempt) -> None: ...
-
-    async def consume(self, state: str, browser: str) -> LoginAttempt: ...
-
     async def save(self, token: str, session: BrowserSession) -> None: ...
 
     async def get(self, token: str) -> BrowserSession: ...
 
     async def delete(self, token: str) -> None: ...
+
+    async def revoke(self, email: str, issuer: str) -> None: ...
