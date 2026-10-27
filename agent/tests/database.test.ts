@@ -7,7 +7,7 @@ test("native Data API binds values separately and rolls back failed transactions
   const calls: Array<Record<string, unknown>> = []
   const client = new RDSDataClient({
     region: "eu-west-2", credentials: { accessKeyId: "test", secretAccessKey: "test" }, maxAttempts: 1,
-    requestHandler: { handle: async (request) => {
+    requestHandler: { handle: async (request: { body?: unknown, path: string }) => {
       const body = JSON.parse(request.body as string) as Record<string, unknown>
       calls.push(body)
       const operation = request.path

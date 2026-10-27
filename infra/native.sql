@@ -42,3 +42,17 @@ CREATE TABLE IF NOT EXISTS public.builder_usage (
     calls integer NOT NULL CHECK (calls BETWEEN 1 AND 20),
     PRIMARY KEY (organisation_id, day)
 );
+CREATE TABLE IF NOT EXISTS public.identity_rekeys (
+    id text PRIMARY KEY,
+    old_email text NOT NULL,
+    new_email text NOT NULL,
+    status text NOT NULL DEFAULT 'pending',
+    error text,
+    actor_email text,
+    counts_json text,
+    created_at bigint NOT NULL,
+    updated_at bigint NOT NULL,
+    completed_at bigint
+);
+CREATE UNIQUE INDEX IF NOT EXISTS identity_rekeys_old_new_idx
+    ON public.identity_rekeys (LOWER(old_email), LOWER(new_email));

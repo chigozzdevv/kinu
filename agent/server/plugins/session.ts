@@ -6,6 +6,7 @@ import { resolveSession, sessionCookie } from "../session"
 import { capabilityPath, capabilityResponse } from "../capabilities"
 import { builderCallback, builderPath, builderResponse } from "../builder"
 import { callbackPath } from "../grant"
+import { withStorage } from "../storage"
 
 export default definePlugin((app) => {
   const config = loadConfig()
@@ -61,7 +62,9 @@ export default definePlugin((app) => {
           return response
         }
       }
-      response = await handle(request)
+      response = url.pathname === "/_agent-native/auth/session" && process.env.KINU_ENVIRONMENT === "production"
+        ? await withStorage(async () => handle(request))
+        : await handle(request)
     } catch (error) {
       response = error instanceof HTTPError
         ? Response.json({ error: error.message }, { status: error.status })
