@@ -31,11 +31,12 @@ python infra/bootstrap.py
 
 Prepare Linux x86_64 Python 3.12 dependencies in `.build/lambda` before packaging. Export
 production server dependencies with the `aws` and `browser` extras; install binary Linux
-wheels rather than copying the Mac virtual environment. The package contains the Playwright
-remote driver, not local Chromium browser binaries.
+wheels rather than copying the Mac virtual environment. Use `--api` for the API and demo
+workers, which do not run browser sessions. Omit it when packaging a browser worker to include
+the Playwright remote driver. Neither package includes local Chromium browser binaries.
 
 ```sh
-python infra/package.py
+python infra/package.py --api
 python infra/deploy.py
 python infra/native.py
 ```
