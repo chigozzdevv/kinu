@@ -211,6 +211,8 @@ def _stage_presentation(
         )
         return (summary, tuple(details))
     if stage is Stage.APPROVAL:
+        if "approval-not-required" in checks:
+            return ("Approval not required", ())
         return _approval_presentation(output, approvals)
     if stage is Stage.REVOKE:
         details = [
