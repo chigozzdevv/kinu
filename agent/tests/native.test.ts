@@ -70,7 +70,10 @@ test("OAuth pending state is bound to the browser session and expiry", async () 
 test("SQL binding preserves quoted values and rejects mismatched parameters", () => {
   assert.equal(bindSql("SELECT '?', ? AS value, $$?$$ AS literal -- ?\n", 1), "SELECT '?', :p1 AS value, $$?$$ AS literal -- ?\n")
   assert.throws(() => bindSql("SELECT ?", 0), /count/)
-  assert.throws(() => bindSql("SELECT $1", 1), /question marks/)
+  assert.equal(bindSql("SELECT '$1', $2, $1, $1", 2), "SELECT '$1', :p2, :p1, :p1")
+  assert.throws(() => bindSql("SELECT $2", 2), /count/)
+  assert.throws(() => bindSql("SELECT $0", 1), /count/)
+  assert.throws(() => bindSql("SELECT $1, ?", 2), /Mixed/)
 })
 
 test("Builder consent permits AI and refresh without project or content access", () => {
