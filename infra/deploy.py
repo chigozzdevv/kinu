@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from connectors.aws import AwsClient
+from connectors.aws.client import AwsError
 
 
 async def main() -> None:
@@ -41,6 +42,18 @@ async def main() -> None:
         "CodeBucket": bucket,
         "CodeKey": key,
     }
+    try:
+        demo = await aws.call("cloudformation", "describe_stacks", region, StackName="kinu-demo")
+    except AwsError as error:
+        if error.code != "ValidationError":
+            raise
+    else:
+        values = {item["OutputKey"]: item["OutputValue"] for item in demo["Stacks"][0]["Outputs"]}
+        parameters.update(
+            DemoQueueArn=values["QueueArn"],
+            DemoQueueUrl=values["QueueUrl"],
+            DemoOrganisation=values["Organisation"],
+        )
     command = [
         os.environ.get("KINU_AWS_CLI", "aws"),
         "cloudformation",

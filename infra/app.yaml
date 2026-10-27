@@ -8,6 +8,11 @@ Parameters:
   CognitoDomain: {Type: String}
   CodeBucket: {Type: String}
   CodeKey: {Type: String}
+  DemoQueueArn: {Type: String, Default: ''}
+  DemoQueueUrl: {Type: String, Default: ''}
+  DemoOrganisation: {Type: String, Default: ''}
+Conditions:
+  HasDemo: !Not [!Equals [!Ref DemoQueueArn, '']]
 Resources:
   Site:
     Type: AWS::S3::Bucket
@@ -44,6 +49,14 @@ Resources:
             Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       Policies:
+        - !If
+          - HasDemo
+          - PolicyName: demo-dispatch
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'sqs:SendMessage', Resource: !Ref DemoQueueArn}
+          - !Ref AWS::NoValue
         - PolicyName: application-storage
           PolicyDocument:
             Version: '2012-10-17'
@@ -85,6 +98,8 @@ Resources:
       Environment:
         Variables:
           KINU_ENVIRONMENT: production
+          KINU_DEMO_QUEUE_URL: !Ref DemoQueueUrl
+          KINU_DEMO_ORGANISATION: !Ref DemoOrganisation
           KINU_SITE_BUCKET: !Ref Site
           KINU_AWS_REGION: !Ref AWS::Region
           KINU_DATA_API_CLUSTER_ARN: !Ref ClusterArn
@@ -115,6 +130,8 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*'
 Outputs:
+  ApiId: {Value: !Ref Api}
+  ApiRoleArn: {Value: !GetAtt ApiRole.Arn}
   PublicUrl:
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
   SiteBucket:
