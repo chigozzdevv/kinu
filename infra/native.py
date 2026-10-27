@@ -68,7 +68,7 @@ async def bootstrap(
     print("Native credential database provisioned separately from application data")
 
 
-async def main() -> None:
+def package() -> Path:
     env = dict(os.environ, NITRO_PRESET="aws_lambda")
     subprocess.run(["npm", "--prefix", "agent", "run", "build"], env=env, check=True)
     target = Path(".build/native")
@@ -80,6 +80,11 @@ async def main() -> None:
         for path in sorted(target.rglob("*")):
             if path.is_file():
                 zipped.write(path, path.relative_to(target))
+    return archive
+
+
+async def main() -> None:
+    archive = package()
     aws, region = AwsClient(), os.environ.get("AWS_REGION", "eu-west-2")
     store = await outputs(aws, region, "kinu-store")
     app = await outputs(aws, region, "kinu-app")

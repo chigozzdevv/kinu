@@ -34,3 +34,19 @@ test("browser phase rejects non-PNG input and the wrong mutation", async () => {
   await assert.rejects(assess({ ...browser, image: "thisisnotapngfile" }, engine({}), "test"), /PNG/)
   await assert.rejects(assess(browser, engine({ decision: "click-revoke", reason: "approved-control-visible" }), "test"), /browser phase/)
 })
+
+
+test("incident decisions keep their exact reason pairing", async () => {
+  const cases = [
+    { input: incident, result: { decision: "rotate", reason: "confirmed-exposure" } },
+    { input: { ...incident, kind: "credential-expiring" as const }, result: { decision: "rotate", reason: "expiry-window" } },
+    { input: { ...incident, policy_allows_rotation: false }, result: { decision: "review", reason: "insufficient-evidence" } },
+    { input: { ...incident, kind: "credential-security-review" as const }, result: { decision: "ignore", reason: "unrelated" } },
+  ]
+  for (const { input, result } of cases) assert.deepEqual(await assess(input, engine(result), "test"), result)
+  for (const result of [
+    { decision: "review", reason: "confirmed-exposure" },
+    { decision: "rotate", reason: "expiry-window" },
+    { decision: "review", reason: "unrelated" },
+  ]) await assert.rejects(assess(incident, engine(result), "test"), /does not match its evidence/)
+})
