@@ -55,8 +55,8 @@ Resources:
       ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH]
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
-      IdTokenValidity: 1
-      AccessTokenValidity: 1
+      IdTokenValidity: 12
+      AccessTokenValidity: 12
       RefreshTokenValidity: 1
       TokenValidityUnits:
         IdToken: hours

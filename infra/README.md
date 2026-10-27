@@ -95,3 +95,7 @@ limits attempts by hashed email and client address. A successful sign-in consume
 a successful password reset revokes the account's Kinu sessions across devices. Cognito sends
 verification and reset codes through its configured email service. Local tests exercise signed
 provider responses; verify actual email delivery using an address you control.
+
+New sign-ins receive a session lasting up to 12 hours, bounded by the verified Cognito token
+expiry. Existing sessions keep their original expiry. Logout and password reset revoke
+Kinu sessions immediately; expired sessions return to sign-in with their destination preserved.

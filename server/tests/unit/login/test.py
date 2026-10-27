@@ -1,6 +1,7 @@
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from http.cookies import SimpleCookie
 from typing import Any
 
 import httpx
@@ -69,7 +70,7 @@ async def login(private_key: rsa.RSAPrivateKey) -> AsyncIterator[Login]:
                 "aud": CONFIG.client_id,
                 "sub": "user-one",
                 "iat": now,
-                "exp": now + 3600,
+                "exp": now + 43200,
                 "token_use": "id",
                 "email": "owner@example.com",
                 "email_verified": True,
@@ -137,6 +138,29 @@ async def test_password_login_creates_only_an_opaque_secure_cookie(login: Login)
     public = result.text + str(store.sessions)
     for secret in (PASSWORD, "private-access", "private-refresh"):
         assert secret not in public
+
+
+@pytest.mark.parametrize("token_seconds", [300, 43200, 86400])
+async def test_session_and_cookie_expiry_respect_token_expiry_and_twelve_hour_limit(
+    login: Login, token_seconds: int
+) -> None:
+    http, store, _, provider = login
+    now = datetime.now(UTC)
+    provider["claims"] = {"exp": int(now.timestamp()) + token_seconds}
+    response = await signin(http)
+    assert response.status_code == 200
+    token = http.cookies.get("__Host-kinu")
+    assert token is not None
+    current = store.sessions[token]
+    lifetime = (current.expires_at - now).total_seconds()
+    expected = min(token_seconds, 43200)
+    assert expected - 5 <= lifetime <= expected + 1
+    assert current.expires_at.timestamp() <= provider["claims"]["exp"]
+    cookie = SimpleCookie()
+    for header in response.headers.get_list("set-cookie"):
+        cookie.load(header)
+    assert expected - 5 <= int(cookie["__Host-kinu"]["max-age"]) <= expected
+    assert (await http.get("/auth/session")).json()["expires_at"] == current.expires_at.isoformat()
 
 
 @pytest.mark.parametrize("failure", ["origin", "csrf", "cookie", "expiry", "duplicate"])

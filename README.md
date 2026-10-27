@@ -63,7 +63,7 @@ Open http://localhost:5173. The local database binds to `127.0.0.1:5433`.
 
 Keep root environment values out of the frontend and Agent-Native process. Local Agent-Native
 storage uses its own `DATABASE_URL`; deployed storage uses a separate database and IAM role.
-No `VITE_` value may contain a secret. Production requires HTTPS and a Cognito public app client with `ALLOW_USER_PASSWORD_AUTH`. Sessions expire within one hour; writes require Origin and CSRF checks.
+No `VITE_` value may contain a secret. Production requires HTTPS and a Cognito public app client with `ALLOW_USER_PASSWORD_AUTH`. Sessions expire within 12 hours; writes require Origin and CSRF checks.
 
 ```sh
 make verify

@@ -67,7 +67,7 @@ class BrowserAuth:
         identity, expiry = await self.verifier.verify_login(result.token.get_secret_value())
         if not identity.email or identity.email.casefold() != email.casefold():
             raise AuthenticationError("Sign-in identity does not match the requested account.")
-        expires_at = min(expiry, self.clock() + timedelta(hours=1))
+        expires_at = min(expiry, self.clock() + timedelta(hours=12))
         if expires_at <= self.clock():
             raise AuthenticationError("Sign-in identity has expired.")
         await self.forms.consume(form, csrf)
