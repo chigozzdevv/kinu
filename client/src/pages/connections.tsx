@@ -7,7 +7,7 @@ import { IntegrationGrid, IntegrationMark, type IntegrationKind } from "../compo
 import { ManageResourceModal } from "../components/manage"
 import { Marker } from "../components/marker"
 import { Provider } from "../components/provider"
-import { Failure, Loading } from "../components/state"
+import { Failure, Loading, Notice } from "../components/state"
 import { Toolbar } from "../components/toolbar"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -101,7 +101,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
   const [connections, playbooks, graph] = useQueries({ queries: [
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
-    { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks() },
+    { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
   ] })
   const connectionDetail = useQuery({ queryKey: ["connections", selected?.id], queryFn: () => api.getConnection(selected!.id), enabled: Boolean(selected) })
@@ -176,11 +176,12 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     const term = search.trim().toLowerCase()
     return (connections.data ?? []).filter((item) => (role === "all" || item.roles.includes(role as ConnectionRole)) && (!term || `${item.display_name} ${item.platform} ${item.roles.join(" ")} ${item.interface}`.toLowerCase().includes(term)))
   }, [connections.data, role, search])
-  if ([connections, playbooks, graph].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
-  const error = [connections, playbooks, graph].find((query) => query.error)?.error
+  if ([connections, graph].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
+  const error = [connections, graph].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
+  const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
 
-  if (creating) return <ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data!} connections={connections.data!} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} />
+  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
 
   if (creatingPlaybook && currentSelected) return <PlaybookSetup initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
@@ -189,6 +190,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   }} />
 
   if (currentSelected) return <div className="page">
+    {playbookNotice}
     <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
@@ -217,6 +219,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   return <div className="page">
     <PageHeader eyebrow="Inventory" title="Connections" actions={<Button onClick={() => { setSetupIntegration(null); setCreating(true) }}><Plus className="size-3.5" /> Add connection</Button>} />
+    {playbookNotice}
     <Toolbar value={search} onChange={setSearch} placeholder="Search connections or platforms" onClear={() => { setSearch(""); setRole("all") }} filters={[{ label: "Role", value: role, defaultValue: "all", onChange: (event) => setRole(event.target.value), children: <><option value="all">All roles</option>{[...new Set(connections.data!.flatMap((item) => item.roles))].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}</> }]} />
     <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Platform</TableHead><TableHead>Role</TableHead><TableHead>Interface</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody>{rows.map((connection) => {
       const status = connectionStatus(connection.status)

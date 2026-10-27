@@ -8,7 +8,7 @@ import { PageHeader } from "../components/header"
 import { DeleteResourceModal, ManageResourceModal } from "../components/manage"
 import { Provider } from "../components/provider"
 import { CredentialSetup } from "../components/setup"
-import { Failure, Loading } from "../components/state"
+import { Failure, Loading, Notice } from "../components/state"
 import { Toolbar } from "../components/toolbar"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -59,11 +59,11 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const [graph, runs, incidents, connections, environments, playbooks] = useQueries({
     queries: [
       { queryKey: ["graph"], queryFn: () => api.getGraph() },
-      { queryKey: ["rotations"], queryFn: () => api.getRotations() },
-      { queryKey: ["incidents"], queryFn: () => api.getIncidents() },
+      { queryKey: ["rotations"], queryFn: () => api.getRotations(), retry: false },
+      { queryKey: ["incidents"], queryFn: () => api.getIncidents(), retry: false },
       { queryKey: ["connections"], queryFn: () => api.getConnections() },
       { queryKey: ["environments"], queryFn: () => api.getEnvironments() },
-      { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks() },
+      { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },
     ],
   })
   const credentialDetail = useQuery({ queryKey: ["credentials", selected?.id], queryFn: () => api.getCredential(selected!.id), enabled: Boolean(selected) })
@@ -142,14 +142,18 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     return credentials.filter((item) => (provider === "all" || item.provider === provider) && (!term || `${item.display_name} ${item.id} ${item.provider}`.toLowerCase().includes(term)))
   }, [graph.data, provider, search])
 
-  const queries = [graph, runs, incidents, connections, environments, playbooks]
+  const queries = [graph, connections, environments]
   if (queries.some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = queries.find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
+  const activityAvailable = runs.isSuccess && incidents.isSuccess
+  const activityNotice = (runs.error || incidents.error) && <Notice>Rotation and incident status is unavailable. You can still review your inventory.</Notice>
+  const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
 
   function operationalState(item: ManagedCredential) {
-    const run = runs.data!.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status))
-    const incident = incidents.data!.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status))
+    if (!activityAvailable) return { label: "Status unavailable", variant: "warning" as const, moving: false }
+    const run = runs.data.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status))
+    const incident = incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status))
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "running" || run?.status === "recovering") return { label: "Running", variant: "active" as const, moving: true }
     if (connection?.status !== "ready") return { ...connectionStatus(connection?.status), moving: false }
@@ -159,8 +163,8 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   }
 
   function actionFor(item: ManagedCredential): { label: string; target?: CredentialTarget; runId?: string } {
-    const run = runs.data!.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status))
-    const incident = incidents.data!.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status))
+    const run = activityAvailable ? runs.data.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status)) : undefined
+    const incident = activityAvailable ? incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status)) : undefined
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "paused" && run.stage === "approval") return { label: "Review approval", target: "approvals" }
     if (connection?.status === "setup-required" || connection?.status === "reauthentication-required") return { label: "Set up connection", target: "connections" }
@@ -191,12 +195,14 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     || !sameControls(editControls, controlsFromDefinition(currentControlVersion.data!.definition))
   )
 
-  if (creating) return <CredentialSetup isOpen onClose={() => setCreating(false)} graph={graph.data!} connections={connections.data!} environments={environments.data!} playbooks={playbooks.data!} onCreate={(input) => createCredential.mutateAsync(input)} />
+  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<CredentialSetup isOpen onClose={() => setCreating(false)} graph={graph.data!} connections={connections.data!} environments={environments.data!} playbooks={playbooks.data ?? []} onCreate={(input) => createCredential.mutateAsync(input)} /></>
 
-  if (addingControlConnection) return <ConnectionSetup initialRoles={["incident"]} playbooks={playbooks.data!} connections={connections.data!} onClose={() => setAddingControlConnection(false)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); setAddingControlConnection(false) }} />
+  if (addingControlConnection) return <ConnectionSetup initialRoles={["incident"]} playbooks={playbooks.data ?? []} connections={connections.data!} onClose={() => setAddingControlConnection(false)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); setAddingControlConnection(false) }} />
 
   if (currentSelected) return (
     <div className="page">
+      {activityNotice}
+      {playbookNotice}
       <PageHeader eyebrow="Inventory / Credentials" title={currentSelected.display_name} titlePrefix={<Provider value={currentSelected.provider} label={false} />} onBack={() => { setSelected(null); setViewControlVersionId(null); onSelectCredential("") }} actions={<>{(selectedAction?.target || selectedAction?.runId) && <Button onClick={() => performAction(currentSelected)}>{selectedAction.label}<ArrowUpRight className="size-3.5" /></Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); setEditControls(controlsFromDefinition(currentControlVersion.data?.definition)); saveCredential.reset(); setEditing(true) }} disabled={!currentControlVersion.data}>Edit</Button><Button variant="ghost" onClick={() => { deleteCredential.reset(); setConfirmingDelete(true) }}>Delete</Button></>} />
       <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "consumers", label: "Consumers" }, { id: "controls", label: "Controls" }]} value={tab} onChange={(nextTab) => { setTab(nextTab); onSelectCredential(currentSelected.id, nextTab, nextTab === "controls" ? viewControlVersionId ?? undefined : undefined) }} />
       <DetailCard>
@@ -243,6 +249,8 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
         actions={<Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add credential</Button>}
       />
 
+      {activityNotice}
+      {playbookNotice}
       <Toolbar
         value={search}
         onChange={setSearch}

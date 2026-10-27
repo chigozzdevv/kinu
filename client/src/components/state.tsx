@@ -1,4 +1,9 @@
 import { AlertCircle, LoaderCircle } from "lucide-react"
+import type { ReactNode } from "react"
+
+export function Notice({ children }: { children: ReactNode }) {
+  return <div role="status" className="mb-5 rounded-xl border border-[var(--border-soft)] p-3 text-xs text-[var(--ink-soft)]">{children}</div>
+}
 
 export function Loading() {
   return <div className="grid min-h-52 place-items-center"><LoaderCircle className="size-5 animate-spin text-[var(--accent)]" /></div>
