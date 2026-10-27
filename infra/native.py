@@ -7,6 +7,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+from assessment import bundle
 from connectors.aws import AwsClient
 from core.storage.dataapi import DataApi
 from core.storage.database import Database
@@ -73,27 +74,7 @@ async def main() -> None:
     target = Path(".build/native")
     shutil.rmtree(target, ignore_errors=True)
     shutil.copytree("agent/.output/server", target / "server")
-    package = json.loads(Path("agent/node_modules/@agent-native/core/package.json").read_text())
-    optional = [
-        f"--external:{name}"
-        for name, meta in package["peerDependenciesMeta"].items()
-        if meta.get("optional") and not (Path("agent/node_modules") / name).exists()
-    ]
-    subprocess.run(
-        [
-            "agent/node_modules/.bin/esbuild",
-            "agent/cloud/assessment.ts",
-            "--bundle",
-            "--platform=node",
-            "--target=node22",
-            "--format=esm",
-            "--outfile=.build/native/assessment.mjs",
-            *optional,
-            '--banner:js=import { createRequire } from "node:module"; '
-            "const require = createRequire(import.meta.url);",
-        ],
-        check=True,
-    )
+    bundle(target / "assessment.mjs")
     archive = Path(".build/native.zip")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
         for path in sorted(target.rglob("*")):
