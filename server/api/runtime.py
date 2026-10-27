@@ -12,7 +12,7 @@ from core.auth.store import SessionStore
 from core.config import Settings
 from core.inventory import InventoryService
 from core.inventory.store import InventoryStore
-from core.storage.database import Database
+from core.storage.factory import application_database
 from fastapi import FastAPI
 
 from api.deps import ApiServices
@@ -27,8 +27,8 @@ async def runtime(
 ) -> AsyncIterator[None]:
     async with AsyncExitStack() as stack:
         http = await stack.enter_async_context(httpx.AsyncClient())
-        if config.database_url:
-            database = Database(config.database_url.get_secret_value())
+        if config.has_storage:
+            database = application_database(config)
             stack.push_async_callback(database.close)
             await database.open()
             accounts = AccountStore(database, _now)

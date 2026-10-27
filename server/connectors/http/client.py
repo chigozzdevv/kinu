@@ -18,7 +18,7 @@ from contracts import (
 
 from connectors.base import ConnectorContext, ConnectorResponse, SecretValue
 from connectors.base.errors import AmbiguousMutationError, ConnectorError
-from connectors.secrets import SecretStore
+from connectors.secrets.store import SecretReader
 
 
 class HttpProviderConnector:
@@ -34,7 +34,7 @@ class HttpProviderConnector:
 
     def __init__(
         self,
-        secrets: SecretStore,
+        secrets: SecretReader,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._secrets = secrets
@@ -42,7 +42,7 @@ class HttpProviderConnector:
 
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         api = _api(connection)
-        headers = await self._headers(connection.authorization_reference, api.auth)
+        headers = await self._headers(connection, api.auth)
         return tuple(
             self._metadata(api.list_credentials, item) for item in await self._list(api, headers)
         )
@@ -57,7 +57,7 @@ class HttpProviderConnector:
         if tool == "provider.listCredentialMetadata":
             metadata = await self.metadata(context.connection)
             return ConnectorResponse(result={"credentials": list(metadata)})
-        headers = await self._headers(context.connection.authorization_reference, api.auth)
+        headers = await self._headers(context.connection, api.auth)
         if tool == "provider.getCredentialStatus":
             key_id = _string(payload, "provider_id")
             keys = await self._list(api, headers)
@@ -134,7 +134,7 @@ class HttpProviderConnector:
         if tool != "provider.createCredential":
             return {}
         api = _api(context.connection)
-        headers = await self._headers(context.connection.authorization_reference, api.auth)
+        headers = await self._headers(context.connection, api.auth)
         field = api.list_credentials.provider_id_field
         before = tuple(
             sorted(
@@ -162,7 +162,7 @@ class HttpProviderConnector:
         before = state.get("before_ids")
         if state.get("name") != name or not isinstance(before, tuple):
             raise AmbiguousMutationError("provider reconciliation checkpoint is invalid")
-        headers = await self._headers(context.connection.authorization_reference, api.auth)
+        headers = await self._headers(context.connection, api.auth)
         after = await self._list(api, headers)
         id_field = api.list_credentials.provider_id_field
         name_field = api.list_credentials.name_field or api.create_credential.name_field
@@ -317,12 +317,13 @@ class HttpProviderConnector:
             if close:
                 await client.aclose()
 
-    async def _headers(self, auth_reference: str | None, auth: HttpAuth) -> dict[str, str]:
+    async def _headers(self, connection: Connection, auth: HttpAuth) -> dict[str, str]:
+        auth_reference = connection.authorization_reference
         if auth_reference is None:
             raise ConnectorError(
                 "missing-auth-reference", "provider connection is not authenticated"
             )
-        with await self._secrets.access(auth_reference) as secret:
+        with await self._secrets.access_for(connection, auth_reference) as secret:
             return _value_headers(secret, auth)
 
 

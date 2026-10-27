@@ -1,9 +1,9 @@
 import json
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any
 from urllib.parse import urlparse
 
-from connectors.base import SecretValue
+from connectors.secrets.store import SecretReader
 from contracts import (
     Connection,
     ConnectionAuthorization,
@@ -11,10 +11,6 @@ from contracts import (
     ConnectionStatus,
 )
 from core.errors import ResourceConflictError
-
-
-class SecretReader(Protocol):
-    async def access(self, version: str) -> SecretValue: ...
 
 
 class BrowserAuthBroker:
@@ -43,7 +39,7 @@ class BrowserAuthBroker:
             raise ResourceConflictError(
                 "provider browser authentication requires a ready connection"
             )
-        secret = await self._secrets.access(connection.authorization_reference)
+        secret = await self._secrets.access_for(connection, connection.authorization_reference)
         try:
             try:
                 state = json.loads(secret.bytes())

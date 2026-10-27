@@ -15,19 +15,31 @@ class Settings(BaseSettings):
     cognito_client_id: str | None = None
     cognito_domain: str | None = None
     database_url: SecretStr | None = None
+    aws_region: str = "eu-west-2"
+    data_api_cluster_arn: str | None = None
+    data_api_secret_arn: str | None = None
+    data_api_database: str = "kinu"
     public_url: str = "http://localhost:5173"
 
     @model_validator(mode="after")
     def validate_cognito(self) -> "Settings":
+        if bool(self.data_api_cluster_arn) != bool(self.data_api_secret_arn):
+            raise ValueError("Data API storage requires both cluster and secret ARNs")
+        if self.database_url and self.data_api_cluster_arn:
+            raise ValueError("configure one application database transport")
         if self.cognito_pool_id is not None or self.cognito_client_id is not None:
             CognitoConfig(self.cognito_pool_id or "", self.cognito_client_id or "")
         self.public_url = validate_origin(self.public_url, self.environment == "development")
         if self.cognito_domain is not None:
-            if self.cognito is None or self.database_url is None:
+            if self.cognito is None or not self.has_storage:
                 raise ValueError("browser sign-in requires Cognito and application storage")
             if self.browser is None:
                 raise ValueError("browser sign-in configuration is incomplete")
         return self
+
+    @property
+    def has_storage(self) -> bool:
+        return bool(self.database_url or self.data_api_cluster_arn)
 
     @property
     def cognito(self) -> CognitoConfig | None:

@@ -5,8 +5,12 @@ from contracts import Connection
 from connectors.base import ConnectorContext, ConnectorResponse, SecretValue
 
 
+class SecretReader(Protocol):
+    async def access_for(self, connection: Connection, version: str) -> SecretValue: ...
+
+
 @runtime_checkable
-class SecretStore(Protocol):
+class SecretStore(SecretReader, Protocol):
     tools: frozenset[str] = frozenset(
         {
             "secretStore.getVersion",

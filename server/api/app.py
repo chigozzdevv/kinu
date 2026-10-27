@@ -46,6 +46,7 @@ from api.routes import (
     walkthroughs_router,
 )
 from api.routes.auth import router as auth_router
+from api.routes.connections import router as connections_router
 from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
@@ -75,6 +76,7 @@ def create_app(
     app.include_router(github_router)
     app.include_router(runs_router)
     app.include_router(inventory_router)
+    app.include_router(connections_router)
     app.include_router(notifications_router)
     app.include_router(playbooks_router)
     app.include_router(probes_router)

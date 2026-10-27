@@ -15,6 +15,7 @@ from core.auth import AccessControl, AuthenticatedIdentity
 from core.auth.browser import BrowserAuth
 from core.auth.session import BrowserSession
 from core.config import Settings
+from core.connection.service import ConnectionService
 from core.errors import AuthenticationError, IntegrationNotConfiguredError
 from core.github import GitHubOnboardingService
 from core.history import RunHistoryService
@@ -49,6 +50,7 @@ class ApiServices:
     github: GitHubOnboardingService | None = None
     history: RunHistoryService | None = None
     accounts: AccountService | None = None
+    connections: ConnectionService | None = None
 
 
 def services(request: Request) -> ApiServices:

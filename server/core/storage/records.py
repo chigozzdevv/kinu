@@ -19,11 +19,13 @@ from contracts import (
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
+from core.connection.models import AwsLink
 from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionConflictError
 from core.storage.database import Database
 from core.storage.sql import SqlConnection
 
 _KINDS: dict[type[Contract], str] = {
+    AwsLink: "aws-link",
     Connection: "connection",
     Application: "application",
     Environment: "environment",

@@ -113,7 +113,7 @@ async def test_browser_authentication_follows_application_lifecycle(
         async def close(self) -> None:
             events.append("close")
 
-    monkeypatch.setattr("api.runtime.Database", Database)
+    monkeypatch.setattr("core.storage.factory.Database", Database)
     app = create_app(
         settings=Settings(
             cognito_pool_id="us-east-1_example",

@@ -484,7 +484,8 @@ class AuthSecrets:
     def __init__(self, domain: str) -> None:
         self.domain = domain
 
-    async def access(self, version: str) -> AuthSecret:
+    async def access_for(self, connection: Connection, version: str) -> AuthSecret:
+        assert connection.organisation_id == "org_one"
         assert version.endswith("/versions/1")
         return AuthSecret(
             json.dumps(

@@ -18,6 +18,7 @@ class Role:
     arn: str
     external_id: str
     session_name: str
+    tags: tuple[tuple[str, str], ...] = ()
 
 
 class AwsApi(Protocol):
@@ -64,6 +65,11 @@ class AwsClient:
                         ExternalId=role.external_id,
                         RoleSessionName=role.session_name,
                         DurationSeconds=900,
+                        **(
+                            {"Tags": [{"Key": key, "Value": value} for key, value in role.tags]}
+                            if role.tags
+                            else {}
+                        ),
                     )["Credentials"]
                 session = Session(
                     aws_access_key_id=credentials["AccessKeyId"],
