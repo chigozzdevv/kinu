@@ -18,7 +18,9 @@ from core.incident.service import IncidentService
 from core.incident.store import IncidentStore
 from core.inventory import InventoryService
 from core.inventory.store import InventoryStore
+from core.notification import NotificationService
 from core.storage.factory import application_database
+from core.storage.notification import NotificationStore
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from demo.journal import RunHistory
@@ -46,6 +48,7 @@ async def runtime(
             if services is None:
                 inventory = InventoryStore(database)
                 workflow = RunWorkflow(RunStore(database))
+                notifications = NotificationService(NotificationStore(database), _now)
                 audit = AuditWriter(AuditStore(database), config.aws_region, _now)
                 queue = (
                     Queue(
@@ -63,11 +66,17 @@ async def runtime(
                     inventory=InventoryService(inventory, _now),
                     workflow=workflow,
                     history=RunHistory(database),
+                    notifications=notifications,
                     dispatcher=queue,
                     demo=Source(database, queue) if queue else None,
                     audit=audit,
                     incidents=IncidentService(
-                        IncidentStore(database), _now, inventory, workflow, audit=audit
+                        IncidentStore(database),
+                        _now,
+                        inventory,
+                        workflow,
+                        notifier=notifications,
+                        audit=audit,
                     ),
                 )
             if browser is None and config.browser:

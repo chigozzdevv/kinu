@@ -209,6 +209,9 @@ async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
     transport = httpx.ASGITransport(app=notification_app(), raise_app_exceptions=False)
     headers = HEADERS
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        settings = await client.get(
+            "/v1/organisations/org_one/notifications/settings", headers=headers
+        )
         topics = await client.get("/v1/organisations/org_one/notifications/topics", headers=headers)
         forbidden = await client.post(
             "/v1/organisations/org_one/notifications/endpoints",
@@ -228,6 +231,8 @@ async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
                 "topics": ["approvals"],
             },
         )
+    assert settings.status_code == 200
+    assert settings.json() == {"email_enabled": True}
     assert topics.status_code == 200
     assert topics.json() == [
         {"id": "approvals", "label": "Approval requests", "event_kinds": ["approval-required"]}

@@ -43,6 +43,7 @@ export function SettingsPage() {
   const profile = useQuery({ queryKey: ["profile"], queryFn: () => api.getProfile() })
   const administrator = profile.data?.role === "administrator"
   const team = useQuery({ queryKey: ["team"], queryFn: () => api.getTeam(), enabled: Boolean(administrator && tab === "team") })
+  const delivery = useQuery({ queryKey: ["notification-settings"], queryFn: () => api.getNotificationSettings(), enabled: tab === "notifications" })
   const endpoints = useQuery({ queryKey: ["notification-endpoints"], queryFn: () => api.getNotificationEndpoints(), enabled: tab === "notifications" })
   const topics = useQuery({ queryKey: ["notification-topics"], queryFn: () => api.getNotificationTopics(), enabled: tab === "notifications" })
   useEffect(() => {
@@ -54,12 +55,12 @@ export function SettingsPage() {
   const actions = tab === "team"
     ? <Button onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
     : tab === "notifications"
-      ? <Button onClick={() => setAddingEmail(true)}><Plus className="size-3.5" /> Add email</Button>
+      ? <Button disabled={!delivery.data?.email_enabled} onClick={() => setAddingEmail(true)}><Plus className="size-3.5" /> Add email</Button>
       : undefined
 
-  const activeLoading = profile.isLoading || (tab === "team" && team.isLoading) || (tab === "notifications" && (endpoints.isLoading || topics.isLoading))
+  const activeLoading = profile.isLoading || (tab === "team" && team.isLoading) || (tab === "notifications" && (delivery.isLoading || endpoints.isLoading || topics.isLoading))
   if (activeLoading) return <div className="page"><Loading /></div>
-  const error = profile.error ?? (tab === "team" ? team.error : null) ?? (tab === "notifications" ? endpoints.error ?? topics.error : null)
+  const error = profile.error ?? (tab === "team" ? team.error : null) ?? (tab === "notifications" ? delivery.error ?? endpoints.error ?? topics.error : null)
   if (error) return <div className="page"><Failure error={error} /></div>
 
   return <div className="page">
@@ -68,7 +69,10 @@ export function SettingsPage() {
     {tab === "profile" && <ProfileSettings profile={profile.data!} />}
     {tab === "ai" && <AiSettings administrator={administrator} />}
     {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
-    {tab === "notifications" && <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />}
+    {tab === "notifications" && <>
+      {!delivery.data?.email_enabled && <p role="status" className="mb-6 text-[11px] text-[var(--ink-muted)]">Email notifications are not enabled yet.</p>}
+      <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />
+    </>}
     {inviting && <InviteMemberModal onClose={() => setInviting(false)} />}
     {editingMember && <EditMemberModal key={editingMember.id} member={editingMember} onClose={() => setEditingMember(null)} />}
     {addingEmail && <EmailModal onClose={() => setAddingEmail(false)} defaultEmail={profile.data!.email} topics={topics.data!} />}

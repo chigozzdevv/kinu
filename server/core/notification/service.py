@@ -95,6 +95,10 @@ class NotificationService:
         )
         return await self._repository.emit(notification)
 
+    @property
+    def email_enabled(self) -> bool:
+        return self._email_delivery is not None
+
     def ensure_email_delivery(self) -> None:
         if self._email_delivery is None:
             raise ResourceConflictError("email delivery is not configured")

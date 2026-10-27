@@ -678,6 +678,10 @@ class ApiClient {
     })
   }
 
+  async getNotificationSettings(): Promise<{ email_enabled: boolean }> {
+    return this.request(`${ROOT}/notifications/settings`)
+  }
+
   async getNotificationTopics(): Promise<NotificationTopic[]> {
     return this.request(`${ROOT}/notifications/topics`)
   }

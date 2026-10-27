@@ -154,6 +154,17 @@ async def mark_read(
     )
 
 
+@router.get("/settings")
+async def notification_settings(
+    organisation_id: Identifier,
+    identity: Identity,
+    request: Request,
+) -> dict[str, bool]:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.NOTIFICATION_READ)
+    return {"email_enabled": required(api.notifications, "notifications").email_enabled}
+
+
 @router.get("/topics", response_model=tuple[NotificationTopic, ...])
 async def list_topics(
     organisation_id: Identifier,

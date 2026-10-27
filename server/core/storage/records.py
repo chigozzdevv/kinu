@@ -15,6 +15,8 @@ from contracts import (
     Incident,
     IngestionEvent,
     ManagedCredential,
+    Notification,
+    NotificationEndpoint,
     PlaybookVersion,
     ProbeVersion,
 )
@@ -28,6 +30,8 @@ from core.storage.sql import SqlConnection
 
 _KINDS: dict[type[Contract], str] = {
     Incident: "incident",
+    Notification: "notification",
+    NotificationEndpoint: "notification-endpoint",
     IngestionEvent: "ingestion-event",
     AwsLink: "aws-link",
     Connection: "connection",
