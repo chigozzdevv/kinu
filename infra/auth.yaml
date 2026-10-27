@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu browser sign-in
+
+Parameters:
+  Stage:
+    Type: String
+    Default: demo
+    AllowedValues: [demo, production]
+  PublicUrl:
+    Type: String
+    Default: http://localhost:5173
+    Description: Public app origin without a trailing slash
+    AllowedPattern: '^(https://[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?|http://localhost(:[0-9]+)?)$'
+
+Resources:
+  Pool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub kinu-${Stage}
+      UserPoolTier: LITE
+      DeletionProtection: ACTIVE
+      UsernameAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes: [email]
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 1
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      UserPoolTags:
+        app: kinu
+        stage: !Ref Stage
+
+  Client:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref Pool
+      ClientName: !Sub kinu-${Stage}-web
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs: [!Sub '${PublicUrl}/auth/callback']
+      LogoutURLs: [!Sub '${PublicUrl}/auth']
+      SupportedIdentityProviders: [COGNITO]
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      IdTokenValidity: 1
+      AccessTokenValidity: 1
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        IdToken: hours
+        AccessToken: hours
+        RefreshToken: days
+
+  Domain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref Pool
+      Domain: !Sub kinu-${Stage}-${AWS::AccountId}-${AWS::Region}
+      ManagedLoginVersion: 1
+
+Outputs:
+  PoolId:
+    Value: !Ref Pool
+  ClientId:
+    Value: !Ref Client
+  DomainUrl:
+    Value: !Sub https://${Domain}.auth.${AWS::Region}.amazoncognito.com
