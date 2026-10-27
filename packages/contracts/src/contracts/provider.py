@@ -1,8 +1,24 @@
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import AwareDatetime, Field, model_validator
 
 from contracts.base import Contract
+
+
+class LambdaProviderApi(Contract):
+    function_arn: str = Field(
+        pattern=r"^arn:aws:lambda:[a-z0-9-]+:[0-9]{12}:function:[A-Za-z0-9_-]{1,64}$"
+    )
+    operations: dict[
+        Literal[
+            "provider.listCredentials",
+            "provider.getCredential",
+            "provider.createCredential",
+            "provider.revokeCredential",
+        ],
+        Literal["metadata", "create", "revoke"],
+    ] = Field(min_length=1, max_length=4)
 
 
 class MutationMode(StrEnum):

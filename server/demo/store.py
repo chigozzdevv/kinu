@@ -50,17 +50,27 @@ class ProviderStore:
         )
         return tuple(_metadata(item) for item in result.get("Items", []))
 
-    async def revoke(self, org: str, key_id: str) -> None:
+    async def revoke(self, org: str, key_id: str, expected_uses: int | None = None) -> None:
+        current = await self.get(org, key_id)
+        if current and current["state"] == "revoked":
+            return
+        condition = "attribute_exists(id)"
+        names = {"#state": "state"}
+        values = {
+            ":state": {"S": "revoked"},
+            ":now": {"S": datetime.now(UTC).isoformat()},
+        }
+        if expected_uses is not None:
+            condition += " AND #state = :active AND #uses = :uses"
+            names["#uses"] = "uses"
+            values.update({":active": {"S": "active"}, ":uses": {"N": str(expected_uses)}})
         await self._call(
             "update_item",
             Key=_key(org, key_id),
             UpdateExpression="SET #state = :state, retired = :now",
-            ConditionExpression="attribute_exists(id)",
-            ExpressionAttributeNames={"#state": "state"},
-            ExpressionAttributeValues={
-                ":state": {"S": "revoked"},
-                ":now": {"S": datetime.now(UTC).isoformat()},
-            },
+            ConditionExpression=condition,
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
         )
 
     async def check(self, org: str, value: str) -> dict[str, Any] | None:

@@ -22,3 +22,4 @@ class CredentialGeneration(Contract):
     metadata_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     created_at: AwareDatetime
     revoked_at: AwareDatetime | None = None
+    revision: int = Field(default=0, ge=0)

@@ -142,6 +142,7 @@ from contracts.playbook import (
 )
 from contracts.provider import (
     ConnectorCapabilities,
+    LambdaProviderApi,
     MutationMode,
     MutationSemantics,
     ProviderCredentialMetadata,
@@ -261,6 +262,7 @@ __all__ = [
     "Incident",
     "IncidentStatus",
     "IngestionEvent",
+    "LambdaProviderApi",
     "Lease",
     "ManagedCredential",
     "MemberRole",

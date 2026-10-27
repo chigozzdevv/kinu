@@ -47,6 +47,7 @@ from api.routes import (
 )
 from api.routes.auth import router as auth_router
 from api.routes.connections import router as connections_router
+from api.routes.demo import router as demo_router
 from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
@@ -88,6 +89,7 @@ def create_app(
     app.include_router(audit_router)
     app.include_router(overview_router)
     app.include_router(settings_router)
+    app.include_router(demo_router)
     app.add_exception_handler(KinuError, _kinu_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)
     app.middleware("http")(_private_responses)

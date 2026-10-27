@@ -2,29 +2,13 @@ from typing import Annotated
 
 from contracts import (
     CancelRunCommand,
-    CleanupRunCommand,
-    CompleteRecoveryCommand,
-    CompleteStageCommand,
-    ConnectionInterface,
-    ConnectionStatus,
     Contract,
     CreateRunCommand,
-    FailRunCommand,
-    Failure,
     Identifier,
-    PauseRunCommand,
-    RecoverRunCommand,
-    RecoveryMode,
-    RenewLeaseCommand,
-    ResumeRunCommand,
     RotationHistory,
     RotationRun,
     RunStatus,
     RunStep,
-    Stage,
-    StageBindings,
-    StageProof,
-    StartRunCommand,
     Trigger,
 )
 from core.auth import Permission
@@ -34,7 +18,6 @@ from fastapi import APIRouter, Query, Request, Response, status
 from pydantic import AwareDatetime, Field
 
 from api.deps import (
-    ApiServices,
     IdempotencyKey,
     Identity,
     command_id,
@@ -63,56 +46,10 @@ class RevisionRequest(Contract):
     expected_revision: int = Field(ge=0)
 
 
-class StartRequest(RevisionRequest):
-    expires_at: AwareDatetime
-
-
-class RenewRequest(StartRequest):
-    fencing_token: int = Field(gt=0)
-
-
-class ProofRequest(Contract):
-    stage: Stage
-    checks: frozenset[str]
-    evidence_ids: tuple[Identifier, ...]
-    recorded_at: AwareDatetime
-
-
-class CompleteRequest(RevisionRequest):
-    fencing_token: int = Field(gt=0)
-    proof: ProofRequest
-    bindings: StageBindings = StageBindings()
-
-
-class FencedRequest(RevisionRequest):
-    fencing_token: int = Field(gt=0)
-
-
-class FailureRequest(FencedRequest):
-    failure: Failure
-
-
-class LeaseRequest(RevisionRequest):
-    expires_at: AwareDatetime
-
-
-class RecoveryCompleteRequest(FencedRequest):
-    recovery_id: Identifier
-    mode: RecoveryMode
-    evidence_ids: tuple[Identifier, ...] = Field(min_length=1)
-
-
 class MutationResponse(Contract):
     run: RotationRun
     step: RunStep
     applied: bool
-
-
-class ReapResponse(Contract):
-    scanned: int = Field(ge=0)
-    restarted: int = Field(ge=0)
-    failed: int = Field(ge=0)
-    runs: tuple[RotationRun, ...]
 
 
 OrganisationId = Identifier
@@ -134,6 +71,26 @@ async def create_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
+    if (
+        body.source not in {"console", "manual", "dashboard", "agent-native"}
+        or body.kind != "manual"
+    ):
+        raise ResourceConflictError("application rotation requests must identify a manual trigger")
+    dispatcher = required(api.dispatcher, "rotation executor")
+    dispatcher.require_scope(organisation_id, body.credential_id)
+    inventory = required(api.inventory, "inventory")
+    credential = await inventory.get_credential(organisation_id, body.credential_id)
+    controls = await inventory.get_controls(
+        organisation_id, body.credential_id, body.control_version
+    )
+    if (
+        credential.archived_at
+        or credential.control_version != controls.id
+        or controls.definition.require_revoke_approval
+    ):
+        raise ResourceConflictError(
+            "credential mappings or automatic rotation controls require attention"
+        )
     command = CreateRunCommand(
         id=command_id(identity, organisation_id, key),
         organisation_id=organisation_id,
@@ -150,6 +107,8 @@ async def create_run(
         ),
     )
     result = await required(api.workflow, "workflow").create(command)
+    if result.run.status is RunStatus.PENDING:
+        await dispatcher.submit(organisation_id, result.run.id)
     response.status_code = status.HTTP_201_CREATED if result.applied else status.HTTP_200_OK
     return _response(result)
 
@@ -166,27 +125,6 @@ async def list_runs(
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     statuses = frozenset(run_status) if run_status is not None else None
     return await required(api.workflow, "workflow").list_runs(organisation_id, statuses, limit)
-
-
-@router.post("/reap", response_model=ReapResponse)
-async def reap_runs(
-    organisation_id: OrganisationId,
-    identity: Identity,
-    request: Request,
-) -> ReapResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").reap_expired(
-        organisation_id, identity.actor_id
-    )
-    if api.browser_setup is not None:
-        await api.browser_setup.reap_expired(organisation_id)
-    return ReapResponse(
-        scanned=result.scanned,
-        restarted=result.restarted,
-        failed=result.failed,
-        runs=result.runs,
-    )
 
 
 @router.get("/{run_id}", response_model=RotationRun)
@@ -239,116 +177,6 @@ async def get_computer_use_input_image(
     )
 
 
-@router.post("/{run_id}/start", response_model=MutationResponse)
-async def start_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: StartRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").start(
-        StartRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            owner_id=identity.actor_id,
-            expires_at=body.expires_at,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/renew", response_model=MutationResponse)
-async def renew_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: RenewRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").renew(
-        RenewLeaseCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            owner_id=identity.actor_id,
-            expires_at=body.expires_at,
-            fencing_token=body.fencing_token,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/complete", response_model=MutationResponse)
-async def complete_stage(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: CompleteRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    proof = StageProof(
-        run_id=run_id,
-        organisation_id=organisation_id,
-        stage=body.proof.stage,
-        checks=body.proof.checks,
-        evidence_ids=body.proof.evidence_ids,
-        actor_id=identity.actor_id,
-        recorded_at=body.proof.recorded_at,
-    )
-    result = await required(api.workflow, "workflow").complete(
-        CompleteStageCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            fencing_token=body.fencing_token,
-            proof=proof,
-            bindings=body.bindings,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/pause", response_model=MutationResponse)
-async def pause_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: FencedRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").pause(
-        PauseRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            fencing_token=body.fencing_token,
-        )
-    )
-    return _response(result)
-
-
 @router.post("/{run_id}/cancel", response_model=MutationResponse)
 async def cancel_run(
     organisation_id: OrganisationId,
@@ -360,6 +188,11 @@ async def cancel_run(
 ) -> MutationResponse:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
+    run = await required(api.workflow, "workflow").get(organisation_id, run_id)
+    if run.status is not RunStatus.PENDING:
+        raise ResourceConflictError(
+            "only a queued rotation can be cancelled through the application"
+        )
     result = await required(api.workflow, "workflow").cancel(
         CancelRunCommand(
             id=command_id(identity, organisation_id, key),
@@ -370,147 +203,3 @@ async def cancel_run(
         )
     )
     return _response(result)
-
-
-@router.post("/{run_id}/resume", response_model=MutationResponse)
-async def resume_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: LeaseRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    run = await required(api.workflow, "workflow").get(organisation_id, run_id)
-    await _require_ready_browser_session(api, run)
-    result = await required(api.workflow, "workflow").resume(
-        ResumeRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            owner_id=identity.actor_id,
-            expires_at=body.expires_at,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/cleanup", response_model=MutationResponse)
-async def cleanup_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: FailureRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").cleanup(
-        CleanupRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            fencing_token=body.fencing_token,
-            failure=body.failure,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/fail", response_model=MutationResponse)
-async def fail_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: FailureRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").fail(
-        FailRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            fencing_token=body.fencing_token,
-            failure=body.failure,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/recover", response_model=MutationResponse)
-async def recover_run(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: LeaseRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").recover(
-        RecoverRunCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            owner_id=identity.actor_id,
-            expires_at=body.expires_at,
-        )
-    )
-    return _response(result)
-
-
-@router.post("/{run_id}/recovery-complete", response_model=MutationResponse)
-async def complete_recovery(
-    organisation_id: OrganisationId,
-    run_id: RunId,
-    body: RecoveryCompleteRequest,
-    identity: Identity,
-    key: IdempotencyKey,
-    request: Request,
-) -> MutationResponse:
-    api = services(request)
-    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    result = await required(api.workflow, "workflow").complete_recovery(
-        CompleteRecoveryCommand(
-            id=command_id(identity, organisation_id, key),
-            organisation_id=organisation_id,
-            run_id=run_id,
-            actor_id=identity.actor_id,
-            expected_revision=body.expected_revision,
-            fencing_token=body.fencing_token,
-            recovery_id=body.recovery_id,
-            mode=body.mode,
-            evidence_ids=body.evidence_ids,
-        )
-    )
-    return _response(result)
-
-
-async def _require_ready_browser_session(api: ApiServices, run: RotationRun) -> None:
-    if api.inventory is None:
-        return
-    credentials, _, _ = await api.inventory.graph(run.organisation_id)
-    credential = next((item for item in credentials if item.id == run.credential_id), None)
-    if credential is None:
-        return
-    connection = await api.inventory.get_connection(run.organisation_id, credential.connection_id)
-    if connection.interface is ConnectionInterface.BROWSER and (
-        connection.status is not ConnectionStatus.READY
-        or connection.authorization_reference is None
-    ):
-        raise ResourceConflictError("connection still needs login")

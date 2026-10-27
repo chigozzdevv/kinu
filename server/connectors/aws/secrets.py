@@ -65,22 +65,19 @@ class AwsSecrets:
     async def resources_for(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         role = await self._roles.resolve(connection)
         values: list[dict[str, Any]] = []
-        token: str | None = None
-        while True:
+        for resource in connection.allowed_resources:
+            ref = _scope(connection, resource)
             response = await self._aws.call(
                 "secretsmanager",
-                "list_secrets",
-                connection.region,
+                "describe_secret",
+                ref.region,
                 role=role,
-                MaxResults=100,
-                **({"NextToken": token} if token else {}),
+                SecretId=ref.arn,
             )
-            for item in response.get("SecretList", []):
-                if resource_allowed(item["ARN"], connection.allowed_resources):
-                    values.append({"name": item["ARN"], "display_name": item["Name"]})
-            token = response.get("NextToken")
-            if not token:
-                return tuple(values)
+            if response.get("ARN") != ref.arn:
+                raise ConnectorError("secret-resource", "AWS returned another secret resource")
+            values.append({"name": ref.arn, "display_name": response["Name"]})
+        return tuple(values)
 
     async def versions_for(self, connection: Connection, secret: str) -> tuple[dict[str, Any], ...]:
         ref = _scope(connection, secret)

@@ -67,4 +67,7 @@ async def test_role_is_unusable_until_verified_and_cannot_cross_workspace(
     statement = properties["AssumeRolePolicyDocument"]["Statement"][0]
     assert statement["Principal"]["AWS"] == broker
     assert statement["Condition"]["StringEquals"]["sts:ExternalId"] == prepared.external_id
+    tags = properties["AssumeRolePolicyDocument"]["Statement"][1]
+    assert tags["Action"] == "sts:TagSession"
+    assert tags["Condition"]["StringEquals"] == {"aws:RequestTag/kinu-org": org}
     assert properties["Policies"][0]["PolicyDocument"]["Statement"][0]["Resource"] == [ARN]

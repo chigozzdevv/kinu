@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     data_api_cluster_arn: str | None = None
     data_api_secret_arn: str | None = None
     data_api_database: str = "kinu"
+    demo_organisation: str | None = None
+    demo_queue_url: str | None = None
     public_url: str = "http://localhost:5173"
 
     @model_validator(mode="after")

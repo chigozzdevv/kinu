@@ -26,6 +26,8 @@ from core.overview import OverviewService
 from core.playbook import PlaybookService, WalkthroughService
 from core.verification import ProbeService
 from core.workflow import RunWorkflow
+from core.workflow.dispatch import RunDispatcher
+from demo.mail import Source
 from fastapi import Depends, Header, Request
 
 
@@ -51,6 +53,8 @@ class ApiServices:
     history: RunHistoryService | None = None
     accounts: AccountService | None = None
     connections: ConnectionService | None = None
+    dispatcher: RunDispatcher | None = None
+    demo: Source | None = None
 
 
 def services(request: Request) -> ApiServices:

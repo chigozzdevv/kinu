@@ -5,6 +5,7 @@ from pydantic import AwareDatetime, Field, model_validator
 
 from contracts.base import Contract, Identifier
 from contracts.http import HttpAuthScheme, HttpProviderApi
+from contracts.provider import LambdaProviderApi
 
 
 class ConnectionRole(StrEnum):
@@ -47,6 +48,7 @@ class Connection(Contract):
     capabilities: frozenset[str] = Field(min_length=1)
     allowed_resources: tuple[str, ...] = Field(min_length=1)
     http: HttpProviderApi | None = None
+    rpc: LambdaProviderApi | None = None
     playbook_id: Identifier | None = None
     playbook_version_id: Identifier | None = None
     status: ConnectionStatus
@@ -110,11 +112,30 @@ class Connection(Contract):
             self.interface is ConnectionInterface.API
             and ConnectionRole.PROVIDER in self.roles
             and self.http is None
+            and self.rpc is None
         ):
-            raise ValueError("API provider connections require an HTTP API declaration")
+            raise ValueError("API provider connections require a transport declaration")
+        if self.rpc is not None:
+            if (
+                self.http is not None
+                or self.interface is not ConnectionInterface.API
+                or self.roles != frozenset({ConnectionRole.PROVIDER})
+            ):
+                raise ValueError("Lambda providers require one API transport and the provider role")
+            if self.authorization is not ConnectionAuthorization.WORKLOAD_IDENTITY:
+                raise ValueError("Lambda providers require AWS workload identity")
+            if (
+                self.rpc.function_arn not in self.allowed_resources
+                or self.rpc.function_arn.split(":")[3] != self.region
+                or not self.capabilities <= self.rpc.operations.keys()
+            ):
+                raise ValueError(
+                    "Lambda provider declaration differs from its allowed resources or tools"
+                )
         if (
             self.interface is ConnectionInterface.API
             and ConnectionRole.PROVIDER in self.roles
+            and self.http is not None
             and self.authorization
             not in {ConnectionAuthorization.OAUTH, ConnectionAuthorization.API_KEY}
         ):

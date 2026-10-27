@@ -111,3 +111,22 @@ CREATE TABLE IF NOT EXISTS kinu.audit (
     CHECK (data->>'organisation_id' = organisation_id AND data->>'id' = id),
     CHECK ((data->>'sequence')::bigint = sequence)
 );
+CREATE TABLE IF NOT EXISTS kinu.executions (
+    organisation_id text NOT NULL,
+    run_id text NOT NULL,
+    stage text NOT NULL,
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, run_id, stage),
+    FOREIGN KEY (organisation_id, run_id) REFERENCES kinu.runs(organisation_id, id),
+    CHECK (data->>'organisation_id' = organisation_id AND data->>'run_id' = run_id),
+    CHECK (data->>'stage' = stage)
+);
+CREATE TABLE IF NOT EXISTS kinu.mail (
+    organisation_id text NOT NULL REFERENCES kinu.organisations(id),
+    id text NOT NULL,
+    data jsonb NOT NULL,
+    done boolean NOT NULL DEFAULT false,
+    assessment jsonb,
+    PRIMARY KEY (organisation_id, id),
+    CHECK (data->>'organisation_id' = organisation_id AND data->>'id' = id)
+);

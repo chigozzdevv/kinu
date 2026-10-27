@@ -30,9 +30,13 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                 "Action": [
                     "lambda:GetFunctionConfiguration",
                     "lambda:UpdateFunctionConfiguration",
+                    "lambda:ListVersionsByFunction",
+                    "lambda:PublishVersion",
+                    "lambda:GetAlias",
+                    "lambda:UpdateAlias",
                     "lambda:InvokeFunction",
                 ],
-                "Resource": functions,
+                "Resource": functions + [arn + ":*" for arn in functions],
             }
         )
     return {
@@ -50,7 +54,7 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                             {
                                 "Effect": "Allow",
                                 "Principal": {"AWS": prepared.broker_arn},
-                                "Action": ["sts:AssumeRole", "sts:TagSession"],
+                                "Action": "sts:AssumeRole",
                                 "Condition": {
                                     "StringEquals": {
                                         "sts:ExternalId": prepared.external_id,
@@ -58,7 +62,18 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                                     },
                                     "ForAllValues:StringEquals": {"aws:TagKeys": ["kinu-org"]},
                                 },
-                            }
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"AWS": prepared.broker_arn},
+                                "Action": "sts:TagSession",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/kinu-org": prepared.organisation_id,
+                                    },
+                                    "ForAllValues:StringEquals": {"aws:TagKeys": ["kinu-org"]},
+                                },
+                            },
                         ],
                     },
                     "Policies": [

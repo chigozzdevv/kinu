@@ -217,8 +217,8 @@ def _stage_presentation(
             StageDetail(label="Old credential", value="Rejected"),
             StageDetail(label="Replacement", value="Valid"),
         ]
-        if "old-secret-disabled" in checks:
-            details.append(StageDetail(label="Previous secret version", value="Disabled"))
+        if "old-secret-retired" in checks:
+            details.append(StageDetail(label="Previous secret version", value="Retired"))
         return ("Previous credential revoked", tuple(details))
     if stage is Stage.COMPLETE:
         return ("Rotation complete", ())

@@ -3,6 +3,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime
 
 import httpx
+from connectors.aws import AwsClient
 from core.account import AccountService
 from core.account.store import AccountStore
 from core.audit.store import AuditStore
@@ -19,6 +20,9 @@ from core.inventory.store import InventoryStore
 from core.storage.factory import application_database
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
+from demo.journal import RunHistory
+from demo.mail import Source
+from demo.queue import Queue
 from fastapi import FastAPI
 
 from api.deps import ApiServices
@@ -42,11 +46,24 @@ async def runtime(
                 inventory = InventoryStore(database)
                 workflow = RunWorkflow(RunStore(database))
                 audit = AuditWriter(AuditStore(database), config.aws_region, _now)
+                queue = (
+                    Queue(
+                        AwsClient(),
+                        config.aws_region,
+                        config.demo_queue_url,
+                        config.demo_organisation,
+                    )
+                    if config.demo_queue_url and config.demo_organisation
+                    else None
+                )
                 app.state.services = ApiServices(
                     access=AccessControl(accounts),
                     accounts=AccountService(accounts, _now),
                     inventory=InventoryService(inventory, _now),
                     workflow=workflow,
+                    history=RunHistory(database),
+                    dispatcher=queue,
+                    demo=Source(database, queue) if queue else None,
                     audit=audit,
                     incidents=IncidentService(
                         IncidentStore(database), _now, inventory, workflow, audit=audit

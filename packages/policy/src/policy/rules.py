@@ -85,7 +85,7 @@ REQUIRED_CHECKS: dict[Stage, frozenset[str]] = {
             "old-revoked",
             "replacement-valid",
             "old-rejected",
-            "old-secret-disabled",
+            "old-secret-retired",
         }
     ),
     Stage.COMPLETE: frozenset(
