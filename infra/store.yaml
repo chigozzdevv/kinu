@@ -53,7 +53,7 @@ Resources:
       VpcSecurityGroupIds: [!GetAtt DatabaseAccess.GroupId]
       ServerlessV2ScalingConfiguration:
         MinCapacity: 0
-        MaxCapacity: 0.5
+        MaxCapacity: 1
         SecondsUntilAutoPause: 300
       Tags: [{Key: app, Value: kinu}]
   Writer:
@@ -66,10 +66,9 @@ Resources:
       AutoMinorVersionUpgrade: true
   AppSecret:
     Type: AWS::SecretsManager::Secret
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: kinu/database/app
       GenerateSecretString:
         SecretStringTemplate: '{"username":"kinu_app"}'
         GenerateStringKey: password
