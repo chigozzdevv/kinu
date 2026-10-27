@@ -3,6 +3,7 @@ name = "kinu-server"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "boto3>=1.40,<2",
     "cryptography>=46,<48",
     "fastapi>=0.116,<1",
     "kinu-contracts",
@@ -16,6 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+aws = ["mangum>=0.19,<1", "sqlparse>=0.5,<1"]
 browser = ["playwright>=1.55,<2", "websockets>=15,<17"]
 mcp = ["httpx2>=2,<3", "mcp>=2,<3"]
 

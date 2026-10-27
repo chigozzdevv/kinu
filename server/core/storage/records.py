@@ -16,13 +16,12 @@ from contracts import (
     PlaybookVersion,
     ProbeVersion,
 )
-from psycopg import AsyncConnection
 from psycopg.errors import UniqueViolation
-from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 
 from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionConflictError
 from core.storage.database import Database
+from core.storage.sql import SqlConnection
 
 _KINDS: dict[type[Contract], str] = {
     Connection: "connection",
@@ -59,7 +58,7 @@ class Records:
 
 
 class RecordTransaction:
-    def __init__(self, connection: AsyncConnection[DictRow]) -> None:
+    def __init__(self, connection: SqlConnection) -> None:
         self._connection = connection
 
     async def get[T: Contract](self, model: type[T], organisation_id: str, resource_id: str) -> T:
