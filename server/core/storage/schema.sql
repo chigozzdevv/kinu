@@ -55,3 +55,44 @@ CREATE TABLE IF NOT EXISTS kinu.inventory (
 CREATE UNIQUE INDEX IF NOT EXISTS inventory_control_number
     ON kinu.inventory (organisation_id, (data->>'credential_id'), (data->>'number'))
     WHERE kind = 'controls';
+
+CREATE TABLE IF NOT EXISTS kinu.runs (
+    organisation_id text NOT NULL REFERENCES kinu.organisations(id),
+    id text NOT NULL,
+    credential_id text NOT NULL,
+    revision integer NOT NULL CHECK (revision >= 0),
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, id),
+    CHECK (data->>'organisation_id' = organisation_id AND data->>'id' = id),
+    CHECK ((data->>'revision')::integer = revision)
+);
+CREATE TABLE IF NOT EXISTS kinu.run_locks (
+    organisation_id text NOT NULL,
+    credential_id text NOT NULL,
+    run_id text NOT NULL,
+    PRIMARY KEY (organisation_id, credential_id),
+    FOREIGN KEY (organisation_id, run_id) REFERENCES kinu.runs(organisation_id, id)
+);
+CREATE TABLE IF NOT EXISTS kinu.commands (
+    organisation_id text NOT NULL,
+    id text NOT NULL,
+    run_id text NOT NULL,
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, id),
+    FOREIGN KEY (organisation_id, run_id) REFERENCES kinu.runs(organisation_id, id)
+);
+CREATE TABLE IF NOT EXISTS kinu.triggers (
+    organisation_id text NOT NULL,
+    source text NOT NULL,
+    event_id text NOT NULL,
+    command_id text NOT NULL,
+    PRIMARY KEY (organisation_id, source, event_id),
+    FOREIGN KEY (organisation_id, command_id) REFERENCES kinu.commands(organisation_id, id)
+);
+CREATE TABLE IF NOT EXISTS kinu.outbox (
+    organisation_id text NOT NULL,
+    id text NOT NULL,
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, id),
+    FOREIGN KEY (organisation_id, id) REFERENCES kinu.commands(organisation_id, id)
+);
