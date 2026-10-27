@@ -28,7 +28,9 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
       <Detail label="Last verified">{current.verified_at ? new Date(current.verified_at).toLocaleString() : "Not verified yet"}</Detail>
       <Detail label="Usage limit">20 AI calls per workspace per day</Detail>
     </DetailList>
-    <Field label="Model"><SelectControl disabled={!administrator || !current.connected || action.isPending} value={current.model} onChange={(event) => action.mutate({ name: "model", model: event.target.value })}>{current.models.map((model) => <option key={model} value={model}>{model}</option>)}</SelectControl></Field>
+    <div className="grid gap-x-8 sm:grid-cols-2">
+      <Field label="Model"><SelectControl disabled={!administrator || !current.connected || action.isPending} value={current.model} onChange={(event) => action.mutate({ name: "model", model: event.target.value })}>{current.models.map((model) => <option key={model} value={model}>{model}</option>)}</SelectControl></Field>
+    </div>
     {administrator && <div className="flex gap-3">
       <Button disabled={action.isPending} onClick={() => action.mutate({ name: "connect" })}>{current.connected ? "Reconnect Builder.io" : "Connect Builder.io"}</Button>
       {current.connected && <><Button variant="ghost" disabled={action.isPending} onClick={() => action.mutate({ name: "test" })}>Verify connection</Button><Button variant="ghost" disabled={action.isPending} onClick={() => action.mutate({ name: "disconnect" })}>Disconnect</Button></>}
