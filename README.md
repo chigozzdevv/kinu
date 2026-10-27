@@ -1,16 +1,53 @@
 # Kinu
 
-Credential rotation and verification, with policy gates, approvals, and evidence.
+Credential rotation with verified consumer updates, policy gates and an audit trail.
 
-The app includes the operator dashboard, Cognito browser sign-in, PostgreSQL sessions,
-workspace access and inventory, and an Agent-Native service that shares the authenticated identity.
-Credential rotation, mailbox connections, AWS secret storage, and application hosting are still pending.
+Kinu runs on AWS. Cognito provides browser sign-in; the API stores opaque cookie sessions,
+workspace permissions and inventory in PostgreSQL. Agent-Native shares that identity and
+exposes the same scoped actions used by the dashboard.
 
-## Local development
+## Current flow
 
-AWS is the deployment target. Local services support development and predeployment checks.
+1. An operator requests a rotation, or a labelled demo email reports an exposure.
+2. Email events are deduplicated and correlated with the current credential. Builder AI
+   assesses a small structured summary; application policy decides whether rotation is allowed.
+3. An SQS worker validates the pinned controls and creates a replacement through the provider API.
+4. The provider writes the key directly to AWS Secrets Manager and returns its reference.
+5. Kinu verifies consumer access, publishes an immutable Lambda version and promotes its live alias.
+6. After 60 seconds of healthy observations without old-key use, Kinu retires the old provider
+   key, proves it is rejected and updates the inventory and audit history.
 
-Requirements: Python 3.12, uv, Node.js 24+, and npm.
+The deployed executor is limited to the isolated demo provider and consumer. It uses real
+AWS resources and actual key validation. The email is an explicitly labelled MIME fixture;
+it is not a connected inbox. Real mailbox OAuth and additional provider/runtime adapters
+remain separate integrations. AgentCore Browser awaits an AWS quota approval; the browser
+adapter and capture guards have local tests, but the browser rotation is not live verified.
+
+Failures before retirement restore the previous consumer and revoke the candidate when safe.
+Failures after retirement retain the working replacement and flag recovery for an operator.
+A worker crash after mutation requires evidence review; Kinu does not blindly rerun it.
+
+## Connect AI
+
+Sign in, select a workspace and open **Settings → AI → Connect Builder.io**. Workspace
+administrators authorize Builder AI, select a model and verify the connection. OAuth requests
+only AI invocation and refresh access. Each workspace is capped at 20 inference calls per UTC day.
+Builder account access and usage allowances still apply.
+
+Builder grants are encrypted in a separate database. The model receives incident enums,
+confidence, candidate count and a policy result. It receives no workload key, mailbox body,
+AWS credentials or arbitrary execution tools. Generic Agent-Native chat, terminals, MCP proxy
+routes and alternative authentication methods remain disabled.
+
+The API and Agent-Native roles cannot assume customer roles. The worker uses a role restricted
+to the selected demo resources; it cannot read workload secret values. Only the provider's
+write path and consumer's read path handle those values. Inventory and execution evidence store
+references, identifiers and checks.
+
+## Development
+
+Requirements: Python 3.12, uv, Node.js 24+ and npm. Local services are for development and
+predeployment verification; AWS is the deployment target.
 
 ```sh
 make sync
@@ -20,113 +57,39 @@ cp client/.env.example client/.env.local
 make db
 ```
 
-The development database persists in `.cache/db` and listens only on `127.0.0.1:5433`.
-Use PostgreSQL or Amazon RDS for deployed environments. Set the API's `KINU_DATABASE_URL`
-to that database with TLS and a dedicated application role.
+Configure Cognito and `KINU_DATABASE_URL` in the API environment, then run `make migrate`.
+Start `make api`, `make agent` and `npm --prefix client run dev` in separate terminals.
+Open http://localhost:5173. The local database binds to `127.0.0.1:5433`.
 
-Configure the Cognito values in the root `.env`, then initialize the schema:
-
-```sh
-make migrate
-```
-
-Run each service in its own terminal:
-
-```sh
-make api
-make agent
-npm --prefix client run dev
-```
-
-Open http://localhost:5173. Vite proxies `/auth/`, `/v1`, and `/health` to the API on
-port 8000, and `/_agent-native` to the Agent-Native service on port 8001.
-Keep the API environment separate: never load the root `.env` into the frontend or agent.
-Neither service needs database credentials. Public `VITE_` variables must never hold secrets.
-
-## Sign-in and sessions
-
-Create a Cognito user pool and a **public app client without a client secret**. Enable the
-authorization code grant and `openid`, `email`, and `profile` scopes. Configure a
-hosted sign-in domain, require email verification, and register these exact local URLs:
-
-| Setting | URL |
-| --- | --- |
-| Callback | `http://localhost:5173/auth/callback` |
-| Sign-out | `http://localhost:5173/auth` |
-
-Set `KINU_COGNITO_POOL_ID`, `KINU_COGNITO_CLIENT_ID`, and `KINU_COGNITO_DOMAIN` in the API
-environment. The domain includes `https://`. Production also requires
-`KINU_ENVIRONMENT=production` and an HTTPS `KINU_PUBLIC_URL` with matching Cognito URLs.
-
-The API exchanges the authorization code using PKCE and verifies signed Cognito ID tokens,
-issuer, audience, expiry, nonce, and verified email. Single-use login state is tied to the
-initiating browser. Cognito access and refresh tokens are not retained or sent to browser JavaScript.
-
-The browser receives an opaque HttpOnly, SameSite=Lax session cookie. Production uses a
-Secure `__Host-kinu` cookie. PostgreSQL stores its SHA-256 digest, identity, CSRF token,
-and expiry. Sessions last at most one hour and never outlive the verified ID token.
-After expiry, users sign in again through Cognito. Unsafe API requests require a matching
-Origin and CSRF token. Logout deletes the server session before redirecting to Cognito sign-out.
-
-Workspace memberships, profiles, and invitations persist in PostgreSQL. Workspace access is
-checked against current membership on each request. Invitation delivery is not implemented yet.
-
-Connections, applications, environments, services, credentials, generations, bindings, and
-control versions also persist in PostgreSQL. Imports and cascading archives are atomic;
-edits require the current revision. Relationships and connection boundaries are checked
-inside the write transaction. Secret values are not inventory fields; records hold references.
-AWS connection validation and secret storage still require their service adapters.
-
-## Agent-Native
-
-`agent/` uses the Agent-Native custom authentication plugin. It resolves the Kinu cookie
-through `/auth/session` and passes verified user and selected workspace metadata to the
-framework. It forwards only the Kinu cookie and `X-Kinu-Workspace`; it does not return
-session credentials, Cognito tokens, or CSRF tokens in the framework session response.
-Agent requests require a selected workspace in `X-Kinu-Workspace`.
-
-Only the authenticated `GET /_agent-native/auth/session` endpoint and process health endpoint
-are enabled. Agent chat, generic tools, terminals, framework authentication alternatives,
-and credential rotation are not enabled. Missing or revoked Kinu sessions are rejected
-before the framework can try another authentication method.
-
-The framework's disabled chat dependency still includes an affected Zod 3 release with
-no patched Zod 3 release. `npm audit` reports that upstream chain; an AG-UI 1 override
-breaks the current AgentKit exports. Recheck the dependency before enabling chat.
-
-## Verification
+Keep root environment values out of the frontend and Agent-Native process. Local Agent-Native
+storage uses its own `DATABASE_URL`; deployed storage uses a separate database and IAM role.
+No `VITE_` value may contain a secret. Production requires HTTPS and matching Cognito callback
+and sign-out URLs. Sessions expire within one hour; writes require Origin and CSRF checks.
 
 ```sh
 make verify
 ```
 
-This checks Python formatting, lint, types, tests, the frontend build, and the Agent-Native
-build and session tests. It also starts an ephemeral PostgreSQL-compatible database for SQL
-repository tests, then runs the built API and Agent-Native services together to verify
-inventory persistence, identity sharing, workspace isolation, CSRF enforcement, expiry,
-and logout revocation.
-Login tests use a simulated Cognito provider with real signed tokens; they do not contact AWS.
+Verification covers contracts, policy, state transitions, PostgreSQL persistence, concurrent
+rotation delivery, rollback, email deduplication, session sharing, workspace isolation and CSRF.
+Local Cognito tests use signed fixture tokens. A passing local suite does not prove AWS access
+or Builder account authorization. The SDK's disabled chat dependency has a transitive Zod 3
+advisory; review it before enabling any generic chat route.
 
-`make image` builds the API container when Docker is available. Schema initialization is
-explicit through `make migrate`; API startup does not modify the database schema.
-`/health/live` confirms process health. API `/health/ready` requires browser authentication
-and account services to be configured; it does not certify credential rotation readiness.
-`infra/auth.yaml` provisions the AWS sign-in resources. Application hosting and the
-AgentCore workflow are not included in that stack.
+Deployment instructions are in [infra/README.md](infra/README.md). Invitation delivery and
+arbitrary production provider connections are not implemented.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `client/` | React operator UI |
-| `agent/` | Agent-Native service and shared session integration |
-| `server/api/` | API routes and service composition |
-| `server/core/` | Business rules, authentication, and PostgreSQL stores |
-| `server/agents/`, `server/broker/` | Agent contracts and governed execution interfaces |
-| `server/browser/`, `server/capture/` | Browser and capture controls |
-| `server/connectors/` | Provider interfaces and HTTP/GitHub connectors |
-| `packages/` | Contracts, policy, telemetry, and test utilities |
-| `infra/` | Infrastructure notes |
-| `evidence/` | Evidence schema |
+| `client/` | Operator dashboard |
+| `agent/` | Agent-Native actions and Builder AI connection |
+| `server/api/`, `server/core/` | Auth, inventory, policy and workflow |
+| `server/demo/`, `server/cloud/` | Scoped API executor, provider and consumer |
+| `server/browser/`, `server/capture/` | Protected browser observations and capture |
+| `server/connectors/` | AWS and provider adapters |
+| `packages/` | Shared contracts, policy and telemetry |
+| `infra/` | AWS templates, packaging and deployment |
 
 Licensed under Apache 2.0. See [LICENSE](LICENSE).

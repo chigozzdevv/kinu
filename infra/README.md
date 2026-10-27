@@ -1,26 +1,83 @@
 # Kinu infrastructure
 
-AWS is the deployment target. `auth.yaml` provisions a separate Kinu Cognito user pool,
-public code-flow client, and hosted sign-in domain. Application hosting is still pending.
+Deploy in `eu-west-2` using an authorized temporary AWS CLI session. No static deployment
+access keys are required. Keep stack outputs and local deployment files outside Git.
+
+| Stack | Resources |
+| --- | --- |
+| `kinu-auth` | Cognito Lite pool, public PKCE client and classic hosted sign-in |
+| `kinu-store` | Private Aurora PostgreSQL, Data API and separate database login secrets |
+| `kinu-artifacts` | Private encrypted deployment bucket with a 14-day artifact expiry |
+| `kinu-app` | HTTP API Gateway, Python Lambda and private frontend bucket |
+| `kinu-native` | Agent-Native HTTP Lambda, private inference Lambda and encrypted OAuth storage |
+| `kinu-demo` | SQS worker, demo provider, DynamoDB key hashes, workload secret and Lambda consumer |
+
+There is no NAT gateway or CloudFront dependency. Aurora is limited to 1 ACU and pauses after
+five idle minutes. Lambda and API Gateway are usage based; the database, Secrets Manager and
+other resources can still consume credits. Creating these stacks is not a promise of zero cost.
+
+## Deploy
+
+Install the locked development dependencies with `make sync`. Set `AWS_PROFILE`, `AWS_REGION`
+and optionally `KINU_AWS_CLI` to the approved CLI executable. Python infrastructure scripts
+need `PYTHONPATH=server:packages/contracts/src:packages/policy/src:packages/telemetry/src`.
+
+Create `kinu-auth`, `kinu-store` and `kinu-artifacts` from their matching YAML templates using
+CloudFormation. Initialize application tables and the restricted database role:
 
 ```sh
-aws cloudformation deploy --region eu-west-2 --stack-name kinu-auth \
-  --template-file infra/auth.yaml \
-  --parameter-overrides Stage=production PublicUrl=https://kinu.example.com
-aws cloudformation describe-stacks --region eu-west-2 --stack-name kinu-auth \
-  --query 'Stacks[0].Outputs'
+python infra/bootstrap.py
 ```
 
-Replace the example origin with the deployed app origin. For predeployment sign-in tests,
-omit the parameter overrides to use the demo pool and localhost callback. Set the returned
-`PoolId`, `ClientId`, and `DomainUrl` as the API's Cognito environment values.
-The Lite tier uses the classic hosted UI. User pool deletion is protected; stack deletion
-retains the pool. The stack creates no IAM roles, access keys, or compute instances.
+Prepare Linux x86_64 Python 3.12 dependencies in `.build/lambda` before packaging. Export
+production server dependencies with the `aws` and `browser` extras; install binary Linux
+wheels rather than copying the Mac virtual environment. The package contains the Playwright
+remote driver, not local Chromium browser binaries.
 
-The API requires Cognito configuration and a PostgreSQL database. Set an HTTPS public URL,
-use TLS for database access, and keep database credentials in the API environment. The
-Agent-Native service verifies sessions through the API and must not receive database credentials.
+```sh
+python infra/package.py
+python infra/deploy.py
+python infra/native.py
+```
 
-AgentCore Browser, Secrets Manager, mailbox ingestion, and runtime update adapters are
-not connected yet. Local tests verify the application before deployment; they do not
-provision AWS resources or prove a live rotation.
+`deploy.py` saves the HTTPS origin to `/private/tmp/kinu-aws/app.json`. Update `kinu-auth` with
+that origin as `PublicUrl`, which registers `/auth/callback` and `/auth` as the exact Cognito
+callback and sign-out URLs. Upload `client/dist` after `npm --prefix client run build` to the
+private frontend bucket returned by `kinu-app`. Keep old hashed assets for existing tabs.
+
+`native.py` builds the Node Lambda and private inference bundle, initializes `kinu_native`
+and grants it access only to that database. Builder OAuth tokens and pending authorization
+state are encrypted using a seal fetched from Secrets Manager at runtime.
+
+## Isolated API demo
+
+`launch.py` creates and verifies `kinu-demo`, seeds explicit demo inventory and checks the
+consumer with its real workload role. Set `KINU_DEMO_ORGANISATION` for a chosen workspace.
+The first launch otherwise selects the sole Cognito-backed workspace, or uses an existing
+synthetic test account through `workspace.py`. A synthetic fixture can be created explicitly
+with `user.py`; its generated password stays in a mode-600 temporary file.
+
+```sh
+python infra/launch.py
+python infra/deploy.py
+```
+
+The second app deployment connects the existing SQS queue to authenticated rotation and demo
+email actions. Re-running `launch.py` preserves an existing credential and live consumer alias.
+Repackage and redeploy the app and demo stacks after changing Python source.
+
+Sign in, connect Builder under **Settings → AI** and use the labelled demo email action on
+Incidents to exercise AI assessment. Manual rotation exercises the same API executor without
+requiring inference. The fixture does not send or retrieve real email.
+
+The provider alone writes new workload keys; the consumer alone reads them. The worker sees
+references, uses a resource-scoped role with an external ID and workspace tag, and cannot call
+`GetSecretValue` on the workload secret. API and Agent-Native roles cannot assume that role.
+
+Execution checkpoints, generation updates and audit records persist in PostgreSQL. Retry
+and crash boundaries are explicit: a completed job is idempotent, pre-retirement failures
+attempt safe rollback, and interrupted mutations can require operator recovery.
+
+`browser.yaml` defines a custom AgentCore Browser with raw recording disabled. Deploy it
+only after AWS grants the required configuration and session quotas. Browser execution is
+not a prerequisite for the API demo.
