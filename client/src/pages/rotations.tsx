@@ -202,6 +202,10 @@ function variant(run: RotationRun) {
   return "active" as const
 }
 
+function finished(status?: RotationRun["status"]) {
+  return Boolean(status && ["completed", "failed", "cancelled", "compensated", "cleanup-required"].includes(status))
+}
+
 function RunStatus({ run }: { run: RotationRun }) {
   const moving = run.status === "running" || run.status === "recovering"
   return <Badge variant={variant(run)} className="gap-1.5">
@@ -221,9 +225,9 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   const [reason, setReason] = useState("Routine credential rotation")
   const [urgency, setUrgency] = useState<"routine" | "urgent" | "emergency">("routine")
   const [runs, graph, history, connections] = useQueries({ queries: [
-    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: selectedId ? 1_000 : 5_000 },
+    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: (query) => selectedId && finished(query.state.data?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
-    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: 1_000 },
+    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: () => finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
   ] })
   const create = useMutation({ mutationFn: () => {
@@ -242,7 +246,11 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   const liveStatus = liveSelection?.status
   useEffect(() => {
     if (liveStage) setSelectedStage(liveStage)
-  }, [liveStage, liveStatus, selectedId])
+    if (finished(liveStatus)) {
+      void queryClient.invalidateQueries({ queryKey: ["rotations", selectedId, "history"] })
+      void queryClient.invalidateQueries({ queryKey: ["graph"] })
+    }
+  }, [liveStage, liveStatus, selectedId, queryClient])
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()

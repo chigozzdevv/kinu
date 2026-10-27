@@ -44,7 +44,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   const [dismissing, setDismissing] = useState(false)
   const [dismissalReason, setDismissalReason] = useState(dismissalReasons[0])
   const [incidents, graph] = useQueries({ queries: [
-    { queryKey: ["incidents"], queryFn: () => api.getIncidents() },
+    { queryKey: ["incidents"], queryFn: () => api.getIncidents(), refetchInterval: 10_000 },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
   ] })
 
