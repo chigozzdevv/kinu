@@ -12,6 +12,8 @@ from contracts import (
     ControlVersion,
     CredentialGeneration,
     Environment,
+    Incident,
+    IngestionEvent,
     ManagedCredential,
     PlaybookVersion,
     ProbeVersion,
@@ -25,6 +27,8 @@ from core.storage.database import Database
 from core.storage.sql import SqlConnection
 
 _KINDS: dict[type[Contract], str] = {
+    Incident: "incident",
+    IngestionEvent: "ingestion-event",
     AwsLink: "aws-link",
     Connection: "connection",
     Application: "application",
@@ -77,6 +81,18 @@ class RecordTransaction:
         cursor = await self._connection.execute(
             "SELECT data FROM kinu.inventory WHERE organisation_id = %s AND kind = %s ORDER BY id",
             (organisation_id, _KINDS[model]),
+        )
+        return tuple(model.model_validate(row["data"]) for row in await cursor.fetchall())
+
+    async def match[T: Contract](
+        self, model: type[T], organisation_id: str, values: dict[str, object]
+    ) -> tuple[T, ...]:
+        if not values or not values.keys() <= model.model_fields.keys():
+            raise ValueError("record lookup requires known fields")
+        cursor = await self._connection.execute(
+            "SELECT data FROM kinu.inventory WHERE organisation_id = %s AND kind = %s "
+            "AND data @> %s ORDER BY id",
+            (organisation_id, _KINDS[model], Jsonb(values)),
         )
         return tuple(model.model_validate(row["data"]) for row in await cursor.fetchall())
 

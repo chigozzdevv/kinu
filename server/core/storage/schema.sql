@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS kinu.inventory (
 CREATE UNIQUE INDEX IF NOT EXISTS inventory_control_number
     ON kinu.inventory (organisation_id, (data->>'credential_id'), (data->>'number'))
     WHERE kind = 'controls';
+CREATE UNIQUE INDEX IF NOT EXISTS ingestion_source_event
+    ON kinu.inventory (organisation_id, (data->>'source'), (data->>'source_event_id'))
+    WHERE kind = 'ingestion-event';
+CREATE UNIQUE INDEX IF NOT EXISTS incident_event
+    ON kinu.inventory (organisation_id, (data->>'event_id')) WHERE kind = 'incident';
 
 CREATE TABLE IF NOT EXISTS kinu.runs (
     organisation_id text NOT NULL REFERENCES kinu.organisations(id),
@@ -95,4 +100,14 @@ CREATE TABLE IF NOT EXISTS kinu.outbox (
     data jsonb NOT NULL,
     PRIMARY KEY (organisation_id, id),
     FOREIGN KEY (organisation_id, id) REFERENCES kinu.commands(organisation_id, id)
+);
+CREATE TABLE IF NOT EXISTS kinu.audit (
+    organisation_id text NOT NULL REFERENCES kinu.organisations(id),
+    id text NOT NULL,
+    sequence bigint NOT NULL CHECK (sequence >= 0),
+    data jsonb NOT NULL,
+    PRIMARY KEY (organisation_id, id),
+    UNIQUE (organisation_id, sequence),
+    CHECK (data->>'organisation_id' = organisation_id AND data->>'id' = id),
+    CHECK ((data->>'sequence')::bigint = sequence)
 );
