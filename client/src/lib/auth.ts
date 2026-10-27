@@ -16,7 +16,42 @@ export interface Authentication {
   session: BrowserSession | null
 }
 
+export const dashboardReturnKey = "kinu.dashboard-return"
+export const sessionExpiredEvent = "kinu:session-expired"
 let cachedSession: BrowserSession | null = null
+let redirecting = false
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super("Sign in to continue")
+    this.name = "SessionExpiredError"
+  }
+}
+
+export function redirectToSignIn(expired = true): void {
+  clearSession()
+  if (redirecting || window.location.pathname === "/auth") return
+  redirecting = true
+  const { pathname, search } = window.location
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    sessionStorage.setItem(dashboardReturnKey, pathname + search)
+  }
+  window.dispatchEvent(new Event(sessionExpiredEvent))
+  window.location.replace(expired ? "/auth?expired=1" : "/auth")
+}
+
+export function watchSession(expiresAt: string): () => void {
+  const expiry = Date.parse(expiresAt)
+  const check = () => { if (Date.now() >= expiry) redirectToSignIn() }
+  const timer = window.setTimeout(check, Math.max(0, expiry - Date.now()))
+  window.addEventListener("focus", check)
+  document.addEventListener("visibilitychange", check)
+  return () => {
+    window.clearTimeout(timer)
+    window.removeEventListener("focus", check)
+    document.removeEventListener("visibilitychange", check)
+  }
+}
 
 export function clearSession(): void {
   cachedSession = null
@@ -61,15 +96,32 @@ export async function submitAuth(action: "signin" | "signup" | "verify" | "resen
 
 export async function sessionHeaders(method = "GET"): Promise<Headers> {
   const headers = new Headers()
+  if (redirecting || cachedSession && Date.parse(cachedSession.expires_at) <= Date.now()) {
+    redirectToSignIn()
+    throw new SessionExpiredError()
+  }
   if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return headers
   const current = cachedSession && Date.parse(cachedSession.expires_at) > Date.now()
     ? cachedSession : await readSession()
   if (!current) {
-    window.location.assign("/auth")
-    throw new Error("Sign in to continue")
+    redirectToSignIn()
+    throw new SessionExpiredError()
   }
   headers.set("X-CSRF-Token", current.csrf_token)
   return headers
+}
+
+export async function sessionFetch(path: string, options?: RequestInit): Promise<Response> {
+  const headers = new Headers(options?.headers)
+  const authentication = await sessionHeaders(options?.method)
+  authentication.forEach((value, name) => headers.set(name, value))
+  if (options?.body && !headers.has("content-type")) headers.set("content-type", "application/json")
+  const response = await fetch(path, { ...options, credentials: "same-origin", headers })
+  if (response.status === 401) {
+    redirectToSignIn()
+    throw new SessionExpiredError()
+  }
+  return response
 }
 
 export async function signOutIdentity(): Promise<string> {

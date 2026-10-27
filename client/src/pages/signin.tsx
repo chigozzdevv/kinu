@@ -30,7 +30,7 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [message, setMessage] = useState("")
+  const [message, setMessage] = useState(() => new URLSearchParams(window.location.search).get("expired") === "1" ? "Your session expired. Sign in to continue." : "")
   const newPassword = mode === "signup" || mode === "reset"
   const needsPassword = mode === "signin" || newPassword
   const needsCode = mode === "verify" || mode === "reset"

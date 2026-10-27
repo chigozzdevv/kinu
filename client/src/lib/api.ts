@@ -23,7 +23,7 @@ import type {
   TeamMember,
   MemberRole,
 } from "../types";
-import { clearSession, sessionHeaders } from "./auth"
+import { sessionFetch } from "./auth"
 import { nativeRequest } from "./native"
 
 let organisationId = ""
@@ -269,26 +269,8 @@ export class ApiError extends Error {
 }
 
 class ApiClient {
-  private async authenticatedFetch(path: string, options?: RequestInit): Promise<Response> {
-    const headers = new Headers(options?.headers)
-    const authentication = await sessionHeaders(options?.method)
-    authentication.forEach((value, name) => headers.set(name, value))
-    if (options?.body) headers.set("Content-Type", "application/json")
-
-    const response = await fetch(path, {
-      ...options,
-      credentials: "same-origin",
-      headers,
-    })
-    if (response.status === 401) {
-      clearSession()
-      window.location.assign("/auth")
-    }
-    return response
-  }
-
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await this.authenticatedFetch(path, options)
+    const response = await sessionFetch(path, options)
     if (!response.ok) {
       const problem = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
       throw new ApiError(
@@ -301,7 +283,7 @@ class ApiClient {
   }
 
   private async requestBlob(path: string): Promise<Blob> {
-    const response = await this.authenticatedFetch(path, {
+    const response = await sessionFetch(path, {
       headers: { Accept: "image/png" },
     })
     if (!response.ok) {

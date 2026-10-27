@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 import type { Authentication } from "./lib/auth"
 import kinuLogo from "./assets/kinu-logo.svg"
-import { readAuthentication } from "./lib/auth"
+import { dashboardReturnKey, readAuthentication, redirectToSignIn, sessionExpiredEvent, watchSession } from "./lib/auth"
 import { activateOrganisation, storedOrganisation } from "./lib/organisationstate"
 import { api } from "./lib/api"
 import type { AccountSession, OrganisationMembership } from "./types"
@@ -12,7 +12,6 @@ import { connectionCallbackIntegration, dashboardLocation } from "./lib/callback
 
 const HomePage = lazy(() => import("./landing/pages/home").then((module) => ({ default: module.HomePage })))
 const Dashboard = lazy(() => import("./App.tsx"))
-const dashboardReturnKey = "kinu.dashboard-return"
 
 function dashboardReturnLocation() {
   const location = sessionStorage.getItem(dashboardReturnKey)
@@ -35,13 +34,20 @@ export function AuthenticationBoundary() {
 
   useEffect(() => {
     let current = true
+    const expired = () => setLoading(true)
+    window.addEventListener(sessionExpiredEvent, expired)
     void readAuthentication().then((value) => {
       if (current) setAuthentication(value)
     }).catch((reason: unknown) => {
       if (current) setAuthError(reason instanceof Error ? reason.message : "Sign-in is unavailable")
     }).finally(() => { if (current) setLoading(false) })
-    return () => { current = false }
+    return () => { current = false; window.removeEventListener(sessionExpiredEvent, expired) }
   }, [])
+
+  useEffect(() => {
+    if (!authentication?.session || window.location.pathname === "/") return
+    return watchSession(authentication.session.expires_at)
+  }, [authentication?.session])
 
   useEffect(() => {
     if (!identity || window.location.pathname === "/") {
@@ -81,10 +87,7 @@ export function AuthenticationBoundary() {
     return <SignInPage configured={authentication?.configured ?? false} returnTo={sessionStorage.getItem(dashboardReturnKey) ?? "/dashboard"} />
   }
   if (!identity) {
-    if (window.location.pathname.startsWith("/dashboard")) {
-      sessionStorage.setItem(dashboardReturnKey, `${window.location.pathname}${window.location.search}`)
-    }
-    window.location.replace(`/auth${window.location.search}`)
+    redirectToSignIn(false)
     return <LoadingScreen />
   }
   if (sessionError) return <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6"><div className="text-center"><p className="text-[12px] text-[var(--red)]">{sessionError}</p><Button className="mt-4" onClick={() => window.location.reload()}>Try again</Button></div></main>

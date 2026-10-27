@@ -28,6 +28,7 @@ test:
 
 client:
 	npm --prefix client run check
+	npm --prefix client test
 
 native:
 	npm --prefix agent run check
