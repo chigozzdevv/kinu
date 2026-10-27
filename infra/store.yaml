@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu private PostgreSQL storage with an HTTPS Data API
+
+Resources:
+  Network:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.81.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: app, Value: kinu}]
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Network
+      CidrBlock: 10.81.0.0/26
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Network
+      CidrBlock: 10.81.0.64/26
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  Subnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private Kinu database subnets
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+  DatabaseAccess:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Network
+      GroupDescription: No public database connections
+      SecurityGroupEgress: []
+  Cluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: '16.15'
+      EngineMode: provisioned
+      DatabaseName: kinu
+      MasterUsername: kinu_admin
+      ManageMasterUserPassword: true
+      EnableHttpEndpoint: true
+      StorageEncrypted: true
+      DeletionProtection: true
+      BackupRetentionPeriod: 1
+      DBSubnetGroupName: !Ref Subnets
+      VpcSecurityGroupIds: [!GetAtt DatabaseAccess.GroupId]
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0
+        MaxCapacity: 0.5
+        SecondsUntilAutoPause: 300
+      Tags: [{Key: app, Value: kinu}]
+  Writer:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: aurora-postgresql
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceClass: db.serverless
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: kinu/database/app
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"kinu_app"}'
+        GenerateStringKey: password
+        PasswordLength: 40
+        ExcludeCharacters: '"@/\'
+      Tags: [{Key: app, Value: kinu}]
+
+Outputs:
+  ClusterArn:
+    Value: !GetAtt Cluster.DBClusterArn
+  AdminSecretArn:
+    Value: !GetAtt Cluster.MasterUserSecret.SecretArn
+  AppSecretArn:
+    Value: !Ref AppSecret
+  Database:
+    Value: kinu
