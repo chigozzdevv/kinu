@@ -22,7 +22,7 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
   if (state.error) return <Failure error={state.error} />
   const current = state.data!
   return <div className="max-w-[700px] space-y-6">
-    <p className="text-sm text-[var(--ink-muted)]">Connect Builder.io to investigate alerts and plan rotations. This uses your Builder credits.</p>
+    <p className="text-sm text-[var(--ink-muted)]">Connect Builder.io to assess incident alerts. This uses your Builder credits.</p>
     <DetailList>
       <Detail label="Connection"><Badge variant={current.connected ? "healthy" : "neutral"}>{current.connected ? "Connected" : "Not connected"}</Badge></Detail>
       <Detail label="Last verified">{current.verified_at ? new Date(current.verified_at).toLocaleString() : "Not verified yet"}</Detail>
