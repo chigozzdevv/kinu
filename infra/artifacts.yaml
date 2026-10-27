@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private Kinu deployment artifacts
+Resources:
+  Code:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'kinu-code-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-unused-builds
+            Status: Enabled
+            ExpirationInDays: 14
+Outputs:
+  Bucket:
+    Value: !Ref Code

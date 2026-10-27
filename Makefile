@@ -13,12 +13,12 @@ sync:
 	npm --prefix agent ci
 
 format:
-	$(UV_ENV) uv run ruff format server packages
-	$(UV_ENV) uv run ruff check --fix server packages
+	$(UV_ENV) uv run ruff format server packages infra
+	$(UV_ENV) uv run ruff check --fix server packages infra
 
 lint:
-	$(UV_ENV) uv run ruff format --check server packages
-	$(UV_ENV) uv run ruff check server packages
+	$(UV_ENV) uv run ruff format --check server packages infra
+	$(UV_ENV) uv run ruff check server packages infra
 
 type:
 	$(UV_ENV) uv run mypy server packages

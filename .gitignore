@@ -12,6 +12,7 @@ dist/
 .cache/
 .nitro/
 .output/
+.build/
 .agent-native/
 agent/data/
 __pycache__/

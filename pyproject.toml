@@ -7,6 +7,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "boto3[crt]>=1.40,<2",
     "boto3-stubs>=1.40,<2",
     "httpx>=0.28,<1",
     "mypy>=1.17,<2",

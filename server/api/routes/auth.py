@@ -11,6 +11,11 @@ from api.deps import browser_session, required, services, session_cookie
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.post("/check", status_code=204)
+async def check(request: Request) -> None:
+    await browser_session(request)
+
+
 def _browser(request: Request) -> BrowserAuth:
     return required(cast(BrowserAuth | None, request.app.state.browser), "browser authentication")
 

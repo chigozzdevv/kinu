@@ -4,7 +4,9 @@ from collections.abc import AsyncIterator
 
 import pytest
 from core.auth import AuthenticatedIdentity
+from core.config import Settings
 from core.storage.database import Database
+from core.storage.factory import application_database
 
 
 @pytest.fixture
@@ -15,12 +17,24 @@ def anyio_backend() -> str:
 @pytest.fixture
 async def database() -> AsyncIterator[Database]:
     url = os.environ.get("KINU_TEST_DATABASE_URL")
-    if not url:
+    cluster = os.environ.get("KINU_TEST_DATA_API_CLUSTER_ARN")
+    if not url and not cluster:
         pytest.skip("run make storage to verify PostgreSQL persistence")
-    database = Database(url)
+    database = (
+        Database(url)
+        if url
+        else application_database(
+            Settings(
+                data_api_cluster_arn=cluster,
+                data_api_secret_arn=os.environ.get("KINU_TEST_DATA_API_SECRET_ARN"),
+                aws_region=os.environ.get("AWS_REGION", "eu-west-2"),
+            )
+        )
+    )
     await database.open()
     try:
-        await database.migrate()
+        if not cluster:
+            await database.migrate()
         yield database
     finally:
         await database.close()

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager, suppress
@@ -91,20 +92,27 @@ class DataConnection:
         request: dict[str, Any] = dict(self._api.parameters)
         if operation in {"commit_transaction", "rollback_transaction"}:
             request.pop("database")
-        try:
-            return await self._api.aws.call(
-                "rds-data",
-                operation,
-                self._api.region,
-                **request,
-                **parameters,
-            )
-        except AwsError as error:
-            if error.sqlstate:
-                raise errors.lookup(error.sqlstate)("application storage query failed") from None
-            raise StorageUnavailableError(
-                "application storage is temporarily unavailable"
-            ) from None
+        for attempt in range(5):
+            try:
+                return await self._api.aws.call(
+                    "rds-data", operation, self._api.region, **request, **parameters
+                )
+            except AwsError as error:
+                if (
+                    error.code == "DatabaseResumingException"
+                    and self._transaction is None
+                    and attempt < 4
+                ):
+                    await asyncio.sleep(attempt + 1)
+                    continue
+                if error.sqlstate:
+                    raise errors.lookup(error.sqlstate)(
+                        "application storage query failed"
+                    ) from None
+                raise StorageUnavailableError(
+                    f"application storage is temporarily unavailable ({error.code})"
+                ) from None
+        raise AssertionError("Data API retry limit was exceeded")
 
 
 class DataCursor:
