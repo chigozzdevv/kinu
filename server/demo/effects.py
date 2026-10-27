@@ -246,9 +246,14 @@ class Effects:
 
 
 def _healthy(value: dict[str, Any], provider_id: str | None, reference: str) -> None:
+    if value.get("ok") is not True:
+        raise ConnectorError(
+            "demo-consumer-" + str(value.get("state", "unhealthy")),
+            "Consumer could not verify access to the provider",
+            retryable=value.get("state") == "provider-unavailable",
+        )
     if (
-        value.get("ok") is not True
-        or value.get("provider_id") != provider_id
+        value.get("provider_id") != provider_id
         or value.get("secret_version") != SecretRef.parse(reference, version=True).version
     ):
         raise ConnectorError(

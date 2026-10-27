@@ -29,14 +29,25 @@ async def check(event: dict[str, Any]) -> dict[str, Any]:
     )
     value = SecretValue(response.get("SecretBinary") or str(response["SecretString"]).encode())
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-            result = await client.get(
-                os.environ["KINU_PROVIDER_URL"] + "/api/check",
-                headers={
-                    "Authorization": "Bearer " + value.bytes().decode(),
-                    "x-demo-organisation": organisation,
-                },
-            )
+        async with httpx.AsyncClient(timeout=4, follow_redirects=False) as client:
+            for attempt in range(3):
+                try:
+                    result = await client.get(
+                        os.environ["KINU_PROVIDER_URL"] + "/api/check",
+                        headers={
+                            "Authorization": "Bearer " + value.bytes().decode(),
+                            "x-demo-organisation": organisation,
+                        },
+                    )
+                except httpx.TransportError:
+                    if attempt == 2:
+                        return {"ok": False, "state": "provider-unavailable", "demo": True}
+                else:
+                    if result.status_code < 500 and result.status_code not in {408, 429}:
+                        break
+                    if attempt == 2:
+                        return {"ok": False, "state": "provider-unavailable", "demo": True}
+                await asyncio.sleep(0.3 * (attempt + 1))
         if result.status_code in {401, 403}:
             return {"ok": False, "state": "provider-rejected", "demo": True}
         if result.status_code != 200:
