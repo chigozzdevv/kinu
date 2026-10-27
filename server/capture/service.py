@@ -9,6 +9,7 @@ from connectors.base import SecretValue
 from connectors.secrets import SecretStore
 from contracts import (
     Connection,
+    ConnectionAuthorization,
     ConnectionInterface,
     ConnectionRole,
     PageCheckpoint,
@@ -156,7 +157,10 @@ class SecureCapture:
                     raise CaptureError(
                         "secure capture sink is not an assigned secret store connection"
                     )
-                if access_token is None:
+                if (
+                    access_token is None
+                    and connection.authorization is not ConnectionAuthorization.WORKLOAD_IDENTITY
+                ):
                     raise CaptureError("secure capture has no ephemeral secret-store authorization")
                 stored = await self._secrets.add_version_for(
                     connection, secret_resource, value, access_token

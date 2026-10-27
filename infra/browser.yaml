@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu browser isolation without raw session recording
+Resources:
+  Browser:
+    Type: AWS::BedrockAgentCore::BrowserCustom
+    Properties:
+      Name: KinuBrowser
+      Description: Trusted credential capture with model observations controlled by Kinu
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      RecordingConfig:
+        Enabled: false
+      Tags:
+        app: kinu
+Outputs:
+  BrowserId:
+    Value: !GetAtt Browser.BrowserId
+  BrowserArn:
+    Value: !GetAtt Browser.BrowserArn
