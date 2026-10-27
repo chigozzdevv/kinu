@@ -73,8 +73,8 @@ function agentName(agent: "inventory" | "planner" | "playbook" | "operator") {
 
 function currentStageExecutor(run: RotationRun): { label: "Agent" | "Executor"; value: string } {
   if (run.status === "recovering") return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
-  if (run.stage === "preflight") return { label: "Agent", value: "Inventory and Exposure Agent" }
-  if (run.stage === "plan") return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
+  if (run.stage === "preflight" && run.browser_playbook_version) return { label: "Agent", value: "Inventory and Exposure Agent" }
+  if (run.stage === "plan" && run.browser_playbook_version) return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
   if (["create", "revoke"].includes(run.stage) && run.browser_playbook_version) return { label: "Agent", value: "Console Operator Agent" }
   const executors: Record<StageName, string> = {
     trigger: "Workflow",

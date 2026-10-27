@@ -28,7 +28,7 @@ def install(app: FastAPI, aws: AwsApi, region: str, bucket: str) -> None:
         extension = key.rpartition(".")[2]
         if not re.fullmatch(r"(?:assets/)?[A-Za-z0-9_.-]+", key) or extension not in _TYPES:
             raise HTTPException(404, "Asset is unavailable")
-        if key not in cached:
+        if key not in cached or key == "index.html":
             try:
                 result: dict[str, Any] = await aws.call(
                     "s3", "get_object", region, Bucket=bucket, Key=key

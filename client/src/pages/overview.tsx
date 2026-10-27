@@ -3,7 +3,7 @@ import { ArrowUpRight, Check, ChevronRight, ChevronUp } from "lucide-react"
 import { useState } from "react"
 import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
-import { Failure, Loading } from "../components/state"
+import { Failure, Loading, Notice } from "../components/state"
 import { Button } from "../components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { api } from "../lib/api"
@@ -78,16 +78,16 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     ],
   })
 
-  const queries = [runs, incidents, approvals, graph, connections, playbooks]
+  const queries = [runs, incidents, graph, connections]
   if (queries.some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = queries.find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
 
   const credentials = graph.data!.credentials.filter((item) => !item.archived_at)
   const activeConnections = connections.data!.filter((item) => !item.archived_at)
-  const activePlaybooks = playbooks.data!.filter((item) => !item.archived_at)
+  const activePlaybooks = playbooks.data?.filter((item) => !item.archived_at) ?? []
   const credential = (id: string | null | undefined) => credentials.find((item) => item.id === id)
-  const pendingApprovals = approvals.data!.filter((approval) => approval.decision === "pending" && Date.parse(approval.expires_at) > Date.now())
+  const pendingApprovals = approvals.data?.filter((approval) => approval.decision === "pending" && Date.parse(approval.expires_at) > Date.now()) ?? []
   const approvalRunIds = new Set(pendingApprovals.map((approval) => approval.run_id))
   const actionableIncidents = incidents.data!.filter((incident) => incident.status === "action-required")
   const interruptedRuns = runs.data!.filter((run) => ["failed", "cleanup-required"].includes(run.status) || (run.status === "paused" && !approvalRunIds.has(run.id)))
@@ -96,10 +96,10 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
     .slice(0, 5)
 
-  const metrics: Array<{ label: string; value: number; target: NavItem }> = [
+  const metrics: Array<{ label: string; value: number | null; target: NavItem }> = [
     { label: "Credentials", value: credentials.length, target: "credentials" },
     { label: "Connections", value: activeConnections.length, target: "connections" },
-    { label: "Playbooks", value: activePlaybooks.length, target: "playbooks" },
+    { label: "Playbooks", value: playbooks.data ? activePlaybooks.length : null, target: "playbooks" },
     { label: "Rotations", value: runs.data!.length, target: "rotations" },
   ]
 
@@ -153,7 +153,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
   ]
   const visibleActionRows = showAllAttention ? actionRows : actionRows.slice(0, 2)
   const visibleRecentRuns = showAllActivities ? recentRuns : recentRuns.slice(0, 3)
-  const emptyOverview = metrics.every((metric) => metric.value === 0) && actionRows.length === 0 && recentRuns.length === 0
+  const emptyOverview = credentials.length === 0 && activeConnections.length === 0 && runs.data!.length === 0 && actionRows.length === 0
 
   if (emptyOverview) return <div className="page flex min-h-[calc(100vh-56px)] items-center justify-center py-12 lg:min-h-[calc(100vh-48px)]">
     <QuickStart steps={quickStart} onNavigate={onNavigate} />
@@ -161,6 +161,8 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
 
   return <div className="page">
     <PageHeader title="Overview" />
+    {approvals.error && <Notice>Approvals are currently unavailable.</Notice>}
+    {playbooks.error && <Notice>Computer Use playbooks are currently unavailable.</Notice>}
 
     <section aria-label="Inventory" className="mb-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map((metric) => <button
@@ -170,7 +172,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
       >
         <span>
           <span className="block text-[11px] font-medium text-[var(--ink-soft)]">{metric.label}</span>
-          <span className="mt-2 block text-[28px] font-semibold leading-none tracking-[-0.05em] text-[var(--ink)]">{metric.value}</span>
+          <span className="mt-2 block text-[28px] font-semibold leading-none tracking-[-0.05em] text-[var(--ink)]">{metric.value ?? "—"}</span>
         </span>
         <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
       </button>)}

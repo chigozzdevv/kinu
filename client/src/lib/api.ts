@@ -24,6 +24,7 @@ import type {
   MemberRole,
 } from "../types";
 import { clearSession, sessionHeaders } from "./auth"
+import { nativeRequest } from "./native"
 
 let organisationId = ""
 let ROOT = ""
@@ -575,12 +576,16 @@ class ApiClient {
   }
 
   async startRotation(input: StartRotationInput): Promise<RotationRun> {
-    const response = await this.request<{ run: RotationRun }>(`${ROOT}/runs`, {
-      method: "POST",
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({ ...input, source: "manual", event_id: `manual-${crypto.randomUUID()}`, received_at: new Date().toISOString() }),
+    const response = await nativeRequest<{ run: RotationRun }>(activeOrganisationId(), "actions/rotation", {
+      credentialId: input.credential_id, controlsId: input.control_version,
+      requestId: crypto.randomUUID(), observedAt: new Date().toISOString(),
+      reason: input.reason, urgency: input.urgency,
     })
     return response.run
+  }
+
+  async getDemo(): Promise<{ configured: boolean }> {
+    return this.request(`${ROOT}/demo`)
   }
 
   async getRotation(runId: string): Promise<RotationRun> {

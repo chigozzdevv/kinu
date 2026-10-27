@@ -122,6 +122,7 @@ export interface Connection {
   capabilities: string[]
   allowed_resources: string[]
   http: HttpProviderApi | null
+  rpc?: { function_arn: string, operations: Record<string, "metadata" | "create" | "revoke"> } | null
   playbook_id: Identifier | null
   playbook_version_id: Identifier | null
   status: ConnectionStatus

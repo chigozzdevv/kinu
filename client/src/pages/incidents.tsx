@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, ChevronRight } from "lucide-react"
 import { Detail, DetailCard, DetailList } from "../components/detail"
 import { PageHeader } from "../components/header"
+import { DemoAlert } from "../components/demo"
 import { Provider } from "../components/provider"
 import { Failure, Loading } from "../components/state"
 import { Toolbar } from "../components/toolbar"
@@ -156,6 +157,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Incidents" />
+    <DemoAlert />
     <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("open") }} filters={[{ label: "Status", value: status, defaultValue: "open", onChange: (event) => setStatus(event.target.value), children: <><option value="open">Open incidents</option><option value="all">All incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
     <Table>
       <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Affected resource</TableHead><TableHead>Credential</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
