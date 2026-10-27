@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS kinu.sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_expiry ON kinu.sessions(expires_at);
 
-DROP TABLE IF EXISTS kinu.logins;
 CREATE TABLE IF NOT EXISTS kinu.auth_forms (
     token_hash text PRIMARY KEY,
     csrf_token text NOT NULL,
