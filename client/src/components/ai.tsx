@@ -12,7 +12,7 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
   const org = useOrganisation().active.organisation.id
   const state = useQuery({ queryKey: ["builder", org], queryFn: () => nativeRequest<BuilderStatus>(org, "builder/status"), retry: false })
   const action = useMutation({
-    mutationFn: async ({ name, model }: { name: "connect" | "disconnect" | "model" | "test", model?: string }) => {
+    mutationFn: async ({ name, model }: { name: "connect" | "disconnect" | "model", model?: string }) => {
       const result = await nativeRequest<{ authorization_url?: string }>(org, `builder/${name}`, model ? { model } : {})
       if (result.authorization_url) window.location.assign(result.authorization_url)
       await cache.invalidateQueries({ queryKey: ["builder"] })
@@ -22,7 +22,7 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
   if (state.error) return <Failure error={state.error} />
   const current = state.data!
   return <div className="max-w-[700px] space-y-6">
-    <p className="text-sm text-[var(--ink-muted)]">Connect Builder.io to assess incident alerts. This uses your Builder credits.</p>
+    <p className="text-sm text-[var(--ink-muted)]">Assess incident alerts with your Builder.io credits.</p>
     <DetailList>
       <Detail label="Connection"><Badge variant={current.connected ? "healthy" : "neutral"}>{current.connected ? "Connected" : "Not connected"}</Badge></Detail>
       <Detail label="Last verified">{current.verified_at ? new Date(current.verified_at).toLocaleString() : "Not verified yet"}</Detail>
@@ -33,7 +33,7 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
     </div>
     {administrator && <div className="flex gap-3">
       <Button disabled={action.isPending} onClick={() => action.mutate({ name: "connect" })}>{current.connected ? "Reconnect Builder.io" : "Connect Builder.io"}</Button>
-      {current.connected && <><Button variant="ghost" disabled={action.isPending} onClick={() => action.mutate({ name: "test" })}>Verify connection</Button><Button variant="ghost" disabled={action.isPending} onClick={() => action.mutate({ name: "disconnect" })}>Disconnect</Button></>}
+      {current.connected && <Button variant="ghost" disabled={action.isPending} onClick={() => action.mutate({ name: "disconnect" })}>Disconnect</Button>}
     </div>}
     {!administrator && <p className="text-sm text-[var(--ink-muted)]">A workspace administrator manages this connection.</p>}
     {action.isPending && <p role="status" className="text-sm">Updating connection…</p>}

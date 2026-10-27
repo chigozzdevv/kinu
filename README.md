@@ -30,7 +30,7 @@ A worker crash after mutation requires evidence review; Kinu does not blindly re
 ## Connect AI
 
 Sign in, select a workspace and open **Settings → AI → Connect Builder.io**. Workspace
-administrators authorize Builder AI, select a model and verify the connection. OAuth requests
+administrators authorize Builder AI and select a model. OAuth requests
 only AI invocation and refresh access. Each workspace is capped at 20 inference calls per UTC day.
 Builder account access and usage allowances still apply.
 
