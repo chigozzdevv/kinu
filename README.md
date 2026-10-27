@@ -2,11 +2,13 @@
 
 Credential rotation and verification, with policy gates, approvals, and evidence.
 
-The app includes the operator dashboard, Cognito browser sign-in, PostgreSQL sessions
-and workspace access, and an Agent-Native service that shares the authenticated identity.
+The app includes the operator dashboard, Cognito browser sign-in, PostgreSQL sessions,
+workspace access and inventory, and an Agent-Native service that shares the authenticated identity.
 Credential rotation, mailbox connections, AWS secret storage, and deployment are still pending.
 
 ## Local development
+
+AWS is the deployment target. Local services support development and predeployment checks.
 
 Requirements: Python 3.12, uv, Node.js 24+, and npm.
 
@@ -69,6 +71,12 @@ Origin and CSRF token. Logout deletes the server session before redirecting to C
 Workspace memberships, profiles, and invitations persist in PostgreSQL. Workspace access is
 checked against current membership on each request. Invitation delivery is not implemented yet.
 
+Connections, applications, environments, services, credentials, generations, bindings, and
+control versions also persist in PostgreSQL. Imports and cascading archives are atomic;
+edits require the current revision. Relationships and connection boundaries are checked
+inside the write transaction. Secret values are not inventory fields; records hold references.
+AWS connection validation and secret storage still require their service adapters.
+
 ## Agent-Native
 
 `agent/` uses the Agent-Native custom authentication plugin. It resolves the Kinu cookie
@@ -95,7 +103,8 @@ make verify
 This checks Python formatting, lint, types, tests, the frontend build, and the Agent-Native
 build and session tests. It also starts an ephemeral PostgreSQL-compatible database for SQL
 repository tests, then runs the built API and Agent-Native services together to verify
-identity sharing, workspace isolation, CSRF enforcement, expiry, and logout revocation.
+inventory persistence, identity sharing, workspace isolation, CSRF enforcement, expiry,
+and logout revocation.
 Login tests use a simulated Cognito provider with real signed tokens; they do not contact AWS.
 
 `make image` builds the API container when Docker is available. Schema initialization is

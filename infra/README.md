@@ -1,6 +1,11 @@
 # Kinu infrastructure
 
-The previous Google Cloud deployment has been removed. This directory intentionally has
-no deployable resources yet. AWS infrastructure will be designed and implemented in the
-next phase, together with identity, storage, secret management, events, runtime isolation,
-and observability adapters. No AWS resources have been created by this cleanup.
+AWS is the deployment target. Deployable infrastructure definitions are still pending.
+
+The API requires Cognito configuration and a PostgreSQL database. Set an HTTPS public URL,
+use TLS for database access, and keep database credentials in the API environment. The
+Agent-Native service verifies sessions through the API and must not receive database credentials.
+
+AgentCore Browser, Secrets Manager, mailbox ingestion, and runtime update adapters are
+not connected yet. Local tests verify the application before deployment; they do not
+provision AWS resources or prove a live rotation.
