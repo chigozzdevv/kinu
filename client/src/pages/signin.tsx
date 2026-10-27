@@ -35,7 +35,6 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
   const needsPassword = mode === "signin" || newPassword
   const needsCode = mode === "verify" || mode === "reset"
   const disabled = !configured || busy
-  const ready = Boolean(email.trim()) && (!needsPassword || Boolean(password)) && (!needsCode || code.length === 6)
 
   function change(next: Mode, notice = "") {
     setMode(next)
@@ -49,15 +48,19 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (disabled) return
+    const fields = new FormData(event.currentTarget)
+    const submittedEmail = String(fields.get("email") ?? "").trim()
+    const submittedPassword = String(fields.get("password") ?? "")
+    setEmail(submittedEmail)
     setError("")
     setMessage("")
-    if (newPassword && password !== confirm) { setError("Passwords do not match."); return }
+    if (newPassword && submittedPassword !== fields.get("confirm")) { setError("Passwords do not match."); return }
     setBusy(true)
     try {
-      const body: Record<string, string> = { email: email.trim() }
-      if (needsPassword) body.password = password
-      if (needsCode) body.code = code
-      if (mode === "signup") body.name = name.trim()
+      const body: Record<string, string> = { email: submittedEmail }
+      if (needsPassword) body.password = submittedPassword
+      if (needsCode) body.code = String(fields.get("code") ?? "")
+      if (mode === "signup") body.name = String(fields.get("name") ?? "").trim()
       if (mode === "signin") body.return_to = returnTo
       const result = await submitAuth(mode, body)
       if (result.next === "complete") {
@@ -101,7 +104,7 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
           <span>{titles[mode]}</span>
         </h1>
         {descriptions[mode] && <p className="mt-6 text-center text-[12px] leading-5 text-[var(--ink-soft)]">{descriptions[mode]}</p>}
-        <form className="mt-8 space-y-4" onSubmit={(event) => { void submit(event) }}>
+        <form className="group mt-8 space-y-4" onSubmit={(event) => { void submit(event) }}>
           {mode === "signup" && <label className="block" htmlFor="auth-name">
             <span className={labelClass}>Name</span>
             <input id="auth-name" name="name" className={formControl} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} required disabled={disabled} />
@@ -126,7 +129,7 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
             <span className={labelClass}>Confirm password</span>
             <input id="auth-confirm" name="confirm" className={formControl} type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={12} maxLength={256} required disabled={disabled} />
           </label>}
-          <Button className="h-12 w-full text-[14px]" type="submit" disabled={disabled || !ready}>{busy ? "Continuing…" : actions[mode]}</Button>
+          <Button className="h-12 w-full text-[14px] group-invalid:opacity-45" type="submit" disabled={disabled}>{busy ? "Continuing…" : actions[mode]}</Button>
         </form>
         <div className="mt-6 text-center text-[11px] text-[var(--ink-soft)]">
           {mode === "signin" ? <>New to Kinu? <button type="button" className={linkClass} disabled={disabled} onClick={() => change("signup")}>Sign up</button></> : <button type="button" className={linkClass} disabled={disabled} onClick={() => change("signin")}>Back to sign in</button>}
