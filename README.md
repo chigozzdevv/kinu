@@ -75,7 +75,7 @@ Local Cognito tests use signed fixture tokens. A passing local suite does not pr
 or Builder account authorization. The SDK's disabled chat dependency has a transitive Zod 3
 advisory; review it before enabling any generic chat route.
 
-Deployment instructions are in [infra/README.md](infra/README.md). Invitation delivery and
+Infrastructure templates and deployment utilities are in `infra/`. Invitation delivery and
 arbitrary production provider connections are not implemented.
 
 ## Layout
