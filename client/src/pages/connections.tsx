@@ -23,6 +23,7 @@ import { connectionAction, connectionStatus, formatDate, titleCase } from "../li
 import { PlaybookSetup } from "./playbooks"
 import { BrowserSetupSession, type BrowserSetupCapability } from "./browsersetup"
 import { AwsSetup } from "./aws"
+import { GmailSetup } from "./gmail"
 
 function identifier(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`
@@ -78,6 +79,7 @@ function requiresBrowserAuthentication(connection: Connection) {
 }
 
 function disconnectImpact(connection: Connection) {
+  if (connection.platform === "gmail") return "Stops Gmail monitoring and removes saved access for this workspace."
   if (connection.platform === "github") return "Removing this connection will disable GitHub security monitoring for exposed credentials."
   if (connection.interface === "browser") return `Removing this connection will stop Kinu from rotating credentials through ${connection.display_name} with Computer Use.`
   if (connection.roles.includes("provider")) return `Removing this connection will stop Kinu from creating, testing, and revoking credentials through ${connection.display_name}.`
@@ -102,6 +104,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [initialSelectionHandled, setInitialSelectionHandled] = useState(false)
   const [editName, setEditName] = useState("")
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
+  const [gmailSetupId, setGmailSetupId] = useState<string | null>(null)
   const [awsSetupId, setAwsSetupId] = useState<string | null>(null)
   const [connections, playbooks, graph] = useQueries({ queries: [
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
@@ -181,6 +184,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const error = [connections, graph].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
   const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
+  if (gmailSetupId) return <GmailSetup connectionId={gmailSetupId} connections={connections.data!} onClose={() => setGmailSetupId(null)} onBack={() => setGmailSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["gmail", gmailSetupId] }) }} onCreated={async (connection) => { setSelected(connection); setGmailSetupId(null) }} />
   if (awsSetupId) return <AwsSetup connectionId={awsSetupId} onClose={() => setAwsSetupId(null)} onBack={() => setAwsSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async (connection) => { setSelected(connection); setAwsSetupId(null) }} />
 
   if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
@@ -193,7 +197,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   if (currentSelected) return <div className="page">
     {playbookNotice}
-    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
@@ -246,6 +250,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const features = useFeatures()
   const available = {
     github: features.data?.github === true,
+    gmail: features.data?.gmail === true,
     aws: features.data?.aws_connections === true,
     "custom-api": features.data?.provider_api === true,
     "computer-use": features.data?.browser_setup === true,
@@ -254,13 +259,14 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const requestedCloud = initialRoles.some((role) => role === "runtime" || role === "secret-store")
   const requestedIncident = initialRoles.length === 1 && initialRoles[0] === "incident"
   const visible: IntegrationKind[] = requestedIncident
-    ? ["github"]
+    ? ["gmail", "github"]
     : requestedProvider
     ? ["custom-api", "computer-use"]
     : requestedCloud
       ? ["aws"]
-      : ["github", "aws", "custom-api", "computer-use"]
+      : ["gmail", "github", "aws", "custom-api", "computer-use"]
   const connected = {
+    gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
     aws: connections.some((item) => item.platform === "aws" && item.status === "ready"),
     "custom-api": connections.some((item) => item.interface === "api" && item.roles.includes("provider") && item.http !== null),
@@ -273,6 +279,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
 
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
+  if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
   if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
 

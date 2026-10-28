@@ -3,8 +3,9 @@ import { connections } from "./api/connections"
 import { playbooks } from "./api/playbooks"
 import { workflow } from "./api/workflow"
 import { settings } from "./api/settings"
+import { gmail } from "./api/gmail"
 
-export const api = { ...inventory, ...connections, ...playbooks, ...workflow, ...settings }
+export const api = { ...inventory, ...connections, ...playbooks, ...workflow, ...settings, ...gmail }
 
 export { ApiError, activeOrganisationId, setActiveOrganisationId } from "./api/http"
 export type * from "./api/types"

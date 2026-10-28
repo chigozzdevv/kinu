@@ -1,10 +1,11 @@
 import { Icon } from "@iconify/react"
 import githubIcon from "@iconify-icons/logos/github-icon.js"
 import aws from "@iconify-icons/logos/aws.js"
+import gmail from "@iconify-icons/logos/google-gmail.js"
 import { Braces, ChevronRight, MonitorCog } from "lucide-react"
 import type { ElementType } from "react"
 
-export type IntegrationKind = "github" | "aws" | "custom-api" | "computer-use"
+export type IntegrationKind = "github" | "gmail" | "aws" | "custom-api" | "computer-use"
 
 type Integration = {
   id: IntegrationKind
@@ -16,6 +17,7 @@ type Integration = {
 }
 
 const integrations: Integration[] = [
+  { id: "gmail", name: "Gmail", description: "Incident emails", action: "Connect", logo: gmail },
   { id: "github", name: "GitHub", description: "Secret scanning", action: "Connect", logo: githubIcon },
   { id: "aws", name: "AWS", description: "Secrets and workloads", action: "Connect", logo: aws },
   { id: "custom-api", name: "Custom API", description: "Provider credential API", action: "Configure", icon: Braces },

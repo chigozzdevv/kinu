@@ -215,6 +215,7 @@ export interface CredentialControlsResponse {
 export interface Features {
   aws_connections: boolean
   github: boolean
+  gmail: boolean
   provider_api: boolean
   browser_setup: boolean
   browser_execution: boolean

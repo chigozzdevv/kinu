@@ -61,7 +61,8 @@ export function AuthenticationBoundary() {
     void api.getSession().then((value) => {
       if (!current) return
       sessionStorage.removeItem(dashboardReturnKey)
-      const membership = storedOrganisation(value.organisations)
+      const callbackWorkspace = new URLSearchParams(window.location.search).get("workspace")
+      const membership = (connectionCallbackIntegration() === "gmail" ? value.organisations.find((item) => item.organisation.id === callbackWorkspace) : undefined) ?? storedOrganisation(value.organisations)
       if (membership) activateOrganisation(membership)
       setSession(value)
       setActive(membership)

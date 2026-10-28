@@ -8,7 +8,7 @@ exposes the same scoped actions used by the dashboard.
 
 ## Current flow
 
-1. An operator requests a rotation, or a labelled demo email reports an exposure.
+1. A selected Gmail sender reports a credential alert, or an operator requests a rotation.
 2. Email events are deduplicated and correlated with the current credential. Builder AI
    assesses a small structured summary; application policy decides whether rotation is allowed.
 3. An SQS worker validates the pinned controls and creates a replacement through the provider API.
@@ -19,8 +19,8 @@ exposes the same scoped actions used by the dashboard.
 
 The API executor supports a declared HTTP credential provider, Secrets Manager and one selected
 Lambda consumer. The isolated demo remains available with its own provider and consumer.
-Its email is an explicitly labelled MIME fixture, not a connected inbox. Gmail OAuth is not
-implemented yet. AgentCore Browser awaits an AWS quota approval; the browser
+Its email is an explicitly labelled MIME fixture. Gmail connects through Google's read-only OAuth
+flow; its private reader checks new matching messages every five minutes. AgentCore Browser awaits an AWS quota approval; the browser
 adapter and capture guards have local tests, but the browser rotation is not live verified.
 
 Failures before retirement restore the previous consumer and revoke the candidate when safe.
@@ -44,6 +44,30 @@ rotation functions assume a workspace-specific role using an external ID and ses
 Session policies restrict each operation to the selected resources. Only these private functions
 and the consumer handle secret values; the dashboard, model and execution history receive
 references, identifiers and checks.
+
+## Connect Gmail
+
+Open **Connections → Gmail**, approve read access, then add exact sender addresses and select
+their credential providers. To allow automatic exposure response, add that Gmail sender to the
+credential's exposure sources and enable its exposure trigger in Controls.
+
+Gmail grants mailbox-wide read access; Kinu filters sender metadata before fetching a body.
+Only new matching messages up to 256 KiB are processed. Attachments are ignored. Automatic
+rotation requires a valid sender-aligned DKIM signature, a unique mapped credential ID,
+permitted controls and a rotate decision. Other alerts remain for review. The current parser
+recognizes exposure and expiry language in the subject and plain-text body; HTML-only notices
+and alerts without a known credential ID can require manual correlation.
+
+OAuth grants are encrypted in a dedicated DynamoDB table. Its key and Google client secret
+stay in a separate Secrets Manager secret accessible only to the private mail function.
+Mail bodies are neither stored nor sent to the model. Disconnecting removes the workspace's
+saved grant; Google account permissions can also be revoked through the linked Google settings.
+
+Before connecting an inbox, register a Google web OAuth client with the mail stack's exact
+callback URL, enable the Gmail API and configure its consent screen. For a Google app in
+Testing, add test users; read-access refresh tokens normally expire after seven days.
+Public use of Gmail's restricted read scope requires Google's verification process and may
+require a security assessment.
 
 ## Available features
 
@@ -134,8 +158,13 @@ python -m infra.native
 python -m infra.bootstrap --native
 python -m infra.launch
 python -m infra.executor
+python -m infra.mail
 python -m infra.deploy
 ```
+
+Configure Gmail with `python -m infra.mail --credentials /path/to/google-client.json`.
+The command writes the OAuth client into the private AWS vault without changing its encryption
+key. Keep the downloaded credential file outside Git. No Google compute resources are used.
 
 Database initialization is explicit. Routine app, native and demo deployments do not initialize
 roles or schemas. Deployment tools discover stack outputs from AWS; they do not depend on local
@@ -158,6 +187,7 @@ Existing demo role bindings are recovered from PostgreSQL.
 | `server/api/`, `server/core/` | Auth, inventory, policy and workflow |
 | `server/rotation/`, `server/cloud/` | Shared staged executor and private AWS functions |
 | `server/demo/` | Isolated demo provider, consumer and email fixture |
+| `server/mail/` | Gmail OAuth, sender filtering and incident assessment |
 | `server/browser/`, `server/capture/` | Protected browser observations and capture |
 | `server/connectors/` | AWS and provider adapters |
 | `packages/` | Shared contracts, policy and telemetry |
@@ -166,4 +196,4 @@ Existing demo role bindings are recovered from PostgreSQL.
 Licensed under Apache 2.0. See [LICENSE](LICENSE).
 
 Sign-up, email verification, code resend and password reset use the same Cognito pool. Passwords
-and provider tokens stay out of Kinu storage. A password reset revokes existing Kinu sessions.
+remain in Cognito. A password reset revokes existing Kinu sessions.
