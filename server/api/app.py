@@ -53,6 +53,7 @@ from api.routes.connections import router as connections_router
 from api.routes.demo import router as demo_router
 from api.routes.features import router as features_router
 from api.routes.gmail import router as gmail_router
+from api.routes.hosts import router as hosts_router
 from api.routes.installation import router as installation_router
 from api.routes.integrations import router as integrations_router
 from api.routes.providers import router as providers_router
@@ -90,6 +91,7 @@ def create_app(
     app.include_router(inventory_router)
     app.include_router(connections_router)
     app.include_router(gmail_router)
+    app.include_router(hosts_router)
     app.include_router(notifications_router)
     app.include_router(playbooks_router)
     app.include_router(probes_router)

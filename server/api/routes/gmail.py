@@ -1,16 +1,14 @@
-import hashlib
 from urllib.parse import urlencode
 
 from contracts import Contract, Identifier
 from core.auth import Permission
-from core.config import Settings
 from core.errors import AuthenticationError, KinuError
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 from mail.models import CALLBACK, Mailbox, SenderUpdate
 from pydantic import Field
 
-from api.deps import Identity, browser_session, required, services, session_cookie
+from api.deps import Identity, browser_session, required, services, session_binding
 from api.inventory.shared import _audit_change
 
 router = APIRouter(tags=["connections"])
@@ -23,12 +21,6 @@ class BeginRequest(Contract):
 
 class DisconnectRequest(Contract):
     expected_revision: int = Field(ge=0)
-
-
-def binding(request: Request) -> str:
-    config: Settings = request.app.state.config
-    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
-    return hashlib.sha256((session_cookie(request, name) or "").encode()).hexdigest()
 
 
 @router.get(PREFIX)
@@ -47,7 +39,7 @@ async def begin(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
     target = await required(api.gmail, "gmail").begin(
-        organisation_id, identity.actor_id, binding(request), body.mailbox_id
+        organisation_id, identity.actor_id, session_binding(request), body.mailbox_id
     )
     return {"authorization_url": target}
 
@@ -65,7 +57,7 @@ async def callback(
         current = await browser_session(request)
         api = services(request)
         gmail = required(api.gmail, "gmail")
-        bound = binding(request)
+        bound = session_binding(request)
         org = await gmail.owner(state, current.identity.actor_id, bound)
         await api.access.require(current.identity, org, Permission.INVENTORY_WRITE)
         approved = code if not error and iss in {None, "https://accounts.google.com"} else None

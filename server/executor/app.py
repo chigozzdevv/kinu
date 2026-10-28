@@ -14,6 +14,7 @@ from mail.control import control as mail_control
 
 from executor.config import ExecutorSettings
 from executor.deps import authenticated
+from executor.hosts import router as hosts_router
 from executor.integrations import router as integrations_router
 from executor.providers import router as providers_router
 from executor.runtime import Runtime, runtime
@@ -86,3 +87,4 @@ async def invalid(request: Request, error: RequestValidationError) -> JSONRespon
 
 app.include_router(integrations_router)
 app.include_router(providers_router)
+app.include_router(hosts_router)

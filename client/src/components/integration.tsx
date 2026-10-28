@@ -1,11 +1,12 @@
 import { Icon } from "@iconify/react"
 import githubIcon from "@iconify-icons/logos/github-icon.js"
 import aws from "@iconify-icons/logos/aws.js"
+import vercel from "@iconify-icons/logos/vercel-icon.js"
 import gmail from "@iconify-icons/logos/google-gmail.js"
-import { Braces, ChevronRight, MonitorCog } from "lucide-react"
+import { Braces, ChevronRight, MonitorCog, TrainFront, Layers } from "lucide-react"
 import type { ElementType } from "react"
 
-export type IntegrationKind = "github" | "gmail" | "aws" | "custom-api" | "computer-use"
+export type IntegrationKind = "github" | "gmail" | "aws" | "custom-api" | "computer-use" | "vercel" | "railway" | "render"
 
 type Integration = {
   id: IntegrationKind
@@ -19,6 +20,9 @@ type Integration = {
 const integrations: Integration[] = [
   { id: "gmail", name: "Gmail", description: "Incident emails", action: "Connect", logo: gmail },
   { id: "github", name: "GitHub", description: "Secret scanning", action: "Connect", logo: githubIcon },
+  { id: "vercel", name: "Vercel", description: "Projects and variables", action: "Connect", logo: vercel },
+  { id: "railway", name: "Railway", description: "Projects and variables", action: "Connect", icon: TrainFront },
+  { id: "render", name: "Render", description: "Services and variables", action: "Connect", icon: Layers },
   { id: "aws", name: "AWS", description: "Secrets and workloads", action: "Connect", logo: aws },
   { id: "custom-api", name: "Custom API", description: "Provider credential API", action: "Configure", icon: Braces },
   { id: "computer-use", name: "Computer Use", description: "Provider actions through a Playbook", action: "Set up", icon: MonitorCog },

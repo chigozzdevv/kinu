@@ -17,6 +17,8 @@ class Variable(Contract):
     name: str
     key_id: str
     readable: bool = False
+    environment_name: str | None = None
+    service_name: str | None = None
 
 
 class Deployment(Contract):

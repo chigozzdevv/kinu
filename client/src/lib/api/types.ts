@@ -213,6 +213,7 @@ export interface CredentialControlsResponse {
 }
 
 export interface Features {
+  hosting: boolean
   aws_connections: boolean
   github: boolean
   gmail: boolean

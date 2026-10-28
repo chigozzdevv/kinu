@@ -43,6 +43,10 @@ class InventoryChanges:
         current = await self.catalog.get_connection(organisation_id, resource_id)
         if current.archived_at is not None:
             raise ResourceConflictError("archived connections cannot be edited")
+        if (current.authorization_reference or "").startswith("hosting://") and (
+            allowed_resources is not None or capabilities is not None or region is not None
+        ):
+            raise ResourceConflictError("Manage hosting access through its connection")
         changed = _change(
             current,
             expected_revision,

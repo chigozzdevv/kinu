@@ -98,6 +98,12 @@ async def browser_session(request: Request) -> BrowserSession:
     return session
 
 
+def session_binding(request: Request) -> str:
+    config = cast(Settings, request.app.state.config)
+    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
+    return hashlib.sha256((session_cookie(request, name) or "").encode()).hexdigest()
+
+
 def session_cookie(request: Request, name: str) -> str | None:
     values = [
         value.strip()

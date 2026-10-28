@@ -2,6 +2,10 @@ import type { IntegrationKind } from "../components/integration"
 
 export function connectionCallbackIntegration(): IntegrationKind | null {
   const parameters = new URLSearchParams(window.location.search)
+  if (parameters.has("hosting")) {
+    const platform = parameters.get("platform")
+    if (platform === "vercel" || platform === "railway" || platform === "render") return platform
+  }
   if (parameters.has("gmail")) return "gmail"
   if (parameters.has("github") || parameters.has("installation_id")) return "github"
   if (parameters.has("code") && sessionStorage.getItem("kinu.github")) return "github"

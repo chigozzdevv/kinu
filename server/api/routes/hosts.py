@@ -1,0 +1,140 @@
+from typing import Any
+from urllib.parse import urlencode
+
+from contracts import Connection, Identifier
+from core.auth import AuthenticatedIdentity, Permission
+from core.errors import AuthenticationError, KinuError
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import RedirectResponse
+from hosting.models import Begin, Platform, Selection
+
+from api.deps import Identity, browser_session, required, services, session_binding
+from api.inventory.shared import _audit_change
+
+router = APIRouter(tags=["connections"])
+PREFIX = "/v1/organisations/{organisation_id}/connections/hosting"
+
+
+async def call(
+    request: Request, identity: AuthenticatedIdentity, org: str, operation: str, **parameters: Any
+) -> Any:
+    api = services(request)
+    await api.access.require(identity, org, Permission.INVENTORY_WRITE)
+    return await required(api.private, "private execution").call(
+        "/hosting",
+        {
+            "operation": operation,
+            "organisation_id": org,
+            "actor_id": identity.actor_id,
+            "session": session_binding(request),
+            **parameters,
+        },
+    )
+
+
+@router.post(PREFIX)
+async def begin(
+    organisation_id: Identifier, body: Begin, identity: Identity, request: Request
+) -> Any:
+    data = body.model_dump(mode="json", exclude={"token"})
+    if body.token:
+        data["token"] = body.token.get_secret_value()
+    return await call(request, identity, organisation_id, "begin", data=data)
+
+
+@router.get("/connections/{platform}/callback")
+async def callback(
+    request: Request,
+    platform: Platform,
+    state: str = Query(default="", max_length=128),
+    code: str | None = Query(default=None, max_length=4096),
+    error: str | None = Query(default=None, max_length=256),
+    iss: str | None = Query(default=None, max_length=128),
+) -> RedirectResponse:
+    destination = "/dashboard/connections?hosting=failed&platform=" + platform
+    try:
+        current, api = await browser_session(request), services(request)
+        parameters = {
+            "platform": platform,
+            "actor_id": current.identity.actor_id,
+            "session": session_binding(request),
+            "state": state,
+        }
+        private = required(api.private, "private execution")
+        org = await private.call("/hosting", {"operation": "owner", **parameters})
+        await api.access.require(current.identity, org, Permission.INVENTORY_WRITE)
+        approved = (
+            code
+            if not error and (platform != "railway" or iss == "https://backboard.railway.com")
+            else None
+        )
+        identity = await private.call(
+            "/hosting",
+            {"operation": "finish", "organisation_id": org, **parameters, "code": approved},
+        )
+        destination = "/dashboard/connections?" + urlencode(
+            {"hosting": identity, "platform": platform, "workspace": org}
+        )
+    except AuthenticationError:
+        destination = "/dashboard/connections?hosting=expired&platform=" + platform
+    except KinuError:
+        pass
+    return RedirectResponse(
+        destination,
+        status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@router.get(PREFIX + "/{connection_id}")
+async def projects(
+    organisation_id: Identifier, connection_id: Identifier, identity: Identity, request: Request
+) -> Any:
+    return await call(request, identity, organisation_id, "projects", connection_id=connection_id)
+
+
+@router.put(PREFIX + "/{connection_id}")
+async def save(
+    organisation_id: Identifier,
+    connection_id: Identifier,
+    body: Selection,
+    identity: Identity,
+    request: Request,
+) -> Connection:
+    saved = Connection.model_validate(
+        await call(
+            request,
+            identity,
+            organisation_id,
+            "save",
+            connection_id=connection_id,
+            data=body.model_dump(mode="json"),
+        )
+    )
+    await _audit_change(
+        services(request),
+        organisation_id,
+        identity.actor_id,
+        "hosting.connected",
+        connection_id,
+        saved.revision,
+    )
+    return saved
+
+
+@router.get(PREFIX + "/{connection_id}/variables")
+async def variables(
+    organisation_id: Identifier,
+    connection_id: Identifier,
+    identity: Identity,
+    request: Request,
+    project_id: str = Query(min_length=1, max_length=256),
+) -> Any:
+    return await call(
+        request,
+        identity,
+        organisation_id,
+        "variables",
+        connection_id=connection_id,
+        project_id=project_id,
+    )

@@ -8,6 +8,7 @@ router = APIRouter(prefix="/v1/organisations/{organisation_id}/features", tags=[
 
 
 class Features(Contract):
+    hosting: bool
     aws_connections: bool
     github: bool
     gmail: bool
@@ -22,6 +23,7 @@ async def available(organisation_id: Identifier, identity: Identity, request: Re
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     return Features(
+        hosting=api.private is not None,
         aws_connections=api.connections is not None,
         github=api.github is not None,
         gmail=await api.gmail.ready() if api.gmail else False,

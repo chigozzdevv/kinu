@@ -11,6 +11,7 @@ from core.connection.secrets import ConnectionSecrets
 from core.inventory.store import InventoryStore
 from core.private import PrivateClient
 from core.storage.database import Database
+from hosting.service import Service as Hosts
 from jobs.queue import Jobs
 from mail.assessment import Assessment
 from mail.google import Google
@@ -54,6 +55,7 @@ class Runtime:
                 AwsSecrets(AwsClient(), ConnectionRoles(database, managed=True, read_only=True)),
             ),
         )
+        self.hosts = Hosts(database, vault, http, config.public_url)
         self.mail_store = Store(vault.database)
         self.rotation = Rotation(
             database,
@@ -103,6 +105,7 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
         async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as http:
             service = Runtime(config, database, vault, http, queue)
             await service.mail_store.initialize()
+            await service.hosts.grants.initialize()
             yield service
     finally:
         await queue.close()

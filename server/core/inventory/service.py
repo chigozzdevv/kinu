@@ -61,6 +61,11 @@ class InventoryService(InventoryCatalog):
         self._changes = InventoryChanges(self)
 
     async def add_connection(self, connection: Connection) -> Connection:
+        if (connection.authorization_reference or "").startswith("hosting://") or (
+            connection.platform in {"vercel", "railway", "render"}
+            and ConnectionRole.RUNTIME in connection.roles
+        ):
+            raise ResourceConflictError("Connect hosting accounts through Connections")
         if connection.interface is ConnectionInterface.BROWSER:
             if not connection.allowed_resources or any(
                 not _domain_pattern(value) for value in connection.allowed_resources
