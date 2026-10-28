@@ -53,7 +53,7 @@ export function IntegrationGrid({
   onSelect: (integration: IntegrationKind) => void
 }) {
   return <div className="grid gap-4 sm:grid-cols-2">
-    {integrations.filter((integration) => visible.includes(integration.id)).map((integration) => {
+    {integrations.filter((integration) => visible.includes(integration.id) && available[integration.id]).map((integration) => {
       const isConnected = connected[integration.id] === true
       return <button
         key={integration.id}

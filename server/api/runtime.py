@@ -105,6 +105,7 @@ async def runtime(
                     notifications=notifications,
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
+                    private=private,
                     audit=audit,
                     incidents=IncidentService(
                         IncidentStore(database),

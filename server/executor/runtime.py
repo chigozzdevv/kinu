@@ -5,6 +5,10 @@ from time import time
 import httpx
 from agents.native import NativeAgent
 from connectors.aws import AwsClient
+from connectors.aws.secrets import AwsSecrets
+from core.connection.roles import ConnectionRoles
+from core.connection.secrets import ConnectionSecrets
+from core.inventory.store import InventoryStore
 from core.private import PrivateClient
 from core.storage.database import Database
 from jobs.queue import Jobs
@@ -20,6 +24,7 @@ from rotation.queue import Dispatcher
 from rotation.rotate import Rotation
 from rotation.snapshot import loader
 
+from executor.authorization import Authorization
 from executor.config import ExecutorSettings
 from executor.vault import Vault
 
@@ -42,9 +47,19 @@ class Runtime:
         )
         assert config.native_token is not None
         self.agent = NativeAgent(PrivateClient(http, config.native_url, config.native_token))
+        self.authorizations = Authorization(
+            vault,
+            ConnectionSecrets(
+                InventoryStore(database),
+                AwsSecrets(AwsClient(), ConnectionRoles(database, managed=True, read_only=True)),
+            ),
+        )
         self.mail_store = Store(vault.database)
         self.rotation = Rotation(
-            database, Effects(AwsClient(), database), loader(database), config.aws_region
+            database,
+            Effects(AwsClient(), database, self.authorizations),
+            loader(database),
+            config.aws_region,
         )
         self.dispatcher = Dispatcher(database, queue)
 

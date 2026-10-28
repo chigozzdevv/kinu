@@ -5,6 +5,7 @@ from connectors.aws.runtime import AwsRuntime
 from connectors.aws.secrets import AwsSecrets
 from connectors.aws.verify import AwsLinkVerifier
 from connectors.http import HttpProviderConnector
+from connectors.secrets.store import SecretReader
 from contracts import Connection, ConnectionRole, ConnectionStatus, Contract, Identifier
 from pydantic import Field
 
@@ -29,7 +30,12 @@ class ControlRequest(Contract):
     secret_reference: str | None = Field(default=None, max_length=1024)
 
 
-async def control(database: Database, aws: AwsApi, request: ControlRequest) -> Any:
+async def control(
+    database: Database,
+    aws: AwsApi,
+    request: ControlRequest,
+    authorizations: SecretReader | None = None,
+) -> Any:
     rows = Records(database)
     inventory = InventoryStore(database)
     try:
@@ -65,7 +71,7 @@ async def control(database: Database, aws: AwsApi, request: ControlRequest) -> A
         raise ResourceConflictError("connection is not ready")
     roles = ConnectionRoles(database, managed=True, read_only=True)
     secrets = AwsSecrets(aws, roles)
-    provider = HttpProviderConnector(ConnectionSecrets(inventory, secrets))
+    provider = HttpProviderConnector(authorizations or ConnectionSecrets(inventory, secrets))
     if request.operation == "provider":
         return await provider.metadata(connection)
     if request.operation == "identity":

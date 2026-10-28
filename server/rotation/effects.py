@@ -8,6 +8,7 @@ from connectors.aws.secrets import AwsSecrets
 from connectors.base import ConnectorContext
 from connectors.base.errors import ConnectorError
 from connectors.http import HttpProviderConnector
+from connectors.secrets.store import SecretReader
 from contracts import RotationRun, Stage
 from core.connection.roles import ConnectionRoles
 from core.connection.secrets import ConnectionSecrets
@@ -21,13 +22,15 @@ from rotation.state import Snapshot
 
 
 class Effects:
-    def __init__(self, aws: AwsApi, database: Database) -> None:
+    def __init__(
+        self, aws: AwsApi, database: Database, authorizations: SecretReader | None = None
+    ) -> None:
         self.database = database
         roles = ConnectionRoles(database, managed=True)
         self.secrets = AwsSecrets(aws, roles)
         self.runtime = AwsRuntime(aws, roles)
         self.provider = HttpProviderConnector(
-            ConnectionSecrets(InventoryStore(database), self.secrets)
+            authorizations or ConnectionSecrets(InventoryStore(database), self.secrets)
         )
 
     async def metadata(self, state: Snapshot, identity: str) -> dict[str, Any]:

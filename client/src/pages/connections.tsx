@@ -14,7 +14,7 @@ import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { ConnectPage, Field, FormGrid, ResourceSelect, SelectControl, SetupPage, SuccessPage, formControl } from "../components/workspace"
+import { ConnectPage, Field, FormGrid, ResourceSelect, SetupPage, SuccessPage, formControl } from "../components/workspace"
 import type { Connection, ConnectionRole, HttpProviderApi, Playbook } from "../types"
 import { activeOrganisationId, ApiError, api, type BrowserSetupResponse, type CreateConnectionInput, type GitHubDiscoveryResponse, type GitHubOnboardingResponse } from "../lib/api"
 import { parseProviderAdapter } from "../lib/adapter"
@@ -22,6 +22,7 @@ import { connectionCallbackIntegration } from "../lib/callback"
 import { connectionAction, connectionStatus, formatDate, titleCase } from "../lib/format"
 import { PlaybookSetup } from "./playbooks"
 import { BrowserSetupSession, type BrowserSetupCapability } from "./browsersetup"
+import { ConnectionTypes } from "../components/connection-types"
 import { AwsSetup } from "./aws"
 import { GmailSetup } from "./gmail"
 
@@ -244,9 +245,9 @@ type ConnectionSetupProps = {
   initialIntegration?: IntegrationKind | null
 }
 
-const providerCapabilities = ["provider.listCredentialMetadata", "provider.createCredential", "provider.getCredentialStatus", "provider.revokeCredential", "provider.testCredential"]
 export function ConnectionSetup({ onClose, playbooks, connections, onChanged, onCreated, initialRoles = [], initialIntegration = null }: ConnectionSetupProps) {
   const [integration, setIntegration] = useState<IntegrationKind | null>(() => connectionCallbackIntegration() ?? initialIntegration)
+  const [category, setCategory] = useState<ConnectionRole | null>(initialRoles[0] ?? null)
   const features = useFeatures()
   const available = {
     github: features.data?.github === true,
@@ -255,16 +256,16 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
     "custom-api": features.data?.provider_api === true,
     "computer-use": features.data?.browser_setup === true,
   }
-  const requestedProvider = initialRoles.length === 1 && initialRoles[0] === "provider"
-  const requestedCloud = initialRoles.some((role) => role === "runtime" || role === "secret-store")
-  const requestedIncident = initialRoles.length === 1 && initialRoles[0] === "incident"
+  const requestedProvider = category === "provider"
+  const requestedCloud = category === "runtime" || category === "secret-store"
+  const requestedIncident = category === "incident"
   const visible: IntegrationKind[] = requestedIncident
     ? ["gmail", "github"]
     : requestedProvider
     ? ["custom-api", "computer-use"]
     : requestedCloud
       ? ["aws"]
-      : ["gmail", "github", "aws", "custom-api", "computer-use"]
+      : []
   const connected = {
     gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
@@ -275,6 +276,10 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
 
   if (features.isLoading) return <div className="page"><Loading /></div>
   if (features.error) return <div className="page"><Failure error={features.error} /></div>
+  if (!integration && !category) return <div className="page max-w-[960px]">
+    <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={onClose} />
+    <ConnectionTypes onSelect={setCategory} />
+  </div>
   if (integration && !available[integration]) return <div className="page"><PageHeader title="Add connection" onBack={onClose} /><Notice>This connection is not available yet.</Notice></div>
 
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
@@ -284,78 +289,57 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
 
   return <div className="page max-w-[960px]">
-    <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={onClose} />
+    <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={() => initialRoles.length ? onClose() : setCategory(null)} />
+    {!visible.some((item) => available[item]) && <Notice>Configure an integration in Settings.</Notice>}
     <IntegrationGrid visible={visible} connected={connected} available={available} onSelect={setIntegration} />
   </div>
 }
 
-function CustomApiSetup({ onClose, onBack, onChanged, onCreated, connections, playbooks }: Omit<ConnectionSetupProps, "initialRoles"> & { onBack: () => void }) {
+function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Omit<ConnectionSetupProps, "initialRoles"> & { onBack: () => void }) {
   const [step, setStep] = useState(0)
   const [provider, setProvider] = useState("")
   const [adapter, setAdapter] = useState<HttpProviderApi | null>(null)
   const [adapterName, setAdapterName] = useState("")
   const [adapterError, setAdapterError] = useState("")
-  const [secretStoreId, setSecretStoreId] = useState("")
-  const [secretResource, setSecretResource] = useState("")
-  const [authorizationReference, setAuthorizationReference] = useState("")
-  const [addingSecretStore, setAddingSecretStore] = useState(false)
-  const secretStores = connections.filter((item) => item.status === "ready" && item.roles.includes("secret-store") && item.interface === "api")
-  const secretResources = useQuery({ queryKey: ["secret-resources", secretStoreId], queryFn: () => api.getSecretResources(secretStoreId), enabled: Boolean(secretStoreId) })
-  const secretVersions = useQuery({ queryKey: ["secret-versions", secretStoreId, secretResource], queryFn: () => api.getSecretVersions(secretStoreId, secretResource), enabled: Boolean(secretStoreId && secretResource) })
-  const create = useMutation({ mutationFn: (input: CreateConnectionInput) => api.createConnection(input) })
-
-  useEffect(() => { if (!secretStoreId && secretStores[0]) setSecretStoreId(secretStores[0].id) }, [secretStoreId, secretStores])
-  useEffect(() => { setSecretResource(""); setAuthorizationReference("") }, [secretStoreId])
-  useEffect(() => { setAuthorizationReference("") }, [secretResource])
+  const [token, setToken] = useState("")
+  const create = useMutation({ mutationFn: () => api.connectProvider({
+    display_name: provider.trim() + " API", platform: slug(provider), http: adapter!, token,
+  }) })
 
   async function loadAdapter(file: File | undefined) {
     if (!file) return
     try {
-      const parsed = parseProviderAdapter(await file.text())
-      setAdapter(parsed)
+      setAdapter(parseProviderAdapter(await file.text()))
       setAdapterName(file.name)
       setAdapterError("")
     } catch (error) {
       setAdapter(null)
-      setAdapterName("")
-      setAdapterError(error instanceof Error ? error.message : "API definition is invalid")
+      setAdapterError(error instanceof Error ? error.message : "Invalid API definition")
     }
   }
 
-  function canContinue() {
-    if (step === 0) return Boolean(provider.trim() && adapter)
-    if (step === 1) return Boolean(secretStoreId && secretResource && authorizationReference)
-    return true
-  }
-
   async function submit() {
-    if (!adapter) return
-    const timestamp = new Date().toISOString()
-    const platform = slug(provider)
-    const result = await create.mutateAsync({ connection: {
-      id: identifier("conn"), organisation_id: activeOrganisationId(), platform, display_name: `${provider.trim()} API`, roles: ["provider"], interface: "api", authorization: "api-key", authorization_reference: authorizationReference,
-      capabilities: providerCapabilities, allowed_resources: [`${platform}:credentials:*`], http: adapter, playbook_id: null, playbook_version_id: null, status: "setup-required", authenticated_at: null, authorization_expires_at: null, last_validated_at: null,
-      region: "global", created_at: timestamp, updated_at: timestamp, revision: 0,
-    } })
+    const connection = await create.mutateAsync()
+    setToken("")
     await onChanged()
-    if (onCreated) await onCreated(result)
+    if (onCreated) await onCreated(connection)
     else onClose()
   }
 
-  if (addingSecretStore) return <ConnectionSetup initialRoles={["secret-store"]} playbooks={playbooks} connections={connections} onClose={() => setAddingSecretStore(false)} onChanged={onChanged} onCreated={async (connection) => { setSecretStoreId(connection.id); setAddingSecretStore(false) }} />
-
-  return <SetupPage eyebrow="Inventory / Connections" title="Custom API" steps={["API", "Access", "Review"]} current={step} onBack={() => setStep((value) => value - 1)} onExit={onBack} onCancel={onClose} error={adapterError || create.error?.message || secretResources.error?.message || secretVersions.error?.message} primary={step < 2 ? <Button onClick={() => setStep((value) => value + 1)} disabled={!canContinue()}>Continue</Button> : <Button onClick={submit} disabled={create.isPending}>{create.isPending ? "Testing…" : "Test connection"}</Button>}>
+  return <SetupPage eyebrow="Inventory / Connections" title="Custom API" steps={["API", "Access", "Review"]}
+    current={step} onBack={() => setStep((value) => value - 1)} onExit={onBack} onCancel={onClose}
+    error={adapterError || create.error?.message}
+    primary={step < 2 ? <Button onClick={() => setStep((value) => value + 1)} disabled={step === 0 ? !provider.trim() || !adapter : !token}>Continue</Button>
+      : <Button onClick={submit} disabled={create.isPending}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
     {step === 0 && <FormGrid>
-      <Field label="Provider"><input className={formControl} value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Provider name" /></Field>
-      <Field label="API definition"><label className="focus-ring flex h-11 cursor-pointer items-center rounded-xl border border-[var(--border)] bg-white px-3.5 text-[10px] font-medium text-[var(--ink-soft)]"><Upload className="mr-2 size-3.5" />{adapterName || "Choose JSON definition"}<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void loadAdapter(event.target.files?.[0])} /></label></Field>
-      {adapter && <Field label="Key overlap"><label className="flex items-start gap-2 text-[11px] leading-5 text-[var(--ink-soft)]"><input type="checkbox" checked={adapter.supports_overlap} onChange={(event) => setAdapter({ ...adapter, supports_overlap: event.target.checked })} className="mt-1" />This provider allows the old and replacement keys to work together during rollout.</label></Field>}
+      <Field label="Provider"><input className={formControl} value={provider} onChange={(event) => setProvider(event.target.value)} /></Field>
+      <Field label="API definition"><label className="focus-ring flex h-11 cursor-pointer items-center rounded-xl border border-[var(--border)] bg-white px-3.5 text-[11px]">
+        <Upload className="mr-2 size-3.5" />{adapterName || "Choose JSON definition"}
+        <input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void loadAdapter(event.target.files?.[0])} />
+      </label></Field>
     </FormGrid>}
-    {step === 1 && <FormGrid>
-      <ResourceSelect label="Access secret store" value={secretStoreId} onChange={setSecretStoreId} addLabel="Add connection" onAdd={() => setAddingSecretStore(true)}><option value="">Select secret store</option>{secretStores.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</ResourceSelect>
-      <Field label="Access secret"><SelectControl value={secretResource} onChange={(event) => setSecretResource(event.target.value)} disabled={!secretStoreId || secretResources.isLoading}><option value="">Select secret</option>{(secretResources.data ?? []).map((item) => <option key={item.reference} value={item.reference}>{item.display_name}</option>)}</SelectControl></Field>
-      <Field label="Enabled version"><SelectControl value={authorizationReference} onChange={(event) => setAuthorizationReference(event.target.value)} disabled={!secretResource || secretVersions.isLoading}><option value="">Select version</option>{(secretVersions.data ?? []).filter((item) => item.state === "ENABLED").map((item) => <option key={item.reference} value={item.reference}>{item.reference.split("/").at(-1)}</option>)}</SelectControl></Field>
-    </FormGrid>}
-    {step === 2 && <div className="grid gap-5 lg:grid-cols-2"><Section title="API" onEdit={() => setStep(0)}><DetailList><Detail label="Provider"><Provider value={slug(provider)} /></Detail><Detail label="Definition">{adapterName}</Detail><Detail label="Base URL">{adapter?.base_url}</Detail><Detail label="Operations">List, create, test, revoke</Detail><Detail label="Response mappings">Credential ID and secret value</Detail></DetailList></Section><Section title="Access" onEdit={() => setStep(1)}><DetailList><Detail label="Authentication">API key</Detail><Detail label="Access secret">{secretResource.split("/").at(-1)}</Detail><Detail label="Validation">Operations and response mappings</Detail></DetailList></Section></div>}
+    {step === 1 && <Field label="Management token"><input className={formControl} type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} /></Field>}
+    {step === 2 && <DetailList><Detail label="Provider">{provider}</Detail><Detail label="API">{adapter?.base_url}</Detail></DetailList>}
   </SetupPage>
 }
 

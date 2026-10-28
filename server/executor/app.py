@@ -1,16 +1,21 @@
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 from connectors.aws import AwsClient
+from connectors.base.errors import ConnectorError
 from core.connection.control import ControlRequest, control
 from core.errors import KinuError, ResourceNotFoundError, ResourceSetupRequiredError
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from mail.control import ControlRequest as MailRequest
 from mail.control import control as mail_control
 
 from executor.config import ExecutorSettings
+from executor.deps import authenticated
+from executor.integrations import router as integrations_router
+from executor.providers import router as providers_router
 from executor.runtime import Runtime, runtime
 
 
@@ -25,28 +30,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 
-async def authenticated(request: Request) -> Runtime:
-    service: Runtime = request.app.state.service
-    assert service.config.executor_token is not None
-    expected = "Bearer " + service.config.executor_token.get_secret_value()
-    value = request.headers.get("authorization", "")
-    if not value.isascii() or not secrets.compare_digest(expected, value):
-        raise HTTPException(401)
-    if len(await request.body()) > 65536:
-        raise HTTPException(413)
-    return service
-
-
 @app.get("/health/live")
 async def live() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def ready(request: Request) -> JSONResponse:
+    try:
+        service: Runtime = request.app.state.service
+        await service.database.documents.command("ping")
+        await service.vault.database.documents.command("ping")
+        await service.queue.queue.client.ping()
+    except Exception:
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    return JSONResponse({"status": "ready"})
 
 
 @app.post("/connections")
 async def connections(
     body: ControlRequest, service: Annotated[Runtime, Depends(authenticated)]
 ) -> Any:
-    return await control(service.database, AwsClient(), body)
+    return await control(service.database, AwsClient(), body, service.authorizations)
 
 
 @app.post("/mail")
@@ -59,8 +64,6 @@ async def mail(body: MailRequest, service: Annotated[Runtime, Depends(authentica
 
 @app.exception_handler(KinuError)
 async def rejected(request: Request, error: KinuError) -> Any:
-    from fastapi.responses import JSONResponse
-
     status = (
         404
         if isinstance(error, ResourceNotFoundError)
@@ -69,3 +72,17 @@ async def rejected(request: Request, error: KinuError) -> Any:
         else 409
     )
     return JSONResponse({"message": str(error)}, status_code=status)
+
+
+@app.exception_handler(ConnectorError)
+async def connection_failed(request: Request, error: ConnectorError) -> JSONResponse:
+    return JSONResponse({"message": "Connection check failed"}, status_code=502)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid(request: Request, error: RequestValidationError) -> JSONResponse:
+    return JSONResponse({"message": "Check the connection settings"}, status_code=422)
+
+
+app.include_router(integrations_router)
+app.include_router(providers_router)

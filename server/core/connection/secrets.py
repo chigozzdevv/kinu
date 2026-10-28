@@ -1,14 +1,14 @@
 from connectors.aws.refs import resource_allowed
-from connectors.aws.secrets import AwsSecrets
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
+from connectors.secrets.store import SecretReader
 from contracts import Connection, ConnectionRole, ConnectionStatus
 
 from core.inventory.repository import InventoryRepository
 
 
 class ConnectionSecrets:
-    def __init__(self, inventory: InventoryRepository, secrets: AwsSecrets) -> None:
+    def __init__(self, inventory: InventoryRepository, secrets: SecretReader) -> None:
         self._inventory, self._secrets = inventory, secrets
 
     async def access_for(self, connection: Connection, version: str) -> SecretValue:

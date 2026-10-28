@@ -1,4 +1,4 @@
-import type { Connection, Identifier, ProviderCredentialMetadata, RuntimeResourceMetadata } from "../../types"
+import type { Connection, Identifier, ProviderCredentialMetadata, RuntimeResourceMetadata, HttpProviderApi } from "../../types"
 import type { CreateConnectionInput, SecretResourceMetadata, SecretVersionMetadata, BrowserSetupResponse, BrowserSetupSession, GitHubOnboardingResponse, GitHubDiscoveryResponse, GitHubCompletionResponse } from "./types"
 import { request, archive, workspacePath } from "./http"
 
@@ -19,6 +19,9 @@ export interface AwsPrepared {
 }
 
 export const connections = {
+  async connectProvider(input: { display_name: string; platform: string; http: HttpProviderApi; token: string }): Promise<Connection> {
+    return request(`${workspacePath()}/connections/provider`, { method: "POST", body: JSON.stringify(input) })
+  },
   async prepareAws(input: AwsSetup): Promise<AwsPrepared> {
     return request(`${workspacePath()}/connections/aws`, { method: "POST", body: JSON.stringify(input) })
   },

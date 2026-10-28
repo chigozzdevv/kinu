@@ -24,7 +24,6 @@ from core.errors import (
     TransitionRejectedError,
 )
 from fastapi import FastAPI, Request, Response, status
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from policy import PolicyViolationError
@@ -54,6 +53,8 @@ from api.routes.connections import router as connections_router
 from api.routes.demo import router as demo_router
 from api.routes.features import router as features_router
 from api.routes.gmail import router as gmail_router
+from api.routes.integrations import router as integrations_router
+from api.routes.providers import router as providers_router
 from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
@@ -78,6 +79,8 @@ def create_app(
     app.state.browser = browser
     app.state.config = config
     app.include_router(auth_router)
+    app.include_router(integrations_router)
+    app.include_router(providers_router)
     app.include_router(health_router)
     app.include_router(session_router)
     app.include_router(github_router)
@@ -190,5 +193,4 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
 async def _validation_error(request: Request, error: Exception) -> JSONResponse:
     if request.url.path.startswith("/auth/"):
         return _error(422, "invalid-input", "Check the form fields and try again.")
-    assert isinstance(error, RequestValidationError)
-    return await request_validation_exception_handler(request, error)
+    return _error(422, "invalid-input", "Check the supplied fields and try again.")

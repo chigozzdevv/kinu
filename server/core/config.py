@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     auth_secret: SecretStr | None = None
     session_hours: int = 12
     resend_key: SecretStr | None = None
+    admin_email: str | None = None
     email_sender: str = "Kinu <noreply@example.com>"
     aws_region: str = "eu-west-2"
     executor_url: str = "http://executor:8002"

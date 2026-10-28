@@ -28,6 +28,7 @@ from core.inventory import InventoryService
 from core.notification import NotificationService
 from core.overview import OverviewService
 from core.playbook import PlaybookService, WalkthroughService
+from core.private import PrivateClient
 from core.verification import ProbeService
 from core.workflow import RunWorkflow
 from core.workflow.dispatch import RunDispatcher
@@ -61,6 +62,7 @@ class ApiServices:
     dispatcher: RunDispatcher | None = None
     demo: Source | None = None
     gmail: GmailBridge | None = None
+    private: PrivateClient | None = None
 
 
 def services(request: Request) -> ApiServices:

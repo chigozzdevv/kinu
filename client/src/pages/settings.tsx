@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
+import { IntegrationsSettings } from "./integrations"
 import { AiSettings } from "../components/ai"
 import { Detail, DetailList, DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
@@ -15,7 +16,7 @@ import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 import type { EmailNotificationEndpoint, MemberRole, NotificationTopic, TeamMember } from "../types"
 
-type Tab = "profile" | "team" | "notifications" | "ai"
+type Tab = "profile" | "team" | "notifications" | "ai" | "integrations"
 
 const roles: Array<{ value: MemberRole; label: string }> = [
   { value: "viewer", label: "Viewer" },
@@ -50,8 +51,8 @@ export function SettingsPage() {
     if (profile.data && !administrator && tab === "team") setTab("profile")
   }, [administrator, profile.data, tab])
   const tabs = administrator
-    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
-    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
+    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
+    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
   const actions = tab === "team"
     ? <Button onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
     : tab === "notifications"
@@ -67,6 +68,7 @@ export function SettingsPage() {
     <PageHeader title="Settings" actions={actions} />
     <DetailTabs items={tabs} value={tab} onChange={setTab} />
     {tab === "profile" && <ProfileSettings profile={profile.data!} />}
+    {tab === "integrations" && <IntegrationsSettings />}
     {tab === "ai" && <AiSettings administrator={administrator} />}
     {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
     {tab === "notifications" && <>
