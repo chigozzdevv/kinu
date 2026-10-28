@@ -331,9 +331,12 @@ class HttpProviderConnector:
                     content.extend(part)
                     if len(content) > 1_048_576:
                         raise ConnectorError("provider-response", "provider response is too large")
-                return httpx.Response(
-                    response.status_code, headers=response.headers, content=bytes(content)
-                )
+                headers = {
+                    name: value
+                    for name, value in response.headers.items()
+                    if name not in {"content-encoding", "content-length", "transfer-encoding"}
+                }
+                return httpx.Response(response.status_code, headers=headers, content=bytes(content))
         except TimeoutError:
             raise httpx.ReadTimeout("provider request exceeded its deadline") from None
         finally:

@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 from datetime import UTC, datetime
 from typing import Any
 
@@ -123,3 +124,34 @@ async def test_reconciliation_uses_nested_metadata_and_rejects_unknown_outcomes(
                 {"name": "kinu-attempt", "before_ids": ()},
                 context,
             )
+
+
+@pytest.mark.anyio
+async def test_decoded_provider_responses_do_not_repeat_content_decompression() -> None:
+    class Secrets:
+        async def access_for(self, connection: Connection, version: str) -> SecretValue:
+            raise AssertionError("This transport check does not request a credential")
+
+    body = b'{"result": [{"api_key_id": "key-one"}]}'
+    compressed = gzip.compress(body)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Encoding": "gzip",
+                "Content-Length": str(len(compressed)),
+                "Content-Type": "application/json",
+                "Retry-After": "1",
+            },
+            content=compressed,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        provider = HttpProviderConnector(Secrets(), http)
+        api = make_http_provider_api()
+        response = await provider._call(api, api.list_credentials, {}, {})
+        assert response.json() == {"result": [{"api_key_id": "key-one"}]}
+        assert "content-encoding" not in response.headers
+        assert response.headers["content-length"] == str(len(body))
+        assert response.headers["retry-after"] == "1"
