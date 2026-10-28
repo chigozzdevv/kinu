@@ -9,10 +9,6 @@ from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
 from contracts import (
     Connection,
-    ConnectionAuthorization,
-    ConnectionInterface,
-    ConnectionRole,
-    ConnectionStatus,
 )
 
 pytestmark = pytest.mark.anyio
@@ -52,27 +48,6 @@ class Aws:
         if operation == "list_secret_version_ids":
             return {"Versions": [{"VersionId": VERSION, "VersionStages": self.stages}]}
         return {}
-
-
-@pytest.fixture
-def connection() -> Connection:
-    now = datetime(2026, 10, 27, tzinfo=UTC)
-    return Connection(
-        id="aws_one",
-        organisation_id="org_one",
-        platform="aws",
-        display_name="AWS",
-        roles=frozenset({ConnectionRole.SECRET_STORE}),
-        interface=ConnectionInterface.API,
-        authorization=ConnectionAuthorization.WORKLOAD_IDENTITY,
-        authorization_reference="aws-role://aws_one",
-        capabilities=frozenset({"secretStore.getVersion"}),
-        allowed_resources=(ARN,),
-        status=ConnectionStatus.READY,
-        region="eu-west-2",
-        created_at=now,
-        updated_at=now,
-    )
 
 
 async def test_staged_write_is_idempotent_and_never_moves_current(connection: Connection) -> None:

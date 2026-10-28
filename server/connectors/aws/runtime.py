@@ -81,6 +81,13 @@ class AwsRuntime(LambdaRuntime):
             raise ConnectorError("runtime-binding", "consumer draft secret binding changed")
         if config.get("CodeSha256") != live.get("CodeSha256"):
             raise ConnectorError("runtime-code", "publish the consumer's pending code first")
+        live_environment = live.get("Environment", {}).get("Variables", {})
+        if {key: value for key, value in environment.items() if key != binding} != {
+            key: value for key, value in live_environment.items() if key != binding
+        } or any(config.get(key) != live.get(key) for key in _CONFIGURATION):
+            raise ConnectorError(
+                "runtime-draft", "publish or restore unrelated Lambda draft changes first"
+            )
         if config.get("LastUpdateStatus") == "InProgress":
             raise ConnectorError("runtime-updating", "consumer is already updating")
         marker = f"kinu:{request_id}"
@@ -164,3 +171,23 @@ class AwsRuntime(LambdaRuntime):
         if data.get("reason") != "credential-rejected":
             raise ConnectorError("runtime-health", "consumer could not verify provider access")
         return {"ok": False, "state": "provider-rejected"}
+
+
+_CONFIGURATION = (
+    "Runtime",
+    "Handler",
+    "Role",
+    "Timeout",
+    "MemorySize",
+    "Architectures",
+    "Layers",
+    "VpcConfig",
+    "DeadLetterConfig",
+    "TracingConfig",
+    "FileSystemConfigs",
+    "EphemeralStorage",
+    "KMSKeyArn",
+    "PackageType",
+    "LoggingConfig",
+    "ImageConfigResponse",
+)
