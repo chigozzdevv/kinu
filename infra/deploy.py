@@ -43,6 +43,11 @@ async def main() -> None:
         "CodeKey": key,
     }
     executor = await existing(aws, region, "kinu-executor")
+    mail = await existing(aws, region, "kinu-mail")
+    if mail:
+        parameters["GmailArn"] = next(
+            item["OutputValue"] for item in mail["Outputs"] if item["OutputKey"] == "FunctionArn"
+        )
     if executor:
         values = {item["OutputKey"]: item["OutputValue"] for item in executor["Outputs"]}
         parameters.update(

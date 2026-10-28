@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu private Gmail connection and alert reader
+Parameters:
+  ClusterArn: {Type: String}
+  DatabaseSecretArn: {Type: String}
+  PublicUrl: {Type: String}
+  AssessArn: {Type: String}
+  RotationQueueArn: {Type: String}
+  RotationQueueUrl: {Type: String}
+  DemoQueueArn: {Type: String, Default: ''}
+  DemoQueueUrl: {Type: String, Default: ''}
+  DemoOrganisation: {Type: String, Default: ''}
+  CodeBucket: {Type: String}
+  CodeKey: {Type: String}
+Conditions:
+  HasDemo: !Not [!Equals [!Ref DemoQueueArn, '']]
+Resources:
+  State:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: workspace, AttributeType: S}
+        - {AttributeName: poll_key, AttributeType: S}
+        - {AttributeName: poll_due, AttributeType: N}
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      GlobalSecondaryIndexes:
+        - IndexName: Workspace
+          KeySchema: [{AttributeName: workspace, KeyType: HASH}]
+          Projection: {ProjectionType: ALL}
+        - IndexName: Polling
+          KeySchema: [{AttributeName: poll_key, KeyType: HASH}, {AttributeName: poll_due, KeyType: RANGE}]
+          Projection: {ProjectionType: ALL}
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires, Enabled: true}
+  Config:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Kinu Gmail OAuth client and grant encryption
+      GenerateSecretString:
+        SecretStringTemplate: '{"client_id":"","client_secret":""}'
+        GenerateStringKey: key
+        PasswordLength: 64
+        ExcludePunctuation: true
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/kinu-mail, RetentionInDays: 3}
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      Policies:
+        - !If
+          - HasDemo
+          - PolicyName: demo-dispatch
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement: [{Effect: Allow, Action: 'sqs:SendMessage', Resource: !Ref DemoQueueArn}]
+          - !Ref AWS::NoValue
+        - PolicyName: mailbox
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Query]
+                Resource: [!GetAtt State.Arn, !Sub '${State.Arn}/index/*']
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref Config, !Ref DatabaseSecretArn]
+              - Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BeginTransaction, rds-data:CommitTransaction, rds-data:RollbackTransaction]
+                Resource: !Ref ClusterArn
+              - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !Ref AssessArn}
+              - {Effect: Allow, Action: 'sqs:SendMessage', Resource: !Ref RotationQueueArn}
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kinu-mail:*'
+              - {Effect: Deny, Action: 'sts:AssumeRole', Resource: '*'}
+  Reader:
+    Type: AWS::Lambda::Function
+    DependsOn: Logs
+    Properties:
+      FunctionName: kinu-mail
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: cloud.mail.handler
+      Role: !GetAtt Role.Arn
+      MemorySize: 512
+      Timeout: 240
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          KINU_AWS_REGION: !Ref AWS::Region
+          KINU_PUBLIC_URL: !Ref PublicUrl
+          KINU_DATA_API_CLUSTER_ARN: !Ref ClusterArn
+          KINU_DATA_API_SECRET_ARN: !Ref DatabaseSecretArn
+          KINU_GMAIL_TABLE: !Ref State
+          KINU_GMAIL_SECRET_ARN: !Ref Config
+          KINU_ASSESS_FUNCTION: !Ref AssessArn
+          KINU_ROTATION_QUEUE_URL: !Ref RotationQueueUrl
+          KINU_DEMO_QUEUE_URL: !Ref DemoQueueUrl
+          KINU_DEMO_ORGANISATION: !Ref DemoOrganisation
+  Schedule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets: [{Id: gmail, Arn: !GetAtt Reader.Arn, Input: '{"kind":"poll"}', RetryPolicy: {MaximumRetryAttempts: 1, MaximumEventAgeInSeconds: 300}}]
+  SchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Reader
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt Schedule.Arn
+Outputs:
+  FunctionArn: {Value: !GetAtt Reader.Arn}
+  ConfigArn: {Value: !Ref Config}
+  Table: {Value: !Ref State}
+  Callback: {Value: !Sub '${PublicUrl}/connections/gmail/callback'}

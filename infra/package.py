@@ -76,6 +76,8 @@ def main() -> None:
             "x86_64-manylinux_2_34",
             "--only-binary",
             ":all:",
+            "--no-binary",
+            "dkimpy",
             "--no-deps",
             "--require-hashes",
             "--requirements",
