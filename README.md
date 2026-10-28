@@ -65,10 +65,38 @@ Custom API providers accept their management token once. The executor keeps it e
 reuses that connection across credentials. HTTP operation mappings must declare overlapping keys,
 credential metadata and an authenticated credential test.
 
-Vercel, Railway and Render workload selection and rotation are under development. Their settings
-do not imply that a workload is ready to rotate. AWS adapters remain optional; the current fully
-implemented workload executor uses one selected Lambda consumer and Secrets Manager resource.
-Cloud role setup is separate from deploying Kinu.
+For hosting, choose Vercel, Railway or Render, select allowed projects, then open the connection's
+**Credentials** tab. Choose key variables and their issuer identities. Kinu creates inventory and
+consumer bindings automatically and reuses the existing connections across keys. Render uses an
+API key; Vercel and Railway use installation-owned OAuth apps configured in Settings. Register the
+exact callback shown there. Vercel needs project, environment-variable and deployment permissions;
+Railway requests project membership and refresh access. No live provider registration is performed
+by the application setup command.
+
+Selected keys use Kinu's encrypted private vault. Rotation updates all registered hosting consumers
+before retiring the predecessor. AWS remains optional and uses its separate Lambda/Secrets Manager
+adapter, currently limited to one Lambda consumer per credential. Cloud role setup is separate from
+deploying Kinu. Mixing Lambda and hosting consumers within one rotation is not supported.
+
+A workload health URL is required before automated rotation. It must call the issuer using the loaded
+key and return fresh proof. Kinu sends a random `X-Kinu-Probe` header; the response must echo it and
+include a SHA-256 fingerprint of each selected variable's runtime value:
+
+```json
+{"ok": true, "nonce": "VALUE_OF_X_KINU_PROBE", "fingerprints": {"API_KEY": "SHA256_OF_LOADED_KEY"}}
+```
+
+After issuer rejection, return `ok: false` and `state: "provider-rejected"` with the same proof fields.
+Do not return raw keys. Disable response caching. Merely returning a fingerprint without checking
+the issuer does not meet this health contract. Every workload using the key must be registered.
+
+Vercel variables must target one environment. Branch overrides, shared variables, and custom
+environments are excluded. If the predecessor's value is unreadable, its immutable deployment URL
+must support the retirement probe. Its health response must also include
+`"provider_ids": {"API_KEY": "ISSUER_REPORTED_KEY_ID"}`, verified through the issuer. Rotation
+stops if that identity cannot be proved. A failed rollout can restore traffic while leaving the project
+variable on the replacement; Kinu then keeps both keys and holds the run for recovery. It does not
+claim a completed rollback or revoke a key whose configuration may still be in use.
 
 ## AI and execution
 

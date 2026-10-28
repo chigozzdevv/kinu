@@ -68,7 +68,7 @@ export function CredentialSetup({
     (item.interface === "api" && item.capabilities.includes("provider.listCredentialMetadata"))
     || (item.interface === "browser" && item.playbook_id !== null && item.playbook_version_id !== null)
   )), [connections])
-  const secretStores = useMemo(() => connections.filter((item) => item.roles.includes("secret-store") && item.interface === "api" && item.status === "ready"), [connections])
+  const secretStores = useMemo(() => connections.filter((item) => item.platform === "aws" && item.roles.includes("secret-store") && item.interface === "api" && item.status === "ready"), [connections])
   const runtimeConnections = useMemo(() => connections.filter((item) => item.roles.includes("runtime") && item.interface === "api" && item.status === "ready" && item.capabilities.includes("runtime.listServices")), [connections])
   const connection = connections.find((item) => item.id === connectionId)
   const secretStore = connections.find((item) => item.id === secretStoreId)

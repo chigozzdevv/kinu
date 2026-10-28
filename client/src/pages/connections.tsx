@@ -24,6 +24,7 @@ import { PlaybookSetup } from "./playbooks"
 import { BrowserSetupSession, type BrowserSetupCapability } from "./browsersetup"
 import { ConnectionTypes } from "../components/connection-types"
 import { AwsSetup } from "./aws"
+import { HostKeys } from "./host-keys"
 import { HostingSetup } from "./hosting"
 import type { HostingPlatform } from "../lib/api/hosting"
 import { GmailSetup } from "./gmail"
@@ -98,7 +99,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
   const [selected, setSelected] = useState<Connection | null>(null)
-  const [tab, setTab] = useState<"overview" | "access">("overview")
+  const [tab, setTab] = useState<"overview" | "access" | "credentials">("overview")
   const [selectedPlaybookVersion, setSelectedPlaybookVersion] = useState("")
   const [creating, setCreating] = useState(() => connectionCallbackIntegration() !== null)
   const [setupIntegration, setSetupIntegration] = useState<IntegrationKind | null>(null)
@@ -152,7 +153,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     const connection = connections.data.find((item) => item.id === initialConnectionId)
     if (connection) {
       setSelected(connection)
-      setTab("overview")
+      setTab(["vercel", "railway", "render"].includes(connection.platform) ? "credentials" : "overview")
     }
     setInitialSelectionHandled(true)
   }, [connections.data, initialConnectionId, initialSelectionHandled])
@@ -189,10 +190,10 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   if (error) return <div className="page"><Failure error={error} /></div>
   const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
   if (gmailSetupId) return <GmailSetup connectionId={gmailSetupId} connections={connections.data!} onClose={() => setGmailSetupId(null)} onBack={() => setGmailSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["gmail", gmailSetupId] }) }} onCreated={async (connection) => { setSelected(connection); setGmailSetupId(null) }} />
-  if (hostSetup) return <HostingSetup platform={hostSetup.platform} connectionId={hostSetup.id} onClose={() => setHostSetup(null)} onBack={() => setHostSetup(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["host-projects", hostSetup.id] }) }} onCreated={async (connection) => { setSelected(connection) }} />
+  if (hostSetup) return <HostingSetup platform={hostSetup.platform} connectionId={hostSetup.id} connection={connections.data?.find((item) => item.id === hostSetup.id)} onClose={() => setHostSetup(null)} onBack={() => setHostSetup(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["host-projects", hostSetup.id] }) }} onCreated={async (connection) => { setSelected(connection) }} />
   if (awsSetupId) return <AwsSetup connectionId={awsSetupId} onClose={() => setAwsSetupId(null)} onBack={() => setAwsSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async (connection) => { setSelected(connection); setAwsSetupId(null) }} />
 
-  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
+  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onCreated={async (connection) => { setSelected(connection); setTab(["vercel", "railway", "render"].includes(connection.platform) ? "credentials" : "overview"); onSelectConnection(connection.id) }} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
 
   if (creatingPlaybook && currentSelected) return <PlaybookSetup initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
@@ -203,9 +204,10 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   if (currentSelected) return <div className="page">
     {playbookNotice}
     <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
-    <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
+    <DetailTabs items={[{ id: "overview", label: "Overview" }, ...(["vercel", "railway", "render"].includes(currentSelected.platform) ? [{ id: "credentials" as const, label: "Credentials" }] : []), { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
+      {tab === "credentials" && <HostKeys connection={currentSelected} connections={connections.data!} />}
       {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook version">{currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3"><ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{browserPlaybooks.map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList><Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
     </DetailCard>
     {(attach.error || open.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error)?.message}</div>}

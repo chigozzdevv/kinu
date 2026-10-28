@@ -18,6 +18,7 @@ import { api } from "../lib/api"
 import { Field, formControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
 import { ConnectionSetup } from "./connections"
+import { HostKeys } from "./host-keys"
 
 type CredentialTarget = "approvals" | "rotations" | "connections" | "incidents"
 
@@ -49,6 +50,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const [provider, setProvider] = useState("all")
   const [selected, setSelected] = useState<ManagedCredential | null>(null)
   const [creating, setCreating] = useState(false)
+  const [source, setSource] = useState("")
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [addingControlConnection, setAddingControlConnection] = useState(false)
@@ -195,7 +197,20 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     || !sameControls(editControls, controlsFromDefinition(currentControlVersion.data!.definition))
   )
 
-  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<CredentialSetup isOpen onClose={() => setCreating(false)} graph={graph.data!} connections={connections.data!} environments={environments.data!} playbooks={playbooks.data ?? []} onCreate={(input) => createCredential.mutateAsync(input)} /></>
+  if (creating) {
+    const hosts = connections.data!.filter((item) => ["vercel", "railway", "render"].includes(item.platform) && item.status === "ready")
+    const host = hosts.find((item) => item.id === source)
+    const close = () => { setCreating(false); setSource("") }
+    if (source === "aws") return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<CredentialSetup isOpen onClose={close} graph={graph.data!} connections={connections.data!} environments={environments.data!} playbooks={playbooks.data ?? []} onCreate={(input) => createCredential.mutateAsync(input)} /></>
+    return <div className="page"><PageHeader eyebrow="Inventory / Credentials" title="Add credentials" onBack={host ? () => setSource("") : close} />
+      {host ? <HostKeys connection={host} connections={connections.data!} /> : <div className="max-w-[620px] space-y-3">
+        <p className="mb-5 text-[12px] text-[var(--ink-muted)]">Choose where your application uses its keys.</p>
+        {hosts.map((item) => <button key={item.id} className="focus-ring flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource(item.id)}>{item.display_name}<ChevronRight className="size-4" /></button>)}
+        <button className="focus-ring flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource("aws")}>AWS Secrets Manager<ChevronRight className="size-4" /></button>
+        <Button variant="secondary" onClick={() => onNavigate("connections")}>Connect hosting</Button>
+      </div>}
+    </div>
+  }
 
   if (addingControlConnection) return <ConnectionSetup initialRoles={["incident"]} playbooks={playbooks.data ?? []} connections={connections.data!} onClose={() => setAddingControlConnection(false)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); setAddingControlConnection(false) }} />
 
