@@ -5,7 +5,6 @@ import { IntegrationsSettings } from "./integrations"
 import { AiSettings } from "../components/ai"
 import { Detail, DetailList, DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
-import { IdentityProvider } from "../components/identity"
 import { Failure, Loading } from "../components/state"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -94,11 +93,11 @@ function ProfileSettings({ profile }: { profile: Awaited<ReturnType<typeof api.g
       ])
     },
   })
-  return <div className="max-w-[872px] space-y-7">
-    <div className="w-[calc(50%+84px)] max-w-full"><Field label="Name"><input className={formControl} value={name} onChange={(event) => { setName(event.target.value); save.reset() }} /></Field></div>
+  return <div className="max-w-[620px] space-y-7">
+    <div className="grid gap-x-8 sm:grid-cols-2"><Field label="Name"><input className={formControl} value={name} onChange={(event) => { setName(event.target.value); save.reset() }} /></Field></div>
     <DetailList>
       <Detail label="Email">{profile.email}</Detail>
-      <Detail label="Connected via"><IdentityProvider value={profile.connected_via} /></Detail>
+      <Detail label="Connected via">{profile.connected_via}</Detail>
     </DetailList>
     {save.error && <div role="alert" className="text-[10px] text-[var(--red)]">{save.error.message}</div>}
     <Button disabled={!name.trim() || name.trim() === profile.display_name || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save changes"}</Button>

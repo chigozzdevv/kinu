@@ -137,4 +137,4 @@ export function Fieldset({ label, hint, children, wide = false }: { label: strin
   return <fieldset className={wide ? "sm:col-span-2" : undefined}><legend className="mb-1.5 text-[10px] font-semibold text-[var(--ink-soft)]">{label}</legend>{children}{hint && <span className="mt-1.5 block text-[9px] leading-4 text-[var(--ink-muted)]">{hint}</span>}</fieldset>
 }
 
-export const formControl = "focus-ring h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3.5 text-[11px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"
+export const formControl = "focus-ring block h-11 w-full min-w-0 rounded-xl border border-[var(--border)] bg-white px-3.5 text-[11px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"

@@ -106,7 +106,7 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
           <span>{titles[mode]}</span>
         </h1>
         {descriptions[mode] && <p className="mt-6 text-center text-[12px] leading-5 text-[var(--ink-soft)]">{descriptions[mode]}</p>}
-        <form className="group mt-8 space-y-4" onSubmit={(event) => { void submit(event) }}>
+        <form className="group mt-8 grid gap-4" onSubmit={(event) => { void submit(event) }}>
           {mode === "signup" && <label className="block" htmlFor="auth-name">
             <span className={labelClass}>Name</span>
             <input id="auth-name" name="name" className={formControl} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} maxLength={80} required disabled={disabled} />
