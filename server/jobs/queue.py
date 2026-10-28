@@ -1,6 +1,6 @@
 from typing import Any
 
-from bullmq import Queue
+from bullmq import Job, Queue
 from core.errors import StorageUnavailableError
 
 
@@ -11,15 +11,29 @@ class Jobs:
     async def close(self) -> None:
         await self.queue.close()
 
-    async def rotation(self, organisation_id: str, run_id: str) -> None:
+    async def rotation(self, organisation_id: str, run_id: str, *, recover: bool = False) -> None:
         await self.add(
             "rotation",
             {"organisation_id": organisation_id, "run_id": run_id},
             f"rotation-{organisation_id}-{run_id}",
+            recover=recover,
         )
 
-    async def add(self, name: str, data: dict[str, Any], identity: str) -> None:
+    async def add(
+        self, name: str, data: dict[str, Any], identity: str, *, recover: bool = False
+    ) -> None:
         try:
+            if recover:
+                existing = await Job.fromId(self.queue, identity)
+                if existing:
+                    state = await existing.getState()
+                    if state in {"failed", "completed"}:
+                        try:
+                            await existing.retry(state)
+                        except Exception:
+                            if await existing.getState() in {"failed", "completed"}:
+                                raise
+                    return
             await self.queue.add(
                 name,
                 data,

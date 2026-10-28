@@ -49,6 +49,32 @@ class Rotation:
             RunStatus.PAUSED,
         }:
             return run
+        if (
+            run.status is RunStatus.RUNNING
+            and run.lease
+            and run.lease.expires_at <= datetime.now(UTC)
+        ):
+            failure = Failure(
+                code="worker-lease-expired",
+                message="Worker stopped without a final outcome; inspect the saved evidence.",
+                retryable=False,
+            )
+            command = {
+                "id": stable("expired", run.id),
+                "organisation_id": org,
+                "run_id": run.id,
+                "actor_id": owner,
+                "expected_revision": run.revision,
+                "fencing_token": run.fencing_token,
+                "failure": failure,
+            }
+            if run.plan_id is None:
+                return (
+                    await RunWorkflow(repository).fail(FailRunCommand.model_validate(command))
+                ).run
+            return (
+                await RunWorkflow(repository).cleanup(CleanupRunCommand.model_validate(command))
+            ).run
         try:
             state = await self.loader(org, run.credential_id, run.control_version)
         except ResourceConflictError:
@@ -71,24 +97,6 @@ class Rotation:
                 )
             ).run
         elif not run.lease or run.lease.owner_id != owner:
-            if run.lease and run.lease.expires_at <= datetime.now(UTC):
-                failure = Failure(
-                    code="worker-lease-expired",
-                    message="Worker stopped without a final outcome; inspect the saved evidence.",
-                    retryable=False,
-                )
-                command = {
-                    "id": stable("expired", run.id),
-                    "organisation_id": org,
-                    "run_id": run.id,
-                    "actor_id": owner,
-                    "expected_revision": run.revision,
-                    "fencing_token": run.fencing_token,
-                    "failure": failure,
-                }
-                if run.plan_id is None:
-                    return (await workflow.fail(FailRunCommand.model_validate(command))).run
-                return (await workflow.cleanup(CleanupRunCommand.model_validate(command))).run
             raise LeaseConflictError("another rotation worker owns this run")
         stages = Stages(self.database, self.effects, state, run)
         try:

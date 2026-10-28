@@ -265,3 +265,32 @@ async def test_email_intake_uses_sanitized_native_assessment_and_deduplicates(
     assert run.trigger.source == "demo-email" and run.credential_id == demo.credential_id
     assert await investigate(database, model, demo, task) == run_id
     assert model.calls == 1
+
+
+async def test_expired_worker_is_finalized_without_repeating_effects(
+    database: Database, demo: DemoConfig
+) -> None:
+    from datetime import timedelta
+
+    from contracts import StartRunCommand
+
+    run_id, api = await create(database, demo), Api(demo)
+    old = datetime.now(UTC) - timedelta(minutes=20)
+    workflow = RunWorkflow(RunStore(database), clock=lambda: old)
+    await workflow.start(
+        StartRunCommand(
+            id="start_expired",
+            organisation_id=demo.organisation_id,
+            run_id=run_id,
+            actor_id="actor_test",
+            owner_id="worker_gone",
+            expected_revision=0,
+            expires_at=old + timedelta(minutes=14),
+        )
+    )
+    result = await Rotation(database, api, loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_recovery"
+    )
+    assert result.status is RunStatus.FAILED
+    assert result.failure and result.failure.code == "worker-lease-expired"
+    assert not api.calls

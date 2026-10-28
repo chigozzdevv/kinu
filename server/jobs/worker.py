@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 from contextlib import suppress
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from bullmq import Job, Worker
@@ -15,9 +16,22 @@ log = logging.getLogger("kinu.jobs")
 
 async def recover(service: Runtime) -> None:
     async for item in (
-        service.database.collection("runs").find({"data.status": "pending"}).limit(100)
+        service.database.collection("runs")
+        .find(
+            {
+                "$or": [
+                    {"data.status": "pending"},
+                    {
+                        "data.status": "running",
+                        "data.lease.expires_at": {"$lte": datetime.now(UTC).isoformat()},
+                    },
+                ]
+            }
+        )
+        .sort("data.created_at", 1)
+        .limit(100)
     ):
-        await service.queue.rotation(item["organisation_id"], item["id"])
+        await service.queue.rotation(item["organisation_id"], item["id"], recover=True)
 
 
 async def main() -> None:
