@@ -64,6 +64,7 @@ class Agent:
         assert organisation_id == "org_check" and self.secret not in str(value)
         self.calls += 1
         if "control" in value["schema"].get("properties", {}):
+            assert "create_key" in str(value["messages"])
             return {"control": "create_key"}
         return {"progress": "The approved control was found.", "completed": True}
 

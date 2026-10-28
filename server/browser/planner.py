@@ -100,12 +100,16 @@ class Planner:
                 )
                 page = await browser.context.new_page()
                 markup = "<h1>Approved controls</h1>" + "".join(
-                    f'<button id="{escape(key, quote=True)}">{escape(label)}</button>'
+                    f'<button id="{escape(key, quote=True)}">'
+                    f"{escape(label)} [control: {escape(key)}]</button>"
                     for key, label in controls.items()
                 )
                 await page.evaluate("document.body.innerHTML = " + json.dumps(markup))
                 result = await stage.extract(
-                    objective + " Return the matching button id as control, or stop.",
+                    objective
+                    + " Choose the matching control from "
+                    + json.dumps(controls)
+                    + ". Return its exact control ID, without a selector prefix, or stop.",
                     Choice,
                     page=page,
                     screenshot=False,
