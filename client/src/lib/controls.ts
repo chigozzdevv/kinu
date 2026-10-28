@@ -11,7 +11,7 @@ export interface ControlValues {
 export const defaultControls: ControlValues = {
   automaticTriggers: ["expiry", "drift"],
   expiryDays: 7,
-  observationMinutes: 30,
+  observationMinutes: 1,
   requireRevokeApproval: false,
   exposureSources: [],
 }
@@ -45,6 +45,7 @@ export function controlsAreValid(values: ControlValues) {
   return values.automaticTriggers.length > 0
     && values.expiryDays >= 1
     && values.observationMinutes >= 1
+    && values.observationMinutes <= 10
     && (values.automaticTriggers.includes("verified-exposure") === (values.exposureSources.length > 0))
 }
 

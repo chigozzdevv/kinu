@@ -22,6 +22,7 @@ import { connectionCallbackIntegration } from "../lib/callback"
 import { connectionAction, connectionStatus, formatDate, titleCase } from "../lib/format"
 import { PlaybookSetup } from "./playbooks"
 import { BrowserSetupSession, type BrowserSetupCapability } from "./browsersetup"
+import { AwsSetup } from "./aws"
 
 function identifier(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`
@@ -101,6 +102,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [initialSelectionHandled, setInitialSelectionHandled] = useState(false)
   const [editName, setEditName] = useState("")
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
+  const [awsSetupId, setAwsSetupId] = useState<string | null>(null)
   const [connections, playbooks, graph] = useQueries({ queries: [
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
     { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },
@@ -179,6 +181,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const error = [connections, graph].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
   const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
+  if (awsSetupId) return <AwsSetup connectionId={awsSetupId} onClose={() => setAwsSetupId(null)} onBack={() => setAwsSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async (connection) => { setSelected(connection); setAwsSetupId(null) }} />
 
   if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
 
@@ -190,7 +193,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   if (currentSelected) return <div className="page">
     {playbookNotice}
-    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
@@ -259,7 +262,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
       : ["github", "aws", "custom-api", "computer-use"]
   const connected = {
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
-    aws: false,
+    aws: connections.some((item) => item.platform === "aws" && item.status === "ready"),
     "custom-api": connections.some((item) => item.interface === "api" && item.roles.includes("provider") && item.http !== null),
     "computer-use": connections.some((item) => item.interface === "browser"),
   }
@@ -271,6 +274,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
+  if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
 
   return <div className="page max-w-[960px]">
     <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={onClose} />
@@ -337,6 +341,7 @@ function CustomApiSetup({ onClose, onBack, onChanged, onCreated, connections, pl
     {step === 0 && <FormGrid>
       <Field label="Provider"><input className={formControl} value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Provider name" /></Field>
       <Field label="API definition"><label className="focus-ring flex h-11 cursor-pointer items-center rounded-xl border border-[var(--border)] bg-white px-3.5 text-[10px] font-medium text-[var(--ink-soft)]"><Upload className="mr-2 size-3.5" />{adapterName || "Choose JSON definition"}<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void loadAdapter(event.target.files?.[0])} /></label></Field>
+      {adapter && <Field label="Key overlap"><label className="flex items-start gap-2 text-[11px] leading-5 text-[var(--ink-soft)]"><input type="checkbox" checked={adapter.supports_overlap} onChange={(event) => setAdapter({ ...adapter, supports_overlap: event.target.checked })} className="mt-1" />This provider allows the old and replacement keys to work together during rollout.</label></Field>}
     </FormGrid>}
     {step === 1 && <FormGrid>
       <ResourceSelect label="Access secret store" value={secretStoreId} onChange={setSecretStoreId} addLabel="Add connection" onAdd={() => setAddingSecretStore(true)}><option value="">Select secret store</option>{secretStores.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</ResourceSelect>

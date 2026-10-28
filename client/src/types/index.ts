@@ -94,6 +94,7 @@ export interface HttpOperation {
 
 export interface HttpProviderApi {
   base_url: string
+  supports_overlap: boolean
   auth: {
     scheme: "bearer" | "header" | "basic"
     header: string

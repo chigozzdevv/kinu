@@ -67,6 +67,7 @@ export function parseProviderAdapter(source: string): HttpProviderApi {
   if (!testCredential || !credentialAuth || !testCredential.provider_id_field) throw new Error("API definition must declare a credential identity test")
   return {
     base_url: url.origin + (url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "")),
+    supports_overlap: raw.supports_overlap === true,
     auth: auth(raw.auth, "Management authentication"),
     list_credentials: listCredentials,
     create_credential: createCredential,

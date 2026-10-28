@@ -2,7 +2,36 @@ import type { Connection, Identifier, ProviderCredentialMetadata, RuntimeResourc
 import type { CreateConnectionInput, SecretResourceMetadata, SecretVersionMetadata, BrowserSetupResponse, BrowserSetupSession, GitHubOnboardingResponse, GitHubDiscoveryResponse, GitHubCompletionResponse } from "./types"
 import { request, archive, workspacePath } from "./http"
 
+export interface AwsSetup {
+  account_id: string
+  region: string
+  display_name: string
+  secret_arns: string[]
+  function_arns: string[]
+  kms_arns: string[]
+}
+
+export interface AwsPrepared {
+  connection: Connection
+  role_arn: string
+  external_id: string
+  template: Record<string, unknown>
+}
+
 export const connections = {
+  async prepareAws(input: AwsSetup): Promise<AwsPrepared> {
+    return request(`${workspacePath()}/connections/aws`, { method: "POST", body: JSON.stringify(input) })
+  },
+
+  async getAwsSetup(connectionId: Identifier): Promise<AwsPrepared> {
+    return request(`${workspacePath()}/connections/aws/${connectionId}`)
+  },
+
+  async confirmAws(connection: Connection): Promise<Connection> {
+    return request(`${workspacePath()}/connections/aws/${connection.id}/confirm`, {
+      method: "POST", body: JSON.stringify({ expected_revision: connection.revision }),
+    })
+  },
   async createConnection(input: CreateConnectionInput): Promise<Connection> {
     const created = await request<Connection>(`${workspacePath()}/inventory/connections`, {
       method: "POST",
