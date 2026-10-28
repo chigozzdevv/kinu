@@ -13,18 +13,15 @@ export function activeOrganisationId(): Identifier {
   return organisationId
 }
 
-
-export function workspacePath(): string { return `/v1/organisations/${activeOrganisationId()}` }
+export function workspacePath(): string {
+  return `/v1/organisations/${activeOrganisationId()}`
+}
 
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
 
-  constructor(
-    message: string,
-    status: number,
-    code: string,
-  ) {
+  constructor(message: string, status: number, code: string) {
     super(message)
     this.name = "ApiError"
     this.status = status
@@ -32,37 +29,30 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await sessionFetch(path, options)
-    if (!response.ok) {
-      const problem = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
-      throw new ApiError(
-        problem?.message ?? `Kinu API request failed (${response.status})`,
-        response.status,
-        problem?.code ?? "request-failed",
-      )
-    }
-    return response.json() as Promise<T>
+async function checked(path: string, options?: RequestInit): Promise<Response> {
+  const response = await sessionFetch(path, options)
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as { code?: string; message?: string } | null
+    throw new ApiError(
+      problem?.message ?? `Kinu API request failed (${response.status})`,
+      response.status,
+      problem?.code ?? "request-failed",
+    )
   }
+  return response
+}
+
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  return (await checked(path, options)).json() as Promise<T>
+}
 
 export async function requestBlob(path: string): Promise<Blob> {
-    const response = await sessionFetch(path, {
-      headers: { Accept: "image/png" },
-    })
-    if (!response.ok) {
-      const problem = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
-      throw new ApiError(
-        problem?.message ?? `Kinu API request failed (${response.status})`,
-        response.status,
-        problem?.code ?? "request-failed",
-      )
-    }
-    return response.blob()
-  }
+  return (await checked(path, { headers: { Accept: "image/png" } })).blob()
+}
 
 export async function archive<T>(resourcePath: string, expectedRevision: number): Promise<T> {
-    return request(`${resourcePath}/archive`, {
-      method: "POST",
-      body: JSON.stringify({ expected_revision: expectedRevision, cascade: true }),
-    })
-  }
+  return request(`${resourcePath}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ expected_revision: expectedRevision, cascade: true }),
+  })
+}

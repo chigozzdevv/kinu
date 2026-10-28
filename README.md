@@ -44,6 +44,18 @@ to the selected demo resources; it cannot read workload secret values. Only the 
 write path and consumer's read path handle those values. Inventory and execution evidence store
 references, identifiers and checks.
 
+## Available features
+
+The default runtime persists playbooks, probe definitions, approval decisions, agent records,
+notifications, overview counts and rotation history in PostgreSQL. Approval capabilities require
+matching saved verification evidence and a separate approver, and can be consumed only once.
+The demo executor still rejects controls requiring manual revocation approval.
+
+The authenticated features endpoint reports external integration availability. GitHub onboarding,
+customer AWS onboarding, browser sessions and playbook generation remain unavailable until their
+execution adapters are configured; their frontend actions are disabled. This does not disable the
+working demo rotation or the workspace Builder connection.
+
 ## Development
 
 Requirements: Python 3.12, uv, Node.js 24+ and npm. Local services are for development and

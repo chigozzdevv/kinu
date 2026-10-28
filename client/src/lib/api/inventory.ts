@@ -3,37 +3,37 @@ import type { ImportCredentialInput, ControlPreferences, ControlVersion, Credent
 import { request, archive, workspacePath } from "./http"
 
 export const inventory = {
-async getGraph(): Promise<InventoryGraph> {
+  async getGraph(): Promise<InventoryGraph> {
     return request(`${workspacePath()}/inventory/graph`)
   },
 
-async getCredential(credentialId: Identifier): Promise<ManagedCredential> {
+  async getCredential(credentialId: Identifier): Promise<ManagedCredential> {
     return request(`${workspacePath()}/inventory/credentials/${credentialId}`)
   },
 
-async updateCredential(credentialId: Identifier, input: { expected_revision: number; display_name?: string }): Promise<ManagedCredential> {
+  async updateCredential(credentialId: Identifier, input: { expected_revision: number; display_name?: string }): Promise<ManagedCredential> {
     return request(`${workspacePath()}/inventory/credentials/${credentialId}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     })
   },
 
-async archiveCredential(credentialId: Identifier, expectedRevision: number): Promise<ManagedCredential> {
+  async archiveCredential(credentialId: Identifier, expectedRevision: number): Promise<ManagedCredential> {
     return archive(`${workspacePath()}/inventory/credentials/${credentialId}`, expectedRevision)
   },
 
-async importCredential(input: ImportCredentialInput): Promise<ManagedCredential> {
+  async importCredential(input: ImportCredentialInput): Promise<ManagedCredential> {
     return request(`${workspacePath()}/inventory/credentials`, {
       method: "POST",
       body: JSON.stringify(input),
     })
   },
 
-async getCredentialControls(credentialId: Identifier, versionId: Identifier): Promise<ControlVersion> {
+  async getCredentialControls(credentialId: Identifier, versionId: Identifier): Promise<ControlVersion> {
     return request(`${workspacePath()}/inventory/credentials/${credentialId}/controls/${versionId}`)
   },
 
-async updateCredentialControls(
+  async updateCredentialControls(
     credentialId: Identifier,
     input: { expected_revision: number; version_id: Identifier; controls: ControlPreferences },
   ): Promise<CredentialControlsResponse> {
@@ -43,7 +43,7 @@ async updateCredentialControls(
     })
   },
 
-async getEnvironments(): Promise<Environment[]> {
+  async getEnvironments(): Promise<Environment[]> {
     return request(`${workspacePath()}/inventory/environments`)
   }
 }

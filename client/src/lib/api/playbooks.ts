@@ -3,7 +3,7 @@ import type { PlaybookDefinition, PreparePlaybookInput, PreparedPlaybook, Walkth
 import { request, archive, workspacePath, ApiError } from "./http"
 
 export const playbooks = {
-async preparePlaybook(input: PreparePlaybookInput): Promise<PreparedPlaybook> {
+  async preparePlaybook(input: PreparePlaybookInput): Promise<PreparedPlaybook> {
     let source: WalkthroughSource
     if (input.source.kind === "text") {
       source = await request(`${workspacePath()}/playbooks/${input.playbook_id}/walkthroughs/references`, {
@@ -50,7 +50,7 @@ async preparePlaybook(input: PreparePlaybookInput): Promise<PreparedPlaybook> {
     return { playbook_id: input.playbook_id, version_id: input.version_id, source_id: source.id, definition: draft.definition }
   },
 
-async savePlaybook(input: PreparedPlaybook): Promise<Playbook> {
+  async savePlaybook(input: PreparedPlaybook): Promise<Playbook> {
     const created = await request<{ playbook: Playbook }>(`${workspacePath()}/playbooks/${input.playbook_id}/versions`, {
       method: "POST",
       body: JSON.stringify({ version_id: input.version_id, definition: input.definition, source_ids: [input.source_id] }),
@@ -58,29 +58,29 @@ async savePlaybook(input: PreparedPlaybook): Promise<Playbook> {
     return created.playbook
   },
 
-async publishPlaybook(playbookId: Identifier, versionId: Identifier): Promise<PlaybookVersion> {
+  async publishPlaybook(playbookId: Identifier, versionId: Identifier): Promise<PlaybookVersion> {
     return request(`${workspacePath()}/playbooks/${playbookId}/versions/${versionId}/publish`, {
       method: "POST",
       body: JSON.stringify({}),
     })
   },
 
-async getPlaybooks(): Promise<Playbook[]> {
+  async getPlaybooks(): Promise<Playbook[]> {
     return request(`${workspacePath()}/playbooks`)
   },
 
-async getPlaybook(playbookId: Identifier): Promise<PlaybookDetail> {
+  async getPlaybook(playbookId: Identifier): Promise<PlaybookDetail> {
     return request(`${workspacePath()}/playbooks/${playbookId}`)
   },
 
-async renamePlaybook(playbookId: Identifier, expectedRevision: number, name: string): Promise<Playbook> {
+  async renamePlaybook(playbookId: Identifier, expectedRevision: number, name: string): Promise<Playbook> {
     return request(`${workspacePath()}/playbooks/${playbookId}`, {
       method: "PATCH",
       body: JSON.stringify({ expected_revision: expectedRevision, name }),
     })
   },
 
-async archivePlaybook(playbookId: Identifier, expectedRevision: number): Promise<Playbook> {
+  async archivePlaybook(playbookId: Identifier, expectedRevision: number): Promise<Playbook> {
     return archive(`${workspacePath()}/playbooks/${playbookId}`, expectedRevision)
   }
 }

@@ -1,3 +1,4 @@
+import { useFeatures } from "../lib/features"
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronRight, PlugZap, Plus, Upload } from "lucide-react"
@@ -86,6 +87,7 @@ function disconnectImpact(connection: Connection) {
 }
 
 export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }: { initialConnectionId?: string; onSelectConnection: (connectionId: string) => void }) {
+  const features = useFeatures()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
@@ -153,7 +155,6 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   useEffect(() => {
 
-
     setBrowserSetup(null)
   }, [currentSelected?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -164,8 +165,6 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   }, [queryClient])
 
   async function openBrowser(connection: Connection) {
-
-
 
       const setup = await open.mutateAsync(connection.id)
 
@@ -191,7 +190,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   if (currentSelected) return <div className="page">
     {playbookNotice}
-    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
@@ -206,10 +205,8 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     </ManageResourceModal>
     {browserSetup && <BrowserSetupModal connection={currentSelected} setup={browserSetup} onClose={() => {
 
-
       setBrowserSetup(null)
     }} onComplete={() => {
-
 
       setBrowserSetup(null)
       void queryClient.invalidateQueries({ queryKey: ["connections"] })
@@ -243,6 +240,13 @@ type ConnectionSetupProps = {
 const providerCapabilities = ["provider.listCredentialMetadata", "provider.createCredential", "provider.getCredentialStatus", "provider.revokeCredential", "provider.testCredential"]
 export function ConnectionSetup({ onClose, playbooks, connections, onChanged, onCreated, initialRoles = [], initialIntegration = null }: ConnectionSetupProps) {
   const [integration, setIntegration] = useState<IntegrationKind | null>(() => connectionCallbackIntegration() ?? initialIntegration)
+  const features = useFeatures()
+  const available = {
+    github: features.data?.github === true,
+    aws: features.data?.aws_connections === true,
+    "custom-api": features.data?.provider_api === true,
+    "computer-use": features.data?.browser_setup === true,
+  }
   const requestedProvider = initialRoles.length === 1 && initialRoles[0] === "provider"
   const requestedCloud = initialRoles.some((role) => role === "runtime" || role === "secret-store")
   const requestedIncident = initialRoles.length === 1 && initialRoles[0] === "incident"
@@ -260,13 +264,17 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
     "computer-use": connections.some((item) => item.interface === "browser"),
   }
 
+  if (features.isLoading) return <div className="page"><Loading /></div>
+  if (features.error) return <div className="page"><Failure error={features.error} /></div>
+  if (integration && !available[integration]) return <div className="page"><PageHeader title="Add connection" onBack={onClose} /><Notice>This connection is not available yet.</Notice></div>
+
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
 
   return <div className="page max-w-[960px]">
     <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={onClose} />
-    <IntegrationGrid visible={visible} connected={connected} onSelect={setIntegration} />
+    <IntegrationGrid visible={visible} connected={connected} available={available} onSelect={setIntegration} />
   </div>
 }
 
@@ -367,8 +375,6 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: 
   async function openBrowser() {
     if (!created) return
 
-
-
       const setup = await open.mutateAsync(created.id)
 
       setBrowserSetup(setup)
@@ -387,10 +393,8 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: 
     <SuccessPage eyebrow="Inventory / Connections" title="Computer Use ready" onBack={finish} actions={<><Button variant="secondary" onClick={finish}>Finish later</Button><Button onClick={openBrowser} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button></>}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Status">Authentication required</Detail></DetailList>{open.error && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{open.error.message}</div>}</SuccessPage>
     {browserSetup && <BrowserSetupModal connection={created} setup={browserSetup} onClose={() => {
 
-
       setBrowserSetup(null)
     }} onComplete={() => {
-
 
       setBrowserSetup(null)
       void finish()
