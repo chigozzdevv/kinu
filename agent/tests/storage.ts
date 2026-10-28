@@ -5,7 +5,7 @@ import { MongoMemoryReplSet } from "mongodb-memory-server"
 const root = fileURLToPath(new URL("../../", import.meta.url))
 const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
 try {
-  const child = spawn("uv", ["run", "pytest", "server/tests/storage"], {
+  const child = spawn("uv", ["run", "pytest", "server/tests/storage", ...process.argv.slice(2)], {
     cwd: root,
     env: {
       ...process.env,

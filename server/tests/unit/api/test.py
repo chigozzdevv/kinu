@@ -760,3 +760,24 @@ async def test_incident_rotation_dispatches_and_duplicate_request_reuses_the_run
             )
             assert response.status_code == expected, response.text
     assert len(dispatcher.sent) == 2 and dispatcher.sent[0] == dispatcher.sent[1]
+
+
+@pytest.mark.anyio
+async def test_database_outage_fails_readiness_without_exposing_error_details() -> None:
+    from types import SimpleNamespace
+
+    async def unavailable(command: str) -> None:
+        raise RuntimeError("private database connection details")
+
+    app = create_app(
+        ApiServices(access=AccessControl(AccessRepository(Role.ADMINISTRATOR))),
+        browser=make_browser(IDENTITY),
+    )
+    app.state.database = SimpleNamespace(documents=SimpleNamespace(command=unavailable))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http:
+        response = await http.get("/health/ready")
+        assert response.status_code == 503 and response.json() == {"status": "unavailable"}
+        assert "private" not in response.text
+        assert (await http.get("/health/live")).status_code == 200

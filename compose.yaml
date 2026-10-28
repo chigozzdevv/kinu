@@ -1,0 +1,179 @@
+name: kinu
+
+x-app: &app
+  KINU_ENVIRONMENT: ${KINU_ENVIRONMENT:-development}
+  KINU_PUBLIC_URL: ${KINU_PUBLIC_URL:-http://localhost:8080}
+  KINU_MONGO_DATABASE: kinu
+  KINU_REDIS_URL: redis://redis:6379/0
+  KINU_TELEMETRY_ENABLED: "false"
+
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-c", "cp /run/secrets/mongo /data/configdb/key && chmod 400 /data/configdb/key && chown mongodb:mongodb /data/configdb/key && exec docker-entrypoint.sh mongod --replSet kinu --keyFile /data/configdb/key --bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${KINU_MONGO_ROOT_PASSWORD:?Run python -m deploy.setup}
+      KINU_MONGO_API_PASSWORD: ${KINU_MONGO_API_PASSWORD:?Run python -m deploy.setup}
+      KINU_MONGO_EXECUTOR_PASSWORD: ${KINU_MONGO_EXECUTOR_PASSWORD:?Run python -m deploy.setup}
+      KINU_MONGO_NATIVE_PASSWORD: ${KINU_MONGO_NATIVE_PASSWORD:?Run python -m deploy.setup}
+    secrets: [mongo]
+    volumes:
+      - mongo:/data/db
+      - mongo-config:/data/configdb
+      - ./deploy/mongo-init.js:/docker-entrypoint-initdb.d/users.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username root --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"quit(db.adminCommand({getCmdLineOpts:1}).parsed.replication?.replSet === 'kinu' ? 0 : 1)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [data]
+
+  mongo-setup:
+    image: mongo:8.0
+    depends_on:
+      mongo: {condition: service_healthy}
+    environment:
+      MONGO_PASSWORD: ${KINU_MONGO_ROOT_PASSWORD}
+    entrypoint: ["/bin/bash", "-c", "mongosh --host mongo --username root --password \"$$MONGO_PASSWORD\" --authenticationDatabase admin --quiet --eval 'try { rs.status() } catch (e) { if (e.codeName !== \"NotYetInitialized\") throw e; rs.initiate({_id:\"kinu\",members:[{_id:0,host:\"mongo:27017\"}]}) }; while (!db.hello().isWritablePrimary) { sleep(500) }'"]
+    networks: [data]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [data]
+
+  migrate:
+    image: kinu-api
+    build: {context: ., target: api}
+    command: ["python", "-m", "core.storage.migrate"]
+    environment:
+      <<: *app
+      KINU_MONGO_URL: mongodb://api:${KINU_MONGO_API_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+    depends_on:
+      mongo-setup: {condition: service_completed_successfully}
+    networks: [data]
+
+  api:
+    image: kinu-api
+    build: {context: ., target: api}
+    restart: unless-stopped
+    environment:
+      <<: *app
+      KINU_MONGO_URL: mongodb://api:${KINU_MONGO_API_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_AUTH_SECRET_FILE: /run/secrets/auth
+      KINU_EXECUTOR_TOKEN_FILE: /run/secrets/executor-token
+      KINU_EXECUTOR_URL: http://executor:8002
+      KINU_SETUP_TOKEN_FILE: /run/secrets/setup
+      KINU_RESEND_KEY: ${KINU_RESEND_KEY:-}
+      KINU_EMAIL_SENDER: ${KINU_EMAIL_SENDER:-Kinu <noreply@example.com>}
+    secrets: [auth, executor-token, setup]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [data, app, internet]
+
+  agent:
+    image: kinu-agent
+    build: {context: ., target: agent}
+    restart: unless-stopped
+    environment:
+      KINU_ENVIRONMENT: ${KINU_ENVIRONMENT:-development}
+      KINU_PUBLIC_URL: ${KINU_PUBLIC_URL:-http://localhost:8080}
+      KINU_API_URL: http://api:8000
+      KINU_NATIVE_MONGO_URL: mongodb://native:${KINU_MONGO_NATIVE_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_NATIVE_KEY_FILE: /run/secrets/native
+      KINU_NATIVE_TOKEN_FILE: /run/secrets/native-token
+    secrets: [native, native-token]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    networks: [data, app, internet]
+
+  executor:
+    image: kinu-executor
+    build: {context: ., target: executor}
+    restart: unless-stopped
+    environment:
+      <<: *app
+      KINU_MONGO_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_VAULT_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_VAULT_KEY_FILE: /run/secrets/vault
+      KINU_EXECUTOR_TOKEN_FILE: /run/secrets/executor-token
+      KINU_NATIVE_TOKEN_FILE: /run/secrets/native-token
+      KINU_NATIVE_URL: http://agent:8001
+    secrets: [vault, executor-token, native-token]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [data, app, internet]
+
+  worker:
+    image: kinu-executor
+    build: {context: ., target: executor}
+    restart: unless-stopped
+    command: ["python", "-m", "jobs.worker"]
+    environment:
+      <<: *app
+      KINU_MONGO_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_VAULT_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
+      KINU_VAULT_KEY_FILE: /run/secrets/vault
+      KINU_EXECUTOR_TOKEN_FILE: /run/secrets/executor-token
+      KINU_NATIVE_TOKEN_FILE: /run/secrets/native-token
+      KINU_NATIVE_URL: http://agent:8001
+    secrets: [vault, executor-token, native-token]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    shm_size: 256mb
+    networks: [data, app, internet]
+
+  web:
+    image: kinu-web
+    build: {context: ., target: web}
+    restart: unless-stopped
+    environment:
+      KINU_SITE: ${KINU_SITE:-:80}
+    ports: ["${KINU_HTTP_PORT:-8080}:80", "${KINU_HTTPS_PORT:-8443}:443"]
+    volumes: [caddy:/data, caddy-config:/config]
+    depends_on: [api, agent, executor]
+    networks: [app, internet]
+
+secrets:
+  setup: {file: ./.secrets/setup}
+  mongo: {file: ./.secrets/mongo}
+  auth: {file: ./.secrets/auth}
+  vault: {file: ./.secrets/vault}
+  native: {file: ./.secrets/native}
+  executor-token: {file: ./.secrets/executor-token}
+  native-token: {file: ./.secrets/native-token}
+
+volumes:
+  mongo:
+  mongo-config:
+  redis:
+  caddy:
+  caddy-config:
+
+networks:
+  data: {internal: true}
+  app: {internal: true}
+  internet:

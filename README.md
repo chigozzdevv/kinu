@@ -1,199 +1,102 @@
 # Kinu
 
-Credential rotation with verified consumer updates, policy gates and an audit trail.
+Credential rotation with policy checks, private execution and an audit trail.
 
-Kinu runs on AWS. Kinu provides its own email/password forms backed by Cognito; the API stores opaque cookie sessions,
-workspace permissions and inventory in PostgreSQL. Agent-Native shares that identity and
-exposes the same scoped actions used by the dashboard.
+Kinu runs through Docker Compose. MongoDB stores application data, Redis and BullMQ run
+background jobs, and email/password authentication uses opaque cookie sessions. Agent-Native
+shares the dashboard's identity and workspace permissions. Resend delivers verification and
+password-reset emails.
 
-## Current flow
+## Run
 
-1. A selected Gmail sender reports a credential alert, or an operator requests a rotation.
-2. Email events are deduplicated and correlated with the current credential. Builder AI
-   assesses a small structured summary; application policy decides whether rotation is allowed.
-3. An SQS worker validates the pinned controls and creates a replacement through the provider API.
-4. The private executor stores the key in the selected AWS Secrets Manager secret and returns a version reference.
-5. Kinu verifies consumer access, publishes an immutable Lambda version and promotes its live alias.
-6. After the configured healthy observation window, Kinu retires the old provider key, proves it
-   is rejected and updates inventory and audit history. The isolated demo also checks old-key usage.
+Install Docker with Compose, then:
 
-The API executor supports a declared HTTP credential provider, Secrets Manager and one selected
-Lambda consumer. The isolated demo remains available with its own provider and consumer.
-Its email is an explicitly labelled MIME fixture. Gmail connects through Google's read-only OAuth
-flow; its private reader checks new matching messages every five minutes. AgentCore Browser awaits an AWS quota approval; the browser
-adapter and capture guards have local tests, but the browser rotation is not live verified.
-
-Failures before retirement restore the previous consumer and revoke the candidate when safe.
-Failures after retirement retain the working replacement and flag recovery for an operator.
-A worker crash after mutation requires evidence review; Kinu does not blindly rerun it.
-
-## Connect AI
-
-Sign in, select a workspace and open **Settings → AI → Connect Builder.io**. Workspace
-administrators authorize Builder AI and select a model. OAuth requests
-only AI invocation and refresh access. Each workspace is capped at 20 inference calls per UTC day.
-Builder account access and usage allowances still apply.
-
-Builder grants are encrypted in a separate database. The model receives incident enums,
-confidence, candidate count and a policy result. It receives no workload key, mailbox body,
-AWS credentials or arbitrary execution tools. Generic Agent-Native chat, terminals, MCP proxy
-routes and alternative authentication methods remain disabled.
-
-The API and Agent-Native roles cannot assume customer roles. Private connection checks and
-rotation functions assume a workspace-specific role using an external ID and session tag.
-Session policies restrict each operation to the selected resources. Only these private functions
-and the consumer handle secret values; the dashboard, model and execution history receive
-references, identifiers and checks.
-
-## Connect Gmail
-
-Open **Connections → Gmail**, approve read access, then add exact sender addresses and select
-their credential providers. To allow automatic exposure response, add that Gmail sender to the
-credential's exposure sources and enable its exposure trigger in Controls.
-
-Gmail grants mailbox-wide read access; Kinu filters sender metadata before fetching a body.
-Only new matching messages up to 256 KiB are processed. Attachments are ignored. Automatic
-rotation requires a valid sender-aligned DKIM signature, a unique mapped credential ID,
-permitted controls and a rotate decision. Other alerts remain for review. The current parser
-recognizes exposure and expiry language in the subject and plain-text body; HTML-only notices
-and alerts without a known credential ID can require manual correlation.
-
-OAuth grants are encrypted in a dedicated DynamoDB table. Its key and Google client secret
-stay in a separate Secrets Manager secret accessible only to the private mail function.
-Mail bodies are neither stored nor sent to the model. Disconnecting removes the workspace's
-saved grant; Google account permissions can also be revoked through the linked Google settings.
-
-Before connecting an inbox, register a Google web OAuth client with the mail stack's exact
-callback URL, enable the Gmail API and configure its consent screen. For a Google app in
-Testing, add test users; read-access refresh tokens normally expire after seven days.
-Public use of Gmail's restricted read scope requires Google's verification process and may
-require a security assessment.
-
-## Available features
-
-The default runtime persists playbooks, probe definitions, approval decisions, agent records,
-notifications, overview counts and rotation history in PostgreSQL. Approval capabilities require
-matching saved verification evidence and a separate approver, and can be consumed only once.
-The API executors reject controls requiring manual revocation approval. The Lambda HTTP adapter
-also rejects generation-telemetry requirements until a telemetry adapter is connected.
-
-The authenticated features endpoint reports deployed integration availability. AWS onboarding and
-HTTP provider setup require the private connection function. GitHub onboarding, browser sessions
-and playbook generation remain disabled until their adapters are configured.
-
-## Connect a workload
-
-1. Open **Connections → AWS**. Select the account, region, exact secret ARNs and Lambda ARNs.
-   Include customer KMS key ARNs when needed. Install the generated CloudFormation access role,
-   then return to Kinu and connect. Pending connections can resume with **Finish setup**.
-2. Add a **Custom API** connection. Upload its operation mappings and select a separate management
-   credential version from Secrets Manager. List metadata must include ID, name, kind, scopes and
-   active/disabled status; the credential test must return its ID. Declare concurrent key support.
-3. Add a credential and select its current secret version, provider identity and Lambda binding.
-   Kinu checks those relationships before saving the mapping.
-
-The Lambda must have an unweighted, published `live` alias and an environment variable containing the full
-immutable reference `arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME-SUFFIX/versions/VERSION`.
-Kinu updates only that binding, preserves other environment variables and checks alias revisions.
-Route production invocations through `live`; other aliases and unqualified invocations are not managed.
-
-Implement a health operation accepting `{"kinu":{"operation":"health","challenge":"VALUE"}}`.
-An optional `secret_reference` inside `kinu` asks the consumer to test a staged version of the same
-secret. Restrict overrides to that secret. Read the version with the consumer's AWS role and make a
-real, harmless provider request. Return only:
-
-```json
-{"kinu":{"challenge":"VALUE","healthy":true,"secret_reference":"FULL_VERSION_REFERENCE","provider_id":"KEY_ID"}}
+```sh
+python3 -m deploy.setup
 ```
 
-For an authenticated rejection return `healthy: false` and `reason: "credential-rejected"` with the
-same challenge. Network errors must not report credential rejection. Never return the key.
-The current adapter supports one consumer, 60–600 seconds of observation and automatic revocation.
-It does not claim application-wide traffic or old-key telemetry coverage.
+Edit `.env`: set `KINU_RESEND_KEY` and `KINU_EMAIL_SENDER` using a domain verified in Resend.
+
+```sh
+docker compose up -d --build
+```
+
+Run `python3 -m deploy.setup --link` on the installation host. Open its private setup link,
+create your account and verify your email. Setup grants that account the installation administrator
+role in MongoDB. The link can only initialize the installation once. Regular sign-ups receive no
+installation privileges. The dashboard is at <http://localhost:8080>.
+
+For a public installation, point a domain at the host and set:
+
+```dotenv
+KINU_ENVIRONMENT=production
+KINU_PUBLIC_URL=https://kinu.example.com
+KINU_SITE=kinu.example.com
+KINU_HTTP_PORT=80
+KINU_HTTPS_PORT=443
+```
+
+Caddy issues the HTTPS certificate. Only Caddy's ports need public access. MongoDB, Redis,
+the API, Agent-Native and the executor stay on container networks.
+
+`deploy.setup` creates random database passwords and separate encryption/service keys without
+overwriting existing values. Keep `.env`, `.secrets/` and database volumes in your backups.
+Existing database passwords must be changed in MongoDB as well as the configuration. Changing
+an encryption key without migrating its encrypted records makes those records unreadable.
+
+Update with `git pull` followed by `docker compose up -d --build`. Index migrations run before
+application services start. `docker compose down` preserves data; adding `--volumes` deletes it.
+
+## Connections
+
+Open **Settings → Integrations** to configure the OAuth apps used by this installation. These
+settings require the verified installation administrator. Workspace administrators then connect
+their own accounts through **Connections**. OAuth client secrets and account tokens are encrypted
+in the private executor database; the dashboard receives configuration status only.
+
+Gmail uses Google's read-only OAuth scope. Add exact alert senders and select their credential
+providers after connecting. Kinu reads new matching messages every five minutes, ignores
+attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
+sender-aligned DKIM, a unique credential match and permitted controls. Register Google's web OAuth
+client with the callback shown in Settings. Public Gmail use requires Google's verification;
+Testing applications require test users and have limited refresh-token lifetimes.
+
+Custom API providers accept their management token once. The executor keeps it encrypted and
+reuses that connection across credentials. HTTP operation mappings must declare overlapping keys,
+credential metadata and an authenticated credential test.
+
+Vercel, Railway and Render workload selection and rotation are under development. Their settings
+do not imply that a workload is ready to rotate. AWS adapters remain optional; the current fully
+implemented workload executor uses one selected Lambda consumer and Secrets Manager resource.
+Cloud role setup is separate from deploying Kinu.
+
+## AI and execution
+
+Connect Builder.io under **Settings → AI**. Each workspace authorizes its own Builder account
+and chooses a model. OAuth requests AI invocation and refresh access. The default limit is 20
+calls per workspace per UTC day; Builder's credits and account limits still apply.
+
+The model assesses a small structured incident summary. It receives no workload keys, provider
+management tokens or mailbox bodies. Policy checks decide which operations can run. The private
+executor handles secrets and performs provider mutations; Agent-Native has access only to its
+own encrypted grant database. Generic chat, terminals and MCP proxy routes are disabled.
+
+Rotation preserves the old key during deployment and observation. Retirement requires current
+verification evidence. An interrupted mutation is held for evidence review rather than replayed
+blindly. The Chromium smoke test verifies capture barriers, private transfer and context disposal.
+A general browser rotation worker is not yet live.
 
 ## Development
 
-Requirements: Python 3.12, uv, Node.js 24+ and npm. Local services are for development and
-predeployment verification; AWS is the deployment target.
+Python 3.12 and Node.js 24 are required outside Docker.
 
 ```sh
 make sync
-cp .env.example .env
-cp agent/.env.example agent/.env
-cp client/.env.example client/.env.local
-make db
-```
-
-Configure Cognito and `KINU_DATABASE_URL` in the API environment, then run `make migrate`.
-Start `make api`, `make agent` and `npm --prefix client run dev` in separate terminals.
-Open http://localhost:5173. The local database binds to `127.0.0.1:5433`.
-
-Keep root environment values out of the frontend and Agent-Native process. Local Agent-Native
-storage uses its own `DATABASE_URL`; deployed storage uses a separate database and IAM role.
-No `VITE_` value may contain a secret. Production requires HTTPS and a Cognito public app client with `ALLOW_USER_PASSWORD_AUTH`. Sessions expire within 12 hours; writes require Origin and CSRF checks.
-
-```sh
 make verify
 ```
 
-Verification covers contracts, policy, state transitions, PostgreSQL persistence, concurrent
-rotation delivery, rollback, email deduplication, session sharing, workspace isolation and CSRF.
-Local Cognito tests use signed fixture tokens. A passing local suite does not prove AWS access
-or Builder account authorization. The SDK's disabled chat dependency has a transitive Zod 3
-advisory; review it before enabling any generic chat route.
-
-Infrastructure templates and deployment utilities are in `infra/`. Invitation delivery is not implemented.
-
-## Deployment
-
-Run infrastructure commands from the repository root with an authorized temporary AWS session,
-`AWS_REGION` and `PYTHONPATH=server:packages/contracts/src:packages/policy/src:packages/telemetry/src`.
-Create the auth, store and artifact stacks from their matching templates before initialization.
-
-```sh
-python -m infra.bootstrap
-python -m infra.package --api
-python -m infra.deploy
-python -m infra.native
-python -m infra.bootstrap --native
-python -m infra.launch
-python -m infra.executor
-python -m infra.mail
-python -m infra.deploy
-```
-
-Configure Gmail with `python -m infra.mail --credentials /path/to/google-client.json`.
-The command writes the OAuth client into the private AWS vault without changing its encryption
-key. Keep the downloaded credential file outside Git. No Google compute resources are used.
-
-Database initialization is explicit. Routine app, native and demo deployments do not initialize
-roles or schemas. Deployment tools discover stack outputs from AWS; they do not depend on local
-JSON state. Build the frontend and upload `client/dist` to the app stack's private frontend bucket.
-Retain older hashed assets for open tabs. Packaging installs locked Linux Python dependencies into
-a fresh staging directory. Omit `--api` to include the remote Playwright driver.
-
-`infra/check.py` runs storage tests against the deployed database. For a synthetic test login,
-run `python -m infra.user --output /path/to/private/demo-user.json`; this command never resets
-an existing demo account when its original credential file is missing. Demo launch uses an
-explicit `KINU_DEMO_ORGANISATION`, an existing deployment, or the synthetic Cognito workspace.
-Existing demo role bindings are recovered from PostgreSQL.
-
-## Layout
-
-| Path | Purpose |
-| --- | --- |
-| `client/` | Operator dashboard |
-| `agent/` | Agent-Native actions and Builder AI connection |
-| `server/api/`, `server/core/` | Auth, inventory, policy and workflow |
-| `server/rotation/`, `server/cloud/` | Shared staged executor and private AWS functions |
-| `server/demo/` | Isolated demo provider, consumer and email fixture |
-| `server/mail/` | Gmail OAuth, sender filtering and incident assessment |
-| `server/browser/`, `server/capture/` | Protected browser observations and capture |
-| `server/connectors/` | AWS and provider adapters |
-| `packages/` | Shared contracts, policy and telemetry |
-| `infra/` | AWS templates, packaging and deployment |
-
-Licensed under Apache 2.0. See [LICENSE](LICENSE).
-
-Sign-up, email verification, code resend and password reset use the same Cognito pool. Passwords
-remain in Cognito. A password reset revokes existing Kinu sessions.
+The storage suite starts an isolated MongoDB replica set. Set `KINU_TEST_REDIS_URL` to isolated
+Redis database 15 to include queue integration tests. No cloud account or model call is needed for
+these checks. Run `python3 -m deploy.check` against a running Compose installation to check routing,
+database isolation and encrypted vault persistence. Run
+`docker compose exec -T executor python < deploy/browser.py` for the fake-key capture check. The Compose deployment has separate API, executor, worker, agent and web image targets.

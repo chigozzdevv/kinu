@@ -9,8 +9,7 @@
     "check": "tsc --noEmit && oxlint",
     "test": "tsx --test tests/*.test.ts",
     "test:storage": "tsx tests/storage.ts",
-    "test:integration": "tsx tests/integration.ts",
-    "db": "pglite-server --db ../.cache/db --host 127.0.0.1 --port 5433 --max-connections 5"
+    "test:integration": "tsx tests/integration.ts"
   },
   "dependencies": {
     "@agent-native/core": "0.220.0",

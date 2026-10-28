@@ -43,3 +43,13 @@ jobs:
         run: make sync
       - name: Verify
         run: make verify
+      - name: Verify Docker
+        id: docker
+        run: |
+          python3 -m deploy.setup
+          docker compose up -d --build --wait --wait-timeout 180
+          python3 -m deploy.check
+          docker compose exec -T executor python < deploy/browser.py
+      - name: Stop containers
+        if: always() && steps.docker.outcome != 'skipped'
+        run: docker compose down

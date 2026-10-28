@@ -13,15 +13,15 @@ sync:
 	npm --prefix agent ci
 
 format:
-	$(UV_ENV) uv run ruff format server packages
-	$(UV_ENV) uv run ruff check --fix server packages
+	$(UV_ENV) uv run ruff format server packages deploy
+	$(UV_ENV) uv run ruff check --fix server packages deploy
 
 lint:
-	$(UV_ENV) uv run ruff format --check server packages
-	$(UV_ENV) uv run ruff check server packages
+	$(UV_ENV) uv run ruff format --check server packages deploy
+	$(UV_ENV) uv run ruff check server packages deploy
 
 type:
-	$(UV_ENV) uv run mypy server packages
+	$(UV_ENV) uv run mypy server packages deploy
 
 test:
 	$(UV_ENV) uv run pytest
@@ -44,16 +44,16 @@ integration:
 verify: lint type test client native storage integration
 
 api:
-	$(UV_ENV) uv run --env-file .env uvicorn api.main:app --host 127.0.0.1 --port 8000 --no-access-log
+	docker compose up -d --build api
 
 agent:
-	npm --prefix agent run dev
+	docker compose up -d --build agent
 
 db:
-	docker compose up -d mongo redis
+	docker compose up -d mongo-setup redis
 
 migrate:
-	$(UV_ENV) uv run --env-file .env python -m core.storage.migrate
+	docker compose run --rm migrate
 
 image:
-	docker build --file server/api/Dockerfile --tag kinu-api:local .
+	docker compose build
