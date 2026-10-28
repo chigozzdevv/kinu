@@ -39,6 +39,10 @@ _BROWSER_CAPABILITIES = frozenset({"browser.execute", "browser.authenticate"})
 
 
 class InventoryCatalog:
+    @property
+    def provider_available(self) -> bool:
+        return self.provider_metadata is not None and self.credential_verifier is not None
+
     def __init__(
         self,
         repository: InventoryRepository,
@@ -48,15 +52,15 @@ class InventoryCatalog:
         secret_metadata: SecretMetadataLister | None = None,
         runtime_metadata: RuntimeMetadataLister | None = None,
     ) -> None:
-        self._repository = repository
-        self._clock = clock or (lambda: datetime.now(UTC))
-        self._provider_metadata = provider_metadata
-        self._credential_verifier = credential_verifier
-        self._secret_metadata = secret_metadata
-        self._runtime_metadata = runtime_metadata
+        self.repository = repository
+        self.clock = clock or (lambda: datetime.now(UTC))
+        self.provider_metadata = provider_metadata
+        self.credential_verifier = credential_verifier
+        self.secret_metadata = secret_metadata
+        self.runtime_metadata = runtime_metadata
 
-    async def _validate_service_connections(self, service: ConsumerService) -> None:
-        runtime = await self._repository.get_connection(
+    async def validate_service_connections(self, service: ConsumerService) -> None:
+        runtime = await self.repository.get_connection(
             service.organisation_id,
             service.runtime_connection_id,
         )
@@ -68,7 +72,7 @@ class InventoryCatalog:
         if not _resource_covered(service.runtime_resource, runtime.allowed_resources):
             raise ResourceConflictError("service runtime resource escapes the connection boundary")
         for connection_id in service.telemetry_connection_ids:
-            telemetry = await self._repository.get_connection(
+            telemetry = await self.repository.get_connection(
                 service.organisation_id,
                 connection_id,
             )
@@ -79,7 +83,7 @@ class InventoryCatalog:
                 raise ResourceConflictError("service requires API telemetry connections")
 
     async def get_connection(self, organisation_id: str, resource_id: str) -> Connection:
-        return await self._repository.get_connection(organisation_id, resource_id)
+        return await self.repository.get_connection(organisation_id, resource_id)
 
     async def list_provider_credentials(
         self, organisation_id: str, connection_id: str
@@ -97,19 +101,19 @@ class InventoryCatalog:
             raise ResourceConflictError("provider connection is not ready")
         if "provider.listCredentialMetadata" not in connection.capabilities:
             raise ResourceConflictError("provider connection cannot list credential metadata")
-        if self._provider_metadata is None:
+        if self.provider_metadata is None:
             raise ResourceConflictError("provider credential discovery is unavailable")
-        metadata = await self._provider_metadata.metadata(connection)
+        metadata = await self.provider_metadata.metadata(connection)
         return tuple(ProviderCredentialMetadata.model_validate(item) for item in metadata)
 
     async def list_secret_resources(
         self, organisation_id: str, connection_id: str
     ) -> tuple[SecretResourceMetadata, ...]:
-        connection = await self._secret_connection(organisation_id, connection_id)
-        if self._secret_metadata is None:
+        connection = await self.secret_connection(organisation_id, connection_id)
+        if self.secret_metadata is None:
             raise ResourceConflictError("secret metadata discovery is unavailable")
         try:
-            resources = await self._secret_metadata.resources_for(connection)
+            resources = await self.secret_metadata.resources_for(connection)
         except ConnectorError as error:
             raise ResourceConflictError(f"Secret discovery unavailable: {error}") from None
         return tuple(
@@ -133,10 +137,10 @@ class InventoryCatalog:
             raise ResourceConflictError("runtime discovery requires a ready API runtime connection")
         if "runtime.listServices" not in connection.capabilities:
             raise ResourceConflictError("runtime connection cannot list services")
-        if self._runtime_metadata is None:
+        if self.runtime_metadata is None:
             raise ResourceConflictError("runtime resource discovery is unavailable")
         try:
-            resources = await self._runtime_metadata.resources_for(connection)
+            resources = await self.runtime_metadata.resources_for(connection)
         except ConnectorError as error:
             raise ResourceConflictError(f"Runtime discovery unavailable: {error}") from None
         metadata = tuple(RuntimeResourceMetadata.model_validate(item) for item in resources)
@@ -150,13 +154,13 @@ class InventoryCatalog:
     async def list_secret_versions(
         self, organisation_id: str, connection_id: str, secret: str
     ) -> tuple[SecretVersionMetadata, ...]:
-        connection = await self._secret_connection(organisation_id, connection_id)
+        connection = await self.secret_connection(organisation_id, connection_id)
         if not _resource_covered(secret, connection.allowed_resources):
             raise ResourceConflictError("secret resource escapes the connection boundary")
-        if self._secret_metadata is None:
+        if self.secret_metadata is None:
             raise ResourceConflictError("secret metadata discovery is unavailable")
         try:
-            versions = await self._secret_metadata.versions_for(connection, secret)
+            versions = await self.secret_metadata.versions_for(connection, secret)
         except ConnectorError as error:
             raise ResourceConflictError(f"Secret discovery unavailable: {error}") from None
         return tuple(
@@ -171,7 +175,7 @@ class InventoryCatalog:
             if item.get("state") == "ENABLED"
         )
 
-    async def _secret_connection(self, organisation_id: str, connection_id: str) -> Connection:
+    async def secret_connection(self, organisation_id: str, connection_id: str) -> Connection:
         connection = await self.get_connection(organisation_id, connection_id)
         if (
             connection.archived_at is not None
@@ -183,22 +187,22 @@ class InventoryCatalog:
         return connection
 
     async def get_application(self, organisation_id: str, resource_id: str) -> Application:
-        return await self._repository.get_application(organisation_id, resource_id)
+        return await self.repository.get_application(organisation_id, resource_id)
 
     async def get_environment(self, organisation_id: str, resource_id: str) -> Environment:
-        return await self._repository.get_environment(organisation_id, resource_id)
+        return await self.repository.get_environment(organisation_id, resource_id)
 
     async def get_service(self, organisation_id: str, resource_id: str) -> ConsumerService:
-        return await self._repository.get_service(organisation_id, resource_id)
+        return await self.repository.get_service(organisation_id, resource_id)
 
     async def get_credential(self, organisation_id: str, resource_id: str) -> ManagedCredential:
-        return await self._repository.get_credential(organisation_id, resource_id)
+        return await self.repository.get_credential(organisation_id, resource_id)
 
     async def get_controls(
         self, organisation_id: str, credential_id: str, version_id: str
     ) -> ControlVersion:
         credential = await self.get_credential(organisation_id, credential_id)
-        controls = await self._repository.get_control_version(
+        controls = await self.repository.get_control_version(
             organisation_id, credential_id, version_id
         )
         if controls.credential_id != credential.id or controls.organisation_id != organisation_id:
@@ -206,19 +210,19 @@ class InventoryCatalog:
         return controls
 
     async def list_connections(self, organisation_id: str) -> tuple[Connection, ...]:
-        return _active(await self._repository.connections(organisation_id))
+        return _active(await self.repository.connections(organisation_id))
 
     async def list_applications(self, organisation_id: str) -> tuple[Application, ...]:
-        return _active(await self._repository.applications(organisation_id))
+        return _active(await self.repository.applications(organisation_id))
 
     async def list_environments(self, organisation_id: str) -> tuple[Environment, ...]:
-        return _active(await self._repository.environments(organisation_id))
+        return _active(await self.repository.environments(organisation_id))
 
     async def list_services(self, organisation_id: str) -> tuple[ConsumerService, ...]:
-        return _active(await self._repository.services(organisation_id))
+        return _active(await self.repository.services(organisation_id))
 
     async def list_credentials(self, organisation_id: str) -> tuple[ManagedCredential, ...]:
-        return _active(await self._repository.credentials(organisation_id))
+        return _active(await self.repository.credentials(organisation_id))
 
     async def graph(
         self,
@@ -228,13 +232,13 @@ class InventoryCatalog:
         tuple[ConsumerService, ...],
         tuple[ConsumerBinding, ...],
     ]:
-        credentials = _active(await self._repository.credentials(organisation_id))
-        consumer_services = _active(await self._repository.services(organisation_id))
+        credentials = _active(await self.repository.credentials(organisation_id))
+        consumer_services = _active(await self.repository.services(organisation_id))
         credential_ids = {credential.id for credential in credentials}
         service_ids = {service.id for service in consumer_services}
         bindings = tuple(
             binding
-            for binding in await self._repository.bindings(organisation_id)
+            for binding in await self.repository.bindings(organisation_id)
             if binding.credential_id in credential_ids and binding.service_id in service_ids
         )
         return (
@@ -243,7 +247,7 @@ class InventoryCatalog:
             bindings,
         )
 
-    async def _validate_connection(self, connection: Connection) -> None:
+    async def validate_connection(self, connection: Connection) -> None:
         if connection.interface is ConnectionInterface.BROWSER:
             if not connection.allowed_resources or any(
                 not _domain_pattern(value) for value in connection.allowed_resources
@@ -252,9 +256,9 @@ class InventoryCatalog:
             if not connection.capabilities.intersection(_BROWSER_CAPABILITIES):
                 raise ResourceConflictError("browser connection must declare a browser capability")
 
-    async def _validate_connection_usage(self, connection: Connection) -> None:
-        credentials = _active(await self._repository.credentials(connection.organisation_id))
-        consumer_services = _active(await self._repository.services(connection.organisation_id))
+    async def validate_connection_usage(self, connection: Connection) -> None:
+        credentials = _active(await self.repository.credentials(connection.organisation_id))
+        consumer_services = _active(await self.repository.services(connection.organisation_id))
         if ConnectionRole.SECRET_STORE in connection.roles and any(
             credential.secret_store_connection_id == connection.id
             and not _resource_covered(credential.secret_reference, connection.allowed_resources)
@@ -272,7 +276,7 @@ class InventoryCatalog:
             and connection.playbook_id is not None
         ):
             assert connection.playbook_version_id is not None
-            version = await self._repository.get_playbook_version(
+            version = await self.repository.get_playbook_version(
                 connection.organisation_id,
                 connection.playbook_id,
                 connection.playbook_version_id,

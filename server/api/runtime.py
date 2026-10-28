@@ -3,9 +3,13 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime
 
 import httpx
+from agents.memory import AgentMemoryService
+from agents.store import AgentStore
 from connectors.aws import AwsClient
 from core.account import AccountService
 from core.account.store import AccountStore
+from core.approval import ApprovalService
+from core.approval.store import ApprovalStore
 from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
 from core.auth import AccessControl
@@ -19,11 +23,17 @@ from core.incident.store import IncidentStore
 from core.inventory import InventoryService
 from core.inventory.store import InventoryStore
 from core.notification import NotificationService
+from core.overview import OverviewService
+from core.overview.store import OverviewStore
+from core.playbook import PlaybookService
+from core.playbook.store import PlaybookStore
 from core.storage.factory import application_database
+from core.storage.history import HistoryStore
 from core.storage.notification import NotificationStore
 from core.storage.runs import RunStore
+from core.verification import ProbeService
+from core.verification.store import ProbeStore
 from core.workflow import RunWorkflow
-from demo.journal import RunHistory
 from demo.mail import Source
 from demo.queue import Queue
 from fastapi import FastAPI
@@ -48,6 +58,8 @@ async def runtime(
             if services is None:
                 inventory = InventoryStore(database)
                 workflow = RunWorkflow(RunStore(database))
+                counts = OverviewStore(database)
+                agents = AgentStore(database)
                 notifications = NotificationService(NotificationStore(database), _now)
                 audit = AuditWriter(AuditStore(database), config.aws_region, _now)
                 queue = (
@@ -65,7 +77,13 @@ async def runtime(
                     accounts=AccountService(accounts, _now),
                     inventory=InventoryService(inventory, _now),
                     workflow=workflow,
-                    history=RunHistory(database),
+                    playbooks=PlaybookService(PlaybookStore(database), _now, inventory),
+                    approvals=ApprovalService(ApprovalStore(database), _now, notifications, audit),
+                    probes=ProbeService(ProbeStore(database), _now),
+                    overview=OverviewService(counts, counts, counts, counts, _now),
+                    agent_repository=agents,
+                    agent_continuity=AgentMemoryService(agents, _now),
+                    history=HistoryStore(database),
                     notifications=notifications,
                     dispatcher=queue,
                     demo=Source(database, queue) if queue else None,

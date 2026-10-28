@@ -4,7 +4,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from contracts import (
+    AgentMemory,
+    AgentRegistration,
+    AgentSession,
     Application,
+    Approval,
     Connection,
     ConsumerBinding,
     ConsumerService,
@@ -17,8 +21,11 @@ from contracts import (
     ManagedCredential,
     Notification,
     NotificationEndpoint,
+    Playbook,
     PlaybookVersion,
+    Probe,
     ProbeVersion,
+    ProtectedAction,
 )
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
@@ -29,6 +36,13 @@ from core.storage.database import Database
 from core.storage.sql import SqlConnection
 
 _KINDS: dict[type[Contract], str] = {
+    AgentRegistration: "agent",
+    AgentSession: "agent-session",
+    AgentMemory: "agent-memory",
+    Approval: "approval",
+    ProtectedAction: "protected-action",
+    Playbook: "playbook",
+    Probe: "probe",
     Incident: "incident",
     Notification: "notification",
     NotificationEndpoint: "notification-endpoint",
@@ -70,6 +84,10 @@ class Records:
 class RecordTransaction:
     def __init__(self, connection: SqlConnection) -> None:
         self._connection = connection
+
+    @property
+    def sql(self) -> SqlConnection:
+        return self._connection
 
     async def get[T: Contract](self, model: type[T], organisation_id: str, resource_id: str) -> T:
         cursor = await self._connection.execute(
@@ -141,3 +159,22 @@ class RecordTransaction:
         )
         if await cursor.fetchone() is None:
             raise RevisionConflictError("consumer binding changed")
+
+    async def publish[T: (PlaybookVersion, ProbeVersion)](self, previous: T, changed: T) -> T:
+        mutable = {"state", "published_by", "published_at", "approved_by", "approved_at"}
+        if previous.model_dump(exclude=mutable) != changed.model_dump(exclude=mutable):
+            raise ResourceConflictError("publication cannot change an immutable definition")
+        cursor = await self._connection.execute(
+            "UPDATE kinu.inventory SET data=%s WHERE organisation_id=%s AND kind=%s "
+            "AND id=%s AND data=%s RETURNING id",
+            (
+                Jsonb(changed.model_dump(mode="json")),
+                previous.organisation_id,
+                _KINDS[type(previous)],
+                previous.id,
+                Jsonb(previous.model_dump(mode="json")),
+            ),
+        )
+        if await cursor.fetchone() is None:
+            raise RevisionConflictError("version publication changed")
+        return changed

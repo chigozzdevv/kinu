@@ -5,6 +5,7 @@ from core.auth.forms import AttemptLimitError, FormError
 from core.config import Settings
 from core.errors import (
     ActiveRunConflictError,
+    ApprovalError,
     AuthenticationError,
     AuthorizationError,
     IdempotencyConflictError,
@@ -51,6 +52,7 @@ from api.routes import (
 from api.routes.auth import router as auth_router
 from api.routes.connections import router as connections_router
 from api.routes.demo import router as demo_router
+from api.routes.features import router as features_router
 from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
@@ -93,6 +95,7 @@ def create_app(
     app.include_router(overview_router)
     app.include_router(settings_router)
     app.include_router(demo_router)
+    app.include_router(features_router)
     app.add_exception_handler(KinuError, _kinu_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)
@@ -144,6 +147,7 @@ async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
         error,
         (
             ActiveRunConflictError,
+            ApprovalError,
             IdempotencyConflictError,
             LeaseConflictError,
             RevisionConflictError,
@@ -153,7 +157,7 @@ async def _kinu_error(request: Request, error: Exception) -> JSONResponse:
         return _error(status.HTTP_409_CONFLICT, "conflict", str(error))
     if isinstance(error, TransitionRejectedError):
         return _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "transition-rejected", str(error))
-    if isinstance(error, PlaybookError):
+    if isinstance(error, (PlaybookError, ApprovalError)):
         return _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "playbook-rejected", str(error))
     if isinstance(error, StorageIntegrityError):
         return _error(

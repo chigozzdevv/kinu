@@ -88,10 +88,10 @@ class InventoryService(InventoryCatalog):
                     "provider connection requires list, create, revoke, "
                     "and credential identity operations"
                 )
-            if self._provider_metadata is None:
+            if self.provider_metadata is None:
                 raise ResourceConflictError("provider connection validation is unavailable")
-            await self._provider_metadata.metadata(connection)
-            now = self._clock()
+            await self.provider_metadata.metadata(connection)
+            now = self.clock()
             connection = connection.model_copy(
                 update={
                     "status": ConnectionStatus.READY,
@@ -104,10 +104,10 @@ class InventoryService(InventoryCatalog):
             ConnectionRole.RUNTIME in connection.roles
             and connection.interface is ConnectionInterface.API
         ):
-            if self._runtime_metadata is None:
+            if self.runtime_metadata is None:
                 raise ResourceConflictError("runtime connection validation is unavailable")
-            await self._runtime_metadata.resources_for(connection)
-            now = self._clock()
+            await self.runtime_metadata.resources_for(connection)
+            now = self.clock()
             connection = connection.model_copy(
                 update={
                     "status": ConnectionStatus.READY,
@@ -120,10 +120,10 @@ class InventoryService(InventoryCatalog):
             ConnectionRole.SECRET_STORE in connection.roles
             and connection.interface is ConnectionInterface.API
         ):
-            if self._secret_metadata is None:
+            if self.secret_metadata is None:
                 raise ResourceConflictError("secret-store connection validation is unavailable")
-            await self._secret_metadata.resources_for(connection)
-            now = self._clock()
+            await self.secret_metadata.resources_for(connection)
+            now = self.clock()
             connection = connection.model_copy(
                 update={
                     "status": ConnectionStatus.READY,
@@ -132,28 +132,28 @@ class InventoryService(InventoryCatalog):
                     "updated_at": now,
                 }
             )
-        return await self._repository.add_connection(connection)
+        return await self.repository.add_connection(connection)
 
     async def add_application(self, application: Application) -> Application:
-        return await self._repository.add_application(application)
+        return await self.repository.add_application(application)
 
     async def add_environment(self, environment: Environment) -> Environment:
-        application = await self._repository.get_application(
+        application = await self.repository.get_application(
             environment.organisation_id,
             environment.application_id,
         )
         _tenant(application.organisation_id, environment.organisation_id)
-        return await self._repository.add_environment(environment)
+        return await self.repository.add_environment(environment)
 
     async def add_service(self, service: ConsumerService) -> ConsumerService:
-        environment = await self._repository.get_environment(
+        environment = await self.repository.get_environment(
             service.organisation_id,
             service.environment_id,
         )
         if environment.application_id != service.application_id:
             raise ResourceConflictError("service application does not match its environment")
-        await self._validate_service_connections(service)
-        return await self._repository.add_service(service)
+        await self.validate_service_connections(service)
+        return await self.repository.add_service(service)
 
     async def add_discovered_service(
         self,
@@ -172,7 +172,7 @@ class InventoryService(InventoryCatalog):
         if len(selected) != 1:
             raise ResourceConflictError("runtime service is no longer available")
         resource = selected[0]
-        now = self._clock()
+        now = self.clock()
         return await self.add_service(
             ConsumerService(
                 id=service_id,
@@ -201,8 +201,8 @@ class InventoryService(InventoryCatalog):
             raise ResourceConflictError("environment does not belong to the application")
         if service.application_id != application.id or service.environment_id != environment.id:
             raise ResourceConflictError("service does not belong to the application environment")
-        await self._validate_service_connections(service)
-        return await self._repository.add_application_setup(application, environment, service)
+        await self.validate_service_connections(service)
+        return await self.repository.add_application_setup(application, environment, service)
 
     async def add_discovered_application_setup(
         self,
@@ -222,7 +222,7 @@ class InventoryService(InventoryCatalog):
         resolved_environment = resource.environment_name or environment_name
         if not resolved_environment:
             raise ResourceConflictError("runtime service environment is unavailable")
-        now = self._clock()
+        now = self.clock()
         application = Application(
             id=application_id,
             organisation_id=organisation_id,

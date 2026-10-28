@@ -16,7 +16,11 @@ from core.auth.browser import BrowserAuth
 from core.auth.session import BrowserSession
 from core.config import Settings
 from core.connection.service import ConnectionService
-from core.errors import AuthenticationError, IntegrationNotConfiguredError
+from core.errors import (
+    AuthenticationError,
+    IntegrationNotConfiguredError,
+    ResourceSetupRequiredError,
+)
 from core.github import GitHubOnboardingService
 from core.history import RunHistoryService
 from core.incident import IncidentService
@@ -114,6 +118,16 @@ def command_id(identity: AuthenticatedIdentity, organisation_id: str, key: str) 
 
 def required[T](value: T | None, name: str) -> T:
     if value is None:
+        unavailable = {
+            "browsers": "Browser execution is not enabled for this deployment.",
+            "browser setup": "Browser sign-in is not enabled for this deployment.",
+            "connections": "AWS account onboarding is not enabled for this deployment.",
+            "github": "GitHub connections are not enabled for this deployment.",
+            "agents": "Playbook generation is not enabled for this deployment.",
+            "walkthroughs": "Playbook source processing is not enabled for this deployment.",
+        }
+        if name in unavailable:
+            raise ResourceSetupRequiredError(unavailable[name])
         raise IntegrationNotConfiguredError(f"API service {name} is not configured")
     return value
 

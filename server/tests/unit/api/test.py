@@ -635,7 +635,7 @@ async def test_overview_does_not_count_expired_pending_approvals() -> None:
 
 
 @pytest.mark.anyio
-async def test_setup_without_browser_runtime_is_a_conflict() -> None:
+async def test_setup_without_browser_runtime_reports_required_setup() -> None:
     sequence = itertools.count(1)
     repository = MemoryRunRepository()
     workflow = RunWorkflow(
@@ -664,7 +664,7 @@ async def test_setup_without_browser_runtime_is_a_conflict() -> None:
             json={"extra_domains": []},
         )
     assert begun.status_code == 409
-    assert begun.json()["code"] == "conflict"
+    assert begun.json()["code"] == "setup-required"
 
 
 @pytest.mark.anyio

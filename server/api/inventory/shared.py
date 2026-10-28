@@ -3,7 +3,7 @@ from uuid import uuid4
 from browser.setup import BrowserSetupApi
 from core.errors import ResourceConflictError
 
-from api.deps import ApiServices
+from api.deps import ApiServices, required
 
 
 def _organisation(actual: str, expected: str) -> None:
@@ -12,9 +12,7 @@ def _organisation(actual: str, expected: str) -> None:
 
 
 def _setup(api: ApiServices) -> BrowserSetupApi:
-    if api.browser_setup is None:
-        raise ResourceConflictError("browser setup is not configured")
-    return api.browser_setup
+    return required(api.browser_setup, "browser setup")
 
 
 async def _audit_change(

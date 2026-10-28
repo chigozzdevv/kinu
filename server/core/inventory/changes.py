@@ -46,15 +46,15 @@ class InventoryChanges:
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             display_name=display_name,
             capabilities=capabilities,
             allowed_resources=allowed_resources,
             region=region,
         )
-        await self.catalog._validate_connection(changed)
-        await self.catalog._validate_connection_usage(changed)
-        return await self.catalog._repository.replace_connection(changed, expected_revision)
+        await self.catalog.validate_connection(changed)
+        await self.catalog.validate_connection_usage(changed)
+        return await self.catalog.repository.replace_connection(changed, expected_revision)
 
     async def update_application(
         self,
@@ -70,11 +70,11 @@ class InventoryChanges:
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             display_name=display_name,
             repository_ids=repository_ids,
         )
-        return await self.catalog._repository.replace_application(changed, expected_revision)
+        return await self.catalog.repository.replace_application(changed, expected_revision)
 
     async def update_environment(
         self,
@@ -91,12 +91,12 @@ class InventoryChanges:
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             display_name=display_name,
             production=production,
             region=region,
         )
-        return await self.catalog._repository.replace_environment(changed, expected_revision)
+        return await self.catalog.repository.replace_environment(changed, expected_revision)
 
     async def update_service(
         self,
@@ -117,7 +117,7 @@ class InventoryChanges:
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             display_name=display_name,
             runtime_connection_id=runtime_connection_id,
             telemetry_connection_ids=telemetry_connection_ids,
@@ -126,8 +126,8 @@ class InventoryChanges:
             repository=repository,
             identity=identity,
         )
-        await self.catalog._validate_service_connections(changed)
-        return await self.catalog._repository.replace_service(changed, expected_revision)
+        await self.catalog.validate_service_connections(changed)
+        return await self.catalog.repository.replace_service(changed, expected_revision)
 
     async def update_credential(
         self,
@@ -142,10 +142,10 @@ class InventoryChanges:
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             display_name=display_name,
         )
-        return await self.catalog._repository.replace_credential(changed, expected_revision)
+        return await self.catalog.repository.replace_credential(changed, expected_revision)
 
     async def update_controls(
         self,
@@ -159,7 +159,7 @@ class InventoryChanges:
         current = await self.catalog.get_credential(organisation_id, credential_id)
         _editable(current, expected_revision, "credential")
         validate_exposure_sources(
-            _active(await self.catalog._repository.connections(organisation_id)), preferences
+            _active(await self.catalog.repository.connections(organisation_id)), preferences
         )
         previous = await self.catalog.get_controls(
             organisation_id, credential_id, current.control_version
@@ -173,15 +173,15 @@ class InventoryChanges:
             definition=definition,
             digest=digest(definition),
             created_by=actor_id,
-            created_at=self.catalog._clock(),
+            created_at=self.catalog.clock(),
         )
         changed = _change(
             current,
             expected_revision,
-            self.catalog._clock(),
+            self.catalog.clock(),
             control_version=controls.id,
         )
-        return await self.catalog._repository.replace_controls(changed, expected_revision, controls)
+        return await self.catalog.repository.replace_controls(changed, expected_revision, controls)
 
     async def archive_connection(
         self,
@@ -191,8 +191,8 @@ class InventoryChanges:
         cascade: bool = False,
     ) -> Connection:
         current = await self.catalog.get_connection(organisation_id, resource_id)
-        credentials = _active(await self.catalog._repository.credentials(organisation_id))
-        services = _active(await self.catalog._repository.services(organisation_id))
+        credentials = _active(await self.catalog.repository.credentials(organisation_id))
+        services = _active(await self.catalog.repository.services(organisation_id))
         dependent_services = tuple(
             service
             for service in services
@@ -208,7 +208,7 @@ class InventoryChanges:
             raise ResourceConflictError("connection is still used by active inventory")
         return await self._archive_inventory(
             _archive(
-                current, expected_revision, self.catalog._clock(), status=ConnectionStatus.DISABLED
+                current, expected_revision, self.catalog.clock(), status=ConnectionStatus.DISABLED
             ),
             services=dependent_services,
             credentials=dependent_credentials,
@@ -224,12 +224,12 @@ class InventoryChanges:
         current = await self.catalog.get_application(organisation_id, resource_id)
         environments = tuple(
             item
-            for item in _active(await self.catalog._repository.environments(organisation_id))
+            for item in _active(await self.catalog.repository.environments(organisation_id))
             if item.application_id == resource_id
         )
         services = tuple(
             item
-            for item in _active(await self.catalog._repository.services(organisation_id))
+            for item in _active(await self.catalog.repository.services(organisation_id))
             if item.application_id == resource_id
         )
         if (environments or services) and not cascade:
@@ -237,7 +237,7 @@ class InventoryChanges:
                 "application still contains active environments or services"
             )
         return await self._archive_inventory(
-            _archive(current, expected_revision, self.catalog._clock()),
+            _archive(current, expected_revision, self.catalog.clock()),
             environments=environments,
             services=services,
         )
@@ -252,13 +252,13 @@ class InventoryChanges:
         current = await self.catalog.get_environment(organisation_id, resource_id)
         services = tuple(
             service
-            for service in _active(await self.catalog._repository.services(organisation_id))
+            for service in _active(await self.catalog.repository.services(organisation_id))
             if service.environment_id == resource_id
         )
         if services and not cascade:
             raise ResourceConflictError("environment still contains active services")
         return await self._archive_inventory(
-            _archive(current, expected_revision, self.catalog._clock()), services=services
+            _archive(current, expected_revision, self.catalog.clock()), services=services
         )
 
     async def archive_service(
@@ -271,17 +271,17 @@ class InventoryChanges:
         current = await self.catalog.get_service(organisation_id, resource_id)
         bindings = tuple(
             binding
-            for binding in await self.catalog._repository.bindings(organisation_id)
+            for binding in await self.catalog.repository.bindings(organisation_id)
             if binding.service_id == resource_id
         )
         if bindings and not cascade:
             raise ResourceConflictError("service still has credential bindings")
         return await self._archive_inventory(
-            _archive(current, expected_revision, self.catalog._clock()),
+            _archive(current, expected_revision, self.catalog.clock()),
             credentials=tuple(
                 credential
                 for credential in _active(
-                    await self.catalog._repository.credentials(organisation_id)
+                    await self.catalog.repository.credentials(organisation_id)
                 )
                 if credential.id in {binding.credential_id for binding in bindings}
             ),
@@ -298,7 +298,7 @@ class InventoryChanges:
         if current.consumer_ids and not cascade:
             raise ResourceConflictError("credential must be disconnected before it can be archived")
         return await self._archive_inventory(
-            _archive(current, expected_revision, self.catalog._clock())
+            _archive(current, expected_revision, self.catalog.clock())
         )
 
     async def _archive_inventory[
@@ -312,7 +312,7 @@ class InventoryChanges:
         credentials: tuple[ManagedCredential, ...] = (),
     ) -> T:
         organisation_id = primary.organisation_id
-        all_bindings = await self.catalog._repository.bindings(organisation_id)
+        all_bindings = await self.catalog.repository.bindings(organisation_id)
         service_ids = {service.id for service in services}
         credential_ids = {credential.id for credential in credentials}
         if isinstance(primary, ManagedCredential):
@@ -321,12 +321,12 @@ class InventoryChanges:
             binding.credential_id for binding in all_bindings if binding.service_id in service_ids
         )
         active_credentials: tuple[ManagedCredential, ...] = _active(
-            await self.catalog._repository.credentials(organisation_id)
+            await self.catalog.repository.credentials(organisation_id)
         )
         related_credentials: tuple[ManagedCredential, ...] = tuple(
             credential for credential in active_credentials if credential.id in credential_ids
         )
-        now = self.catalog._clock()
+        now = self.catalog.clock()
         resources: dict[tuple[type[object], str], InventoryResource] = {
             (type(primary), primary.id): primary,
         }
@@ -343,7 +343,7 @@ class InventoryChanges:
         removed_bindings = tuple(
             binding for binding in all_bindings if binding.credential_id in credential_ids
         )
-        await self.catalog._repository.archive_inventory(
+        await self.catalog.repository.archive_inventory(
             tuple(resources.values()),
             removed_bindings,
         )

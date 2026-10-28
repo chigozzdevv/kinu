@@ -41,7 +41,7 @@ class CredentialService:
         actor_id: str,
         service_setup: tuple[Application, Environment, ConsumerService] | None = None,
     ) -> ManagedCredential:
-        management = await self.catalog._repository.get_connection(
+        management = await self.catalog.repository.get_connection(
             credential.organisation_id,
             credential.connection_id,
         )
@@ -58,7 +58,7 @@ class CredentialService:
             management.playbook_id is None or management.playbook_version_id is None
         ):
             raise ResourceConflictError("browser-managed credentials require a connection playbook")
-        secret_store = await self.catalog._repository.get_connection(
+        secret_store = await self.catalog.repository.get_connection(
             credential.organisation_id,
             credential.secret_store_connection_id,
         )
@@ -102,7 +102,7 @@ class CredentialService:
         services: list[ConsumerService] = []
         connections: dict[str, Connection] = {
             connection.id: connection
-            for connection in await self.catalog._repository.connections(credential.organisation_id)
+            for connection in await self.catalog.repository.connections(credential.organisation_id)
             if connection.archived_at is None
         }
         connections.update({management.id: management, secret_store.id: secret_store})
@@ -110,7 +110,7 @@ class CredentialService:
             service = (
                 setup_service
                 if setup_service is not None and setup_service.id == binding.service_id
-                else await self.catalog._repository.get_service(
+                else await self.catalog.repository.get_service(
                     credential.organisation_id,
                     binding.service_id,
                 )
@@ -123,7 +123,7 @@ class CredentialService:
                 raise ResourceConflictError(
                     "credential binding does not match its consumer service"
                 )
-            runtime = await self.catalog._repository.get_connection(
+            runtime = await self.catalog.repository.get_connection(
                 credential.organisation_id,
                 binding.runtime_connection_id,
             )
@@ -155,7 +155,7 @@ class CredentialService:
             services.append(service)
             connections[runtime.id] = runtime
             for connection_id in service.telemetry_connection_ids:
-                telemetry = await self.catalog._repository.get_connection(
+                telemetry = await self.catalog.repository.get_connection(
                     credential.organisation_id, connection_id
                 )
                 if (
@@ -169,7 +169,7 @@ class CredentialService:
                     )
                 connections[telemetry.id] = telemetry
         await self._verify_import_binding(credential, management, secret_store)
-        now = self.catalog._clock()
+        now = self.catalog.clock()
         definition, probes = compile_controls(
             credential,
             bindings,
@@ -189,7 +189,7 @@ class CredentialService:
             created_by=actor_id,
             created_at=now,
         )
-        return await self.catalog._repository.import_credential(
+        return await self.catalog.repository.import_credential(
             credential, generation, bindings, controls, probes, service_setup
         )
 
@@ -210,7 +210,7 @@ class CredentialService:
         resource = selected[0]
         existing = tuple(
             service
-            for service in await self.catalog._repository.services(credential.organisation_id)
+            for service in await self.catalog.repository.services(credential.organisation_id)
             if service.archived_at is None
             and service.runtime_connection_id == consumer.runtime_connection_id
             and service.runtime_resource == consumer.runtime_resource
@@ -230,7 +230,7 @@ class CredentialService:
             resolved_environment = resource.environment_name or consumer.environment_name
             if not resolved_environment:
                 raise ResourceConflictError("runtime service environment is unavailable")
-            now = self.catalog._clock()
+            now = self.catalog.clock()
             application = Application(
                 id=consumer.application_id,
                 organisation_id=credential.organisation_id,
@@ -320,7 +320,7 @@ class CredentialService:
             if frozenset(metadata.scopes) != credential.scopes:
                 raise ResourceConflictError("credential scopes differ from provider metadata")
         if management.interface is ConnectionInterface.BROWSER:
-            existing = await self.catalog._repository.credentials(credential.organisation_id)
+            existing = await self.catalog.repository.credentials(credential.organisation_id)
             if any(
                 item.archived_at is None
                 and item.connection_id == credential.connection_id
@@ -331,7 +331,7 @@ class CredentialService:
                     "secret version is already imported for this browser connection"
                 )
             return
-        existing = await self.catalog._repository.credentials(credential.organisation_id)
+        existing = await self.catalog.repository.credentials(credential.organisation_id)
         if any(
             item.archived_at is None
             and item.connection_id == credential.connection_id
@@ -348,7 +348,7 @@ class CredentialService:
         secret_reference: str,
     ) -> ProviderCredentialMetadata:
         management = await self.catalog.get_connection(organisation_id, connection_id)
-        secret_store = await self.catalog._secret_connection(
+        secret_store = await self.catalog.secret_connection(
             organisation_id, secret_store_connection_id
         )
         if (
@@ -392,10 +392,10 @@ class CredentialService:
                 raise ResourceConflictError(
                     "browser credential resolution requires a connection playbook"
                 )
-            if self.catalog._secret_metadata is None:
+            if self.catalog.secret_metadata is None:
                 raise ResourceConflictError("browser credential verification is unavailable")
             secret_resource = secret_reference.partition("/versions/")[0]
-            versions = await self.catalog._secret_metadata.versions_for(
+            versions = await self.catalog.secret_metadata.versions_for(
                 secret_store, secret_resource
             )
             selected = tuple(
@@ -412,13 +412,13 @@ class CredentialService:
                 status="unknown",
                 disabled=False,
             )
-        if self.catalog._provider_metadata is None or self.catalog._credential_verifier is None:
+        if self.catalog.provider_metadata is None or self.catalog.credential_verifier is None:
             raise ResourceConflictError("credential import verification is unavailable")
         discovered = tuple(
             ProviderCredentialMetadata.model_validate(item)
-            for item in await self.catalog._provider_metadata.metadata(management)
+            for item in await self.catalog.provider_metadata.metadata(management)
         )
-        identity = await self.catalog._credential_verifier.credential_identity(
+        identity = await self.catalog.credential_verifier.credential_identity(
             management,
             secret_store,
             secret_reference,

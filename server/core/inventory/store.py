@@ -148,6 +148,27 @@ class InventoryStore:
             )
             return await rows.replace(changed, expected_revision)
 
+    async def detach_playbook(
+        self,
+        organisation_id: str,
+        connection_id: str,
+        expected_revision: int,
+        updated_at: datetime,
+    ) -> Connection:
+        async with self._records.write(organisation_id) as rows:
+            current = await rows.get(Connection, organisation_id, connection_id)
+            changed = Connection.model_validate(
+                current.model_dump()
+                | {
+                    "playbook_id": None,
+                    "playbook_version_id": None,
+                    "status": ConnectionStatus.SETUP_REQUIRED,
+                    "updated_at": updated_at,
+                    "revision": expected_revision + 1,
+                }
+            )
+            return await rows.replace(changed, expected_revision)
+
     async def import_credential(
         self,
         credential: ManagedCredential,

@@ -1,10 +1,8 @@
 from typing import Any
 
-from contracts import RotationHistory, Stage, StageExecutionResult
-from core.errors import ResourceConflictError, ResourceNotFoundError
-from core.history import _activity
+from contracts import Stage, StageExecutionResult
+from core.errors import ResourceConflictError
 from core.storage.database import Database
-from core.storage.runs import RunStore
 from psycopg.types.json import Jsonb
 
 
@@ -36,36 +34,6 @@ class Journal:
         if stored != result:
             raise ResourceConflictError("rotation checkpoint already contains another result")
         return stored
-
-
-class RunHistory:
-    def __init__(self, database: Database) -> None:
-        self._database = database
-
-    async def get(self, organisation_id: str, run_id: str) -> RotationHistory:
-        run = await RunStore(self._database).get(organisation_id, run_id)
-        async with self._database.connection() as sql:
-            rows = await (
-                await sql.execute(
-                    "SELECT data FROM kinu.executions WHERE organisation_id=%s AND run_id=%s "
-                    "ORDER BY data->>'started_at',stage",
-                    (organisation_id, run_id),
-                )
-            ).fetchall()
-        return RotationHistory(
-            run_id=run_id,
-            stages=tuple(
-                _activity(StageExecutionResult.model_validate(row["data"]), run) for row in rows
-            ),
-        )
-
-    async def approval_evidence(self, organisation_id: str, approval_id: str) -> Any:
-        raise ResourceNotFoundError("this API demo does not create protected approval requests")
-
-    async def input_image(
-        self, organisation_id: str, run_id: str, activity_id: str
-    ) -> tuple[bytes, str]:
-        raise ResourceNotFoundError("API rotations do not contain browser screenshots")
 
 
 def _sensitive(value: Any) -> bool:

@@ -23,12 +23,12 @@ from core.account.store import AccountStore
 from core.auth import AuthenticatedIdentity
 from core.errors import ActiveRunConflictError
 from core.storage.database import Database
+from core.storage.history import HistoryStore
 from core.storage.records import Records
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from demo.config import DemoConfig
 from demo.effects import Effects
-from demo.journal import RunHistory
 from demo.mail import Mailbox, MailTask, investigate
 from demo.rotate import Rotation
 from demo.seed import seed
@@ -179,7 +179,7 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
     run = await Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_one")
     assert run.status is RunStatus.COMPLETED
     assert api.calls.index("revoke") > api.calls.index("observe") > api.calls.index("verify")
-    history = await RunHistory(database).get(demo.organisation_id, run_id)
+    history = await HistoryStore(database).get(demo.organisation_id, run_id)
     assert tuple(item.stage for item in history.stages) == tuple(Stage)
     assert all(item.status == "succeeded" for item in history.stages)
     async with Records(database).read() as rows:
@@ -207,7 +207,7 @@ async def test_failure_preserves_old_key_and_compensates_candidate(
     async with Records(database).read() as rows:
         old = await rows.get(CredentialGeneration, demo.organisation_id, "generation_demo_initial")
     assert old.state is GenerationState.ACTIVE
-    history = await RunHistory(database).get(demo.organisation_id, run_id)
+    history = await HistoryStore(database).get(demo.organisation_id, run_id)
     assert history.stages[-1].status == "failed"
 
 
