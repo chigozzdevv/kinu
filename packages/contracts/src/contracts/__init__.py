@@ -129,6 +129,7 @@ from contracts.overview import OverviewSummary
 from contracts.plan import OperationStep, RotationPlan, RotationStrategy, RuntimeDeployment
 from contracts.playbook import (
     PageCheckpoint,
+    PageCondition,
     Playbook,
     PlaybookDraft,
     PlaybookEffect,
@@ -283,6 +284,7 @@ __all__ = [
     "OutboxEvent",
     "OverviewSummary",
     "PageCheckpoint",
+    "PageCondition",
     "PauseRunCommand",
     "Playbook",
     "PlaybookDraft",

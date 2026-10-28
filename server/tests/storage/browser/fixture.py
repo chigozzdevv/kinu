@@ -88,7 +88,7 @@ class Launcher:
 onclick="fetch('/retire/{key}',{{method:'POST'}})">Retire key</button>"""
                     else:
                         ids = "".join(
-                            f'<span class="key-id">{key}</span>'
+                            f'<a class="key-id" href="/keys/{key}">{key}</a>'
                             for key, item in self.platform.keys.items()
                             if item["active"]
                         )
@@ -97,7 +97,8 @@ onclick="fetch('/retire/{key}',{{method:'POST'}})">Retire key</button>"""
 <script>document.cookie='portal_session=private-browser-cookie; Secure; SameSite=Lax';
 async function createKey() {{ await fetch('/created',{{method:'POST'}});
 window.originalKey={json.dumps(NEW)};
-document.body.insertAdjacentHTML('beforeend','<input id="key"><span id="identity">new</span>');
+document.body.insertAdjacentHTML('beforeend',
+  '<input id="key"><a id="identity" href="/keys/new">new</a>');
 document.querySelector('#key').value=window.originalKey; }}</script>"""
                     await route.fulfill(content_type="text/html", body=html)
 

@@ -1,5 +1,4 @@
 import json
-import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -33,6 +32,7 @@ from rotation.snapshot import snapshot
 from rotation.stages import stable
 
 from browser.catalog import Catalog
+from browser.identity import normalize
 from browser.launch import BrowserFactory, Launcher
 from browser.planner import ControlPlanner
 from browser.playbook import browser_step_context, resolve_playbook_step
@@ -118,16 +118,29 @@ class Worker:
             locator = await tab.driver.locator(config.credential_ids, require_unique=False)
             if await locator.count() > 1000:
                 raise ResourceConflictError("Provider key list exceeds the inspection limit")
-            identities = tuple(value.strip() for value in await locator.all_text_contents())
-            if len(set(identities)) != len(identities) or any(
-                not re.fullmatch(r"[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,255}", value)
-                for value in identities
-            ):
+            values = await locator.evaluate_all(
+                "(elements, attribute) => elements.map(element => "
+                "attribute === 'text' ? element.textContent : "
+                "attribute === 'value' ? element.value : element.getAttribute(attribute))",
+                config.credential_ids_attribute,
+            )
+            try:
+                identities = tuple(
+                    normalize(value, config.credential_id_path, tab.driver.url) for value in values
+                )
+            except (ValueError, TypeError, AttributeError):
+                raise ResourceConflictError("Provider key identifiers are invalid") from None
+            if len(set(identities)) != len(identities):
                 raise ResourceConflictError("Provider key identifiers are missing or ambiguous")
             return identities
 
     async def perform(
-        self, connection: Connection, run: RotationRun, stage: Stage, revoke_id: str | None = None
+        self,
+        connection: Connection,
+        run: RotationRun,
+        stage: Stage,
+        revoke_id: str | None = None,
+        revoke_name: str | None = None,
     ) -> SecureCaptureResult | None:
         org = run.organisation_id
         state = await snapshot(self.database, org, run.credential_id, run.control_version)
@@ -163,6 +176,8 @@ class Worker:
         context = browser_step_context(run, credential, old, None)
         if revoke_id:
             context.update(old_provider_id=revoke_id, old_provider_path=revoke_id.lstrip("/"))
+        if revoke_name:
+            context["old_provider_display_name"] = revoke_name
         policy = BrowserPolicy(
             allowed_domains=version.definition.allowed_domains,
             allowed_actions=frozenset(BrowserActionKind),
@@ -313,7 +328,7 @@ class Worker:
                     if capture:
                         return capture
                     if step.checkpoint:
-                        await tab.driver.validate_step(step)
+                        await tab.driver.validate_checkpoint(step.checkpoint)
                 return None
         finally:
             if session.status is not BrowserStatus.TERMINATED:

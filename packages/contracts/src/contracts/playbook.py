@@ -1,11 +1,11 @@
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import AwareDatetime, Field, model_validator
 
 from contracts.base import Contract, Identifier
-from contracts.http import HttpAuth, HttpOperation
+from contracts.http import HttpAuth, HttpAuthScheme, HttpOperation
 from contracts.plan import OperationStep
 from contracts.state import Stage
 
@@ -50,7 +50,16 @@ class SecureField(Contract):
     selector: Selector
     provider_id_selector: Selector
     provider_id_attribute: str = Field(default="text", pattern=r"^(text|value|href)$")
+    provider_id_path: str | None = Field(
+        default=None, pattern=r"^/(?:[A-Za-z0-9._-]+/)*$", max_length=256
+    )
     provider_display_name_selector: Selector | None = None
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "SecureField":
+        if (self.provider_id_attribute == "href") != bool(self.provider_id_path):
+            raise ValueError("linked credential IDs require an explicit path prefix")
+        return self
 
 
 class StepOutput(Contract):
@@ -60,15 +69,22 @@ class StepOutput(Contract):
 
 
 class BrowserProbe(Contract):
+    mode: Literal["identity", "resend-receipt"] = "identity"
     base_url: str = Field(min_length=12, max_length=1024)
     auth: HttpAuth
     operation: HttpOperation
     credential_ids: Selector
+    credential_ids_attribute: Literal["text", "value", "href"] = "text"
+    credential_id_path: str | None = Field(
+        default=None, pattern=r"^/(?:[A-Za-z0-9._-]+/)*$", max_length=256
+    )
     kind: str = Field(default="api-key", min_length=1, max_length=64)
     supports_overlap: bool = False
 
     @model_validator(mode="after")
     def validate_probe(self) -> "BrowserProbe":
+        if (self.credential_ids_attribute == "href") != bool(self.credential_id_path):
+            raise ValueError("linked credential IDs require an explicit path prefix")
         url = urlsplit(self.base_url)
         if (
             url.scheme != "https"
@@ -82,18 +98,36 @@ class BrowserProbe(Contract):
             raise ValueError("browser credential verification requires a public HTTPS origin")
         if (
             self.operation.method != "GET"
-            or not self.operation.provider_id_field
+            or (self.mode == "identity" and not self.operation.provider_id_field)
             or "{" in self.operation.path
             or self.operation.body
         ):
             raise ValueError("browser verification requires a fixed GET identity endpoint")
+        if self.mode == "resend-receipt" and (
+            self.base_url != "https://api.resend.com"
+            or self.operation.path != "/inboxes"
+            or self.operation.query != {"limit": "1"}
+            or self.operation.provider_id_field is not None
+            or self.auth.scheme is not HttpAuthScheme.BEARER
+            or self.auth.header != "Authorization"
+            or self.auth.prefix is not None
+            or self.kind != "api-key"
+        ):
+            raise ValueError("use the fixed Resend receipt verification configuration")
         return self
+
+
+class PageCondition(Contract):
+    selector: Selector
+    attribute: Literal["text", "value"] = "text"
+    expected: str = Field(min_length=1, max_length=256)
 
 
 class PlaybookStep(OperationStep):
     effect: PlaybookEffect = PlaybookEffect.NONE
     selectors: tuple[Selector, ...] = ()
     checkpoint: PageCheckpoint | None = None
+    conditions: tuple[PageCondition, ...] = Field(default=(), max_length=8)
     secure_field: SecureField | None = None
     outputs: tuple[StepOutput, ...] = ()
     timeout_seconds: int = Field(default=30, ge=1, le=600)

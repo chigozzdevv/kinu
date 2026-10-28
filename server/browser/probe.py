@@ -15,6 +15,8 @@ class Probe:
         self.http = http
 
     async def check(self, config: BrowserProbe, value: SecretValue) -> tuple[int, dict[str, Any]]:
+        if config.mode != "identity":
+            raise ConnectorError("browser-probe", "Receipt verification needs its provider adapter")
         client = self.http or httpx.AsyncClient(transport=PublicTransport(), trust_env=False)
         try:
             async with client.stream(

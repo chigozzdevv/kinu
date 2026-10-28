@@ -8,6 +8,7 @@ from contracts import (
     BrowserPolicy,
     BrowserSession,
     BrowserStatus,
+    PageCheckpoint,
     PlaybookStep,
     Selector,
     SelectorKind,
@@ -157,14 +158,26 @@ class BrowserDriver:
     async def validate_step(self, step: PlaybookStep) -> None:
         if step.checkpoint is None:
             raise ResourceConflictError("browser step has no deterministic checkpoint")
+        await self.validate_checkpoint(step.checkpoint)
+        for selector in step.selectors:
+            await self.locator(selector)
+        for condition in step.conditions:
+            locator = await self.locator(condition.selector)
+            value = (
+                await locator.input_value()
+                if condition.attribute == "value"
+                else await locator.inner_text()
+            )
+            if value.strip() != condition.expected:
+                raise ResourceConflictError("browser control differs from its approved value")
+
+    async def validate_checkpoint(self, checkpoint: PageCheckpoint) -> None:
         self._check_blocked_egress()
         self._check_authentication()
         self.validate_url(self._page.url)
-        if not fnmatch.fnmatchcase(self._page.url, step.checkpoint.url_pattern):
+        if not fnmatch.fnmatchcase(self._page.url, checkpoint.url_pattern):
             raise ResourceConflictError("browser URL does not match the approved checkpoint")
-        for selector in step.selectors:
-            await self.locator(selector)
-        await self._validate_text(step.checkpoint.required_text, step.checkpoint.forbidden_text)
+        await self._validate_text(checkpoint.required_text, checkpoint.forbidden_text)
 
     async def extract(self, outputs: tuple[StepOutput, ...]) -> dict[str, str]:
         values: dict[str, str] = {}

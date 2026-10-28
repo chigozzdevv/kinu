@@ -19,8 +19,11 @@ from contracts import (
     ConnectionStatus,
     ControlPreferences,
     CreateRunCommand,
+    PageCondition,
     PlaybookDraft,
     RunStatus,
+    Selector,
+    SelectorKind,
     Trigger,
 )
 from core.auth import AuthenticatedIdentity
@@ -47,6 +50,42 @@ from tests.storage.hosting.rotation.fixture import NEW, OLD, Platform
 from tests.storage.hosting.rotation.test import setup
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_browser_checks_form_values_before_actions_and_page_after_actions() -> None:
+    executable()
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content(
+            '<h1>API keys</h1><input id="scope" value="sending">'
+            '<button id="create" onclick="this.remove()">Create</button>'
+        )
+        step = (
+            definition()
+            .steps[1]
+            .model_copy(
+                update={
+                    "conditions": (
+                        PageCondition(
+                            selector=Selector(kind=SelectorKind.CSS, value="#scope"),
+                            attribute="value",
+                            expected="sending",
+                        ),
+                    )
+                }
+            )
+        )
+        await tab.driver.validate_step(step)
+        await tab.page.locator("#scope").fill("full")
+        with pytest.raises(ResourceConflictError, match="approved value"):
+            await tab.driver.validate_step(step)
+        await tab.page.locator("#scope").fill("sending")
+        await tab.driver.validate_step(step)
+        await tab.page.locator("#create").click()
+        assert step.checkpoint
+        await tab.driver.validate_checkpoint(step.checkpoint)
+        with pytest.raises(ResourceConflictError, match="instead of one"):
+            await tab.driver.validate_step(step)
 
 
 def definition() -> PlaybookDraft:
@@ -120,12 +159,16 @@ def definition() -> PlaybookDraft:
     )
 
 
-@pytest.mark.parametrize("failure", [None, "proof", "journal", "agent"])
+@pytest.mark.parametrize(
+    "failure,linked",
+    [(None, False), (None, True), ("proof", False), ("journal", False), ("agent", False)],
+)
 async def test_browser_rotation_captures_privately_and_retires_only_the_verified_key(
     database: Database,
     identity: AuthenticatedIdentity,
     monkeypatch: pytest.MonkeyPatch,
     failure: str | None,
+    linked: bool,
 ) -> None:
     executable()
     platform = Platform(failure)
@@ -135,8 +178,14 @@ async def test_browser_rotation_captures_privately_and_retires_only_the_verified
         hosts, versions, _, credential = await setup(database, identity, http)
         org, inventory = credential.organisation_id, hosts.inventory
         books = PlaybookService(PlaybookStore(database), lambda: datetime.now(UTC), inventory)
+        draft = definition().model_dump(mode="json")
+        if linked:
+            draft["verifier"].update(credential_ids_attribute="href", credential_id_path="/keys/")
+            draft["steps"][1]["secure_field"].update(
+                provider_id_attribute="href", provider_id_path="/keys/"
+            )
         _, version = await books.create_version(
-            org, "book_one", "version_one", definition(), identity.actor_id
+            org, "book_one", "version_one", PlaybookDraft.model_validate(draft), identity.actor_id
         )
         await books.publish(org, "book_one", version.id, identity.actor_id)
         original = await inventory.get_connection(org, "provider_one")

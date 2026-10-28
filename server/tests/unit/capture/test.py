@@ -171,6 +171,7 @@ async def test_capture_records_exact_provider_link_and_display_name() -> None:
     field = _field().model_copy(
         update={
             "provider_id_attribute": "href",
+            "provider_id_path": "/api-keys/",
             "provider_display_name_selector": Selector(
                 kind=SelectorKind.TEST_ID, value="new-key-name"
             ),
@@ -187,7 +188,7 @@ async def test_capture_records_exact_provider_link_and_display_name() -> None:
             "secret://project-one/key",
             access,
         )
-    assert result.provider_id == "/api-keys/provider-key-one"
+    assert result.provider_id == "provider-key-one"
     assert result.provider_display_name == "resend-run-one"
 
 

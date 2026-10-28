@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Protocol
 
 from browser.driver import BrowserDriver
+from browser.identity import normalize
 from connectors.base import SecretValue
 from contracts import (
     Connection,
@@ -83,7 +84,7 @@ class SecureCapture:
         locator = await self._driver.locator(field.selector)
         provider = await self._driver.locator(field.provider_id_selector)
         raw = await _read(locator)
-        provider_id = await _read(provider, field.provider_id_attribute)
+        provider_id = await self._identity(provider, field)
         provider_display_name = await _provider_display_name(self._driver, field)
         if not raw or len(raw) > 16384:
             raise CaptureError("declared secure field is empty or exceeds the capture limit")
@@ -124,7 +125,7 @@ class SecureCapture:
             raise CaptureError("secure input is not valid UTF-8") from error
         if not raw or len(raw) > 16384:
             raise CaptureError("secure input is empty or exceeds the capture limit")
-        provider_id = await _read(provider, field.provider_id_attribute)
+        provider_id = await self._identity(provider, field)
         provider_display_name = await _provider_display_name(self._driver, field)
         if not provider_id or len(provider_id) > 256:
             raise CaptureError("declared provider identifier is empty or invalid")
@@ -141,6 +142,16 @@ class SecureCapture:
             locator,
             access_token,
         )
+
+    async def _identity(self, locator: Locator, field: SecureField) -> str:
+        try:
+            return normalize(
+                await _read(locator, field.provider_id_attribute),
+                field.provider_id_path,
+                self._page.url,
+            )
+        except ValueError:
+            raise CaptureError("declared provider identifier is invalid") from None
 
     async def _store_and_mask(
         self,
