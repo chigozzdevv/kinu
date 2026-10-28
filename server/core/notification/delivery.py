@@ -90,6 +90,17 @@ class NotificationDispatcher:
         return DeliverySummary(claimed, sent, failed)
 
     async def _send(self, claim: NotificationClaim) -> bool:
+        if claim.delivery.started_at and self._clock() - claim.delivery.started_at >= timedelta(
+            hours=23
+        ):
+            await self._repository.mark_failed(
+                claim,
+                self._owner_id,
+                "email-expired: safe retry window elapsed",
+                self._clock(),
+                True,
+            )
+            return False
         if not claim.endpoint.enabled:
             await self._repository.mark_failed(
                 claim,

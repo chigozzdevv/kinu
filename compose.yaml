@@ -133,6 +133,8 @@ services:
     command: ["python", "-m", "jobs.worker"]
     environment:
       <<: *app
+      KINU_RESEND_KEY: ${KINU_RESEND_KEY:-}
+      KINU_EMAIL_SENDER: ${KINU_EMAIL_SENDER:-Kinu <noreply@example.com>}
       KINU_MONGO_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_VAULT_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_VAULT_KEY_FILE: /run/secrets/vault

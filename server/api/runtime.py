@@ -24,7 +24,7 @@ from core.incident.service import IncidentService
 from core.incident.store import IncidentStore
 from core.inventory import InventoryService
 from core.inventory.store import InventoryStore
-from core.notification import NotificationService
+from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.overview import OverviewService
 from core.overview.store import OverviewStore
 from core.playbook import PlaybookService
@@ -37,6 +37,7 @@ from core.storage.runs import RunStore
 from core.verification import ProbeService
 from core.verification.store import ProbeStore
 from core.workflow import RunWorkflow
+from emailer.notification import REFERENCE
 from emailer.resend import Resend
 from fastapi import FastAPI
 from jobs.queue import Jobs
@@ -66,7 +67,13 @@ async def runtime(
                 workflow = RunWorkflow(RunStore(database))
                 counts = OverviewStore(database)
                 agents = AgentStore(database)
-                notifications = NotificationService(NotificationStore(database), _now)
+                notifications = NotificationService(
+                    NotificationStore(database),
+                    _now,
+                    EmailDeliveryConfiguration(REFERENCE, config.email_sender)
+                    if config.resend_key
+                    else None,
+                )
                 audit = AuditWriter(AuditStore(database), config.aws_region, _now)
                 queue = Jobs(config.redis_url.get_secret_value()) if config.executor_token else None
                 if queue:

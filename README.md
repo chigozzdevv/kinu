@@ -47,6 +47,11 @@ an encryption key without migrating its encrypted records makes those records un
 Update with `git pull` followed by `docker compose up -d --build`. Index migrations run before
 application services start. `docker compose down` preserves data; adding `--volumes` deletes it.
 
+Invitations and notification emails use the same Resend settings as sign-in. The worker retries
+queued messages with a stable provider idempotency key and rechecks recipient access before sending.
+Receipts distinguish provider acceptance from delivery. Receipt lookup requires a Resend key with
+read access; sending-only keys can still send email.
+
 ## Connections
 
 Open **Settings → Integrations** to configure the OAuth apps used by this installation. These

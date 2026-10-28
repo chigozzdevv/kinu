@@ -139,6 +139,7 @@ class NotificationDelivery(Contract):
     state: NotificationState = NotificationState.PENDING
     available_at: AwareDatetime
     attempts: int = Field(default=0, ge=0)
+    started_at: AwareDatetime | None = None
     lease_owner: Identifier | None = None
     lease_expires_at: AwareDatetime | None = None
     sent_at: AwareDatetime | None = None

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from contracts import Notification, NotificationDelivery, NotificationEndpoint
+from notification.fanout import enqueue
 
 from core.errors import ResourceConflictError, RevisionConflictError
 from core.storage.database import Database
@@ -26,7 +27,9 @@ class NotificationStore:
             existing = await rows.match(Notification, org, {"id": notification.id})
             if existing:
                 return existing[0], False
-            return await rows.add(notification, org), True
+            await rows.add(notification, org)
+            await enqueue(rows, notification)
+            return notification, True
 
     async def list_notifications(
         self, organisation_id: str, limit: int

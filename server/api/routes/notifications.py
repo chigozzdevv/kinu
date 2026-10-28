@@ -4,12 +4,12 @@ from contracts import (
     Identifier,
     Notification,
     NotificationEndpoint,
-    NotificationKind,
     NotificationTopic,
 )
 from core.auth import Permission
 from core.errors import AuthorizationError, StorageIntegrityError
 from fastapi import APIRouter, Query, Request, status
+from notification.topics import TOPICS
 from pydantic import Field, field_validator
 
 from api.deps import Identity, required, services
@@ -42,87 +42,6 @@ class EmailEndpointRequest(Contract):
 class EndpointStateRequest(Contract):
     expected_revision: int = Field(ge=0)
     enabled: bool
-
-
-TOPICS: tuple[tuple[NotificationTopic, Permission], ...] = (
-    (
-        NotificationTopic(
-            id="incidents",
-            label="Incidents",
-            event_kinds=frozenset(
-                {NotificationKind.INCIDENT, NotificationKind.INCIDENT_CONFIRMATION}
-            ),
-        ),
-        Permission.INCIDENT_WRITE,
-    ),
-    (
-        NotificationTopic(
-            id="rotation-failures",
-            label="Rotation failures",
-            event_kinds=frozenset(
-                {
-                    NotificationKind.ROTATION_FAILED,
-                    NotificationKind.RECOVERY_STARTED,
-                    NotificationKind.CLEANUP_REQUIRED,
-                }
-            ),
-        ),
-        Permission.RUN_WRITE,
-    ),
-    (
-        NotificationTopic(
-            id="approvals",
-            label="Approval requests",
-            event_kinds=frozenset({NotificationKind.APPROVAL_REQUIRED}),
-        ),
-        Permission.APPROVAL_DECIDE,
-    ),
-    (
-        NotificationTopic(
-            id="credential-use",
-            label="Previous credential use",
-            event_kinds=frozenset({NotificationKind.OLD_KEY_USED}),
-        ),
-        Permission.RUN_READ,
-    ),
-    (
-        NotificationTopic(
-            id="connection-health",
-            label="Connection issues",
-            event_kinds=frozenset({NotificationKind.CONNECTION_UNHEALTHY}),
-        ),
-        Permission.INVENTORY_WRITE,
-    ),
-    (
-        NotificationTopic(
-            id="playbook-review",
-            label="Playbook reviews",
-            event_kinds=frozenset({NotificationKind.PLAYBOOK_REVIEW}),
-        ),
-        Permission.PLAYBOOK_APPROVE,
-    ),
-    (
-        NotificationTopic(
-            id="rotation-due",
-            label="Upcoming rotations",
-            event_kinds=frozenset({NotificationKind.ROTATION_DUE}),
-        ),
-        Permission.RUN_WRITE,
-    ),
-    (
-        NotificationTopic(
-            id="rotation-completed",
-            label="Completed rotations",
-            event_kinds=frozenset(
-                {
-                    NotificationKind.REVOCATION_SUCCEEDED,
-                    NotificationKind.ROTATION_COMPLETED,
-                }
-            ),
-        ),
-        Permission.RUN_READ,
-    ),
-)
 
 
 @router.get("", response_model=tuple[Notification, ...])

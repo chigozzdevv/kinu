@@ -3,6 +3,7 @@ import logging
 import signal
 from contextlib import suppress
 from datetime import UTC, datetime
+from functools import partial
 from uuid import uuid4
 
 from bullmq import Job, Worker
@@ -55,11 +56,17 @@ async def main() -> None:
         )
         try:
             while not stop.is_set():
-                try:
-                    await recover(service)
-                    await service.poll()
-                except Exception as error:
-                    log.warning("Background check failed: %s", type(error).__name__)
+                for check_name, check in (
+                    ("recovery", partial(recover, service)),
+                    ("gmail", service.poll),
+                    ("email", service.email.drain),
+                ):
+                    try:
+                        await check()
+                    except Exception as error:
+                        log.warning(
+                            "Background %s check failed: %s", check_name, type(error).__name__
+                        )
                 with suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), 15)
         finally:

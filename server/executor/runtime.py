@@ -22,6 +22,7 @@ from mail.poll import Poller
 from mail.service import Service
 from mail.store import Store
 from mail.vault import Vault as MailVault
+from notification.worker import Worker as EmailWorker
 from rotation.effects import Effects
 from rotation.hosting import Effects as HostEffects
 from rotation.queue import Dispatcher
@@ -82,6 +83,9 @@ class Runtime:
             config.aws_region,
         )
         self.dispatcher = Dispatcher(database, queue)
+        self.email = EmailWorker(
+            database, http, config.resend_key, config.email_sender, config.public_url
+        )
 
     async def mail(self) -> Service:
         settings = await self.vault.integration("gmail")

@@ -55,6 +55,11 @@ async def ensure_indexes(database: Database) -> None:
             IndexModel([("organisation_id", 1), ("source", 1), ("event_id", 1)], unique=True)
         ],
         "outbox": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
+        "notification_deliveries": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("state", 1), ("available_at", 1), ("lease_expires_at", 1)]),
+            IndexModel([("state", 1), ("status_due", 1)]),
+        ],
         "audit": [
             IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
             IndexModel([("organisation_id", 1), ("sequence", 1)], unique=True),
