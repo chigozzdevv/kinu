@@ -681,3 +681,82 @@ async def test_unconfigured_api_reports_readiness_without_accepting_identity() -
         response = await client.get("/v1/session", headers={"Cookie": "kinu.session=arbitrary"})
         assert response.status_code == 503
         assert response.json()["code"] == "integration-not-configured"
+
+
+@pytest.mark.anyio
+async def test_incident_rotation_dispatches_and_duplicate_request_reuses_the_run() -> None:
+    class Incidents(IncidentRepository):
+        async def link_run(
+            self,
+            organisation_id: str,
+            incident_id: str,
+            expected_revision: int,
+            credential_id: str,
+            run_id: str,
+            updated_at: datetime,
+        ) -> Incident:
+            incident = await self.get(organisation_id, incident_id)
+            changed = incident.model_copy(
+                update={
+                    "status": IncidentStatus.ROTATING,
+                    "run_id": run_id,
+                    "revision": incident.revision + 1,
+                }
+            )
+            self.incidents = (changed,)
+            return changed
+
+    class Dispatcher:
+        def __init__(self) -> None:
+            self.sent: list[str] = []
+
+        async def require_scope(self, organisation_id: str, credential_id: str) -> None:
+            assert (organisation_id, credential_id) == ("org_one", "credential_one")
+
+        async def submit(self, organisation_id: str, run_id: str) -> None:
+            self.sent.append(run_id)
+
+    inventory, repository, incidents = (
+        InventoryRepository(),
+        MemoryRunRepository(),
+        Incidents("credential_one"),
+    )
+    incidents.incidents = (
+        incidents.incidents[0].model_copy(update={"status": IncidentStatus.ACTION}),
+    )
+    controls = inventory.stored_controls[0]
+    inventory.stored_controls = (
+        controls.model_copy(
+            update={
+                "definition": controls.definition.model_copy(
+                    update={"require_revoke_approval": False}
+                )
+            }
+        ),
+    )
+    dispatcher = Dispatcher()
+    workflow = RunWorkflow(repository, clock=lambda: NOW)
+    configured = ApiServices(
+        access=AccessControl(AccessRepository(Role.ADMINISTRATOR)),
+        inventory=InventoryService(inventory),
+        workflow=workflow,
+        incidents=IncidentService(incidents, lambda: NOW, inventory, workflow),
+        dispatcher=dispatcher,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(configured, browser=make_browser(IDENTITY))),
+        base_url="http://test",
+    ) as client:
+        for expected in (201, 200):
+            response = await client.post(
+                "/v1/organisations/org_one/incidents/incident_one/rotate",
+                headers=headers(),
+                json={
+                    "control_version": controls.id,
+                    "reason": "Confirmed exposure",
+                    "urgency": "urgent",
+                    "received_at": NOW.isoformat(),
+                },
+            )
+            assert response.status_code == expected, response.text
+    assert len(dispatcher.sent) == 2 and dispatcher.sent[0] == dispatcher.sent[1]

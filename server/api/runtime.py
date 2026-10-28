@@ -18,6 +18,8 @@ from core.auth.cognito import CognitoTokenVerifier
 from core.auth.forms import FormStore
 from core.auth.store import SessionStore
 from core.config import Settings
+from core.connection.bridge import ConnectionBridge, RuntimeMetadata, SecretMetadata
+from core.connection.service import ConnectionService
 from core.incident.service import IncidentService
 from core.incident.store import IncidentStore
 from core.inventory import InventoryService
@@ -37,6 +39,7 @@ from core.workflow import RunWorkflow
 from demo.mail import Source
 from demo.queue import Queue
 from fastapi import FastAPI
+from rotation.queue import Dispatcher
 
 from api.deps import ApiServices
 
@@ -72,10 +75,30 @@ async def runtime(
                     if config.demo_queue_url and config.demo_organisation
                     else None
                 )
+                bridge = (
+                    ConnectionBridge(AwsClient(), config.aws_region, config.connector_function)
+                    if config.connector_function and config.connection_principals
+                    else None
+                )
                 app.state.services = ApiServices(
                     access=AccessControl(accounts),
                     accounts=AccountService(accounts, _now),
-                    inventory=InventoryService(inventory, _now),
+                    inventory=InventoryService(
+                        inventory,
+                        _now,
+                        provider_metadata=bridge,
+                        credential_verifier=bridge,
+                        secret_metadata=SecretMetadata(bridge) if bridge else None,
+                        runtime_metadata=RuntimeMetadata(bridge) if bridge else None,
+                    ),
+                    connections=ConnectionService(
+                        database,
+                        bridge,
+                        tuple((config.connection_principals or "").split(",")),
+                        _now,
+                    )
+                    if bridge
+                    else None,
                     workflow=workflow,
                     playbooks=PlaybookService(PlaybookStore(database), _now, inventory),
                     approvals=ApprovalService(ApprovalStore(database), _now, notifications, audit),
@@ -85,7 +108,9 @@ async def runtime(
                     agent_continuity=AgentMemoryService(agents, _now),
                     history=HistoryStore(database),
                     notifications=notifications,
-                    dispatcher=queue,
+                    dispatcher=Dispatcher(
+                        database, AwsClient(), config.aws_region, config.rotation_queue_url, queue
+                    ),
                     demo=Source(database, queue) if queue else None,
                     audit=audit,
                     incidents=IncidentService(

@@ -6,7 +6,7 @@ from core.errors import ResourceConflictError, ResourceNotFoundError
 from core.storage.database import Database
 from core.storage.records import Records
 
-from demo.snapshot import Snapshot
+from rotation.state import Snapshot
 
 
 async def record(

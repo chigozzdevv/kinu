@@ -1,0 +1,33 @@
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
+
+from rotation.state import Snapshot
+
+Loader = Callable[[str, str, str], Awaitable[Snapshot]]
+
+
+class Effects(Protocol):
+    async def initial(self, state: Snapshot) -> dict[str, Any]: ...
+    async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]: ...
+    async def access(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]: ...
+    async def deploy(
+        self, state: Snapshot, created: dict[str, Any], run_id: str
+    ) -> dict[str, Any]: ...
+    async def verify(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> dict[str, Any]: ...
+    async def promote(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> dict[str, Any]: ...
+    async def observe(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]: ...
+    async def revoke(
+        self,
+        state: Snapshot,
+        created: dict[str, Any],
+        deployment: dict[str, Any],
+        observed: dict[str, Any],
+    ) -> dict[str, Any]: ...
+    async def rollback(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any] | None
+    ) -> bool: ...
+    async def cleanup_unrecorded(self, state: Snapshot, run_id: str) -> bool: ...

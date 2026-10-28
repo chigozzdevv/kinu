@@ -50,11 +50,11 @@ from core.storage.records import Records
 from core.verification import ProbeService
 from core.verification.store import ProbeStore
 from demo.config import DemoConfig
-from demo.journal import Journal
 from demo.seed import seed
 from policy import digest
 from psycopg.types.json import Jsonb
 from pydantic import SecretStr
+from rotation.journal import Journal
 from testkit import make_run
 from tests.browser import HEADERS, make_browser
 
@@ -150,7 +150,6 @@ async def test_default_runtime_serves_data_and_reports_unavailable_integrations(
             headers=HEADERS,
             json={
                 "account_id": "123456789012",
-                "role_arn": "arn:aws:iam::123456789012:role/kinu-test",
                 "region": "eu-west-2",
                 "display_name": "Test",
                 "function_arns": ["arn:aws:lambda:eu-west-2:123456789012:function:test"],

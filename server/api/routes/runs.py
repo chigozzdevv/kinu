@@ -77,7 +77,7 @@ async def create_run(
     ):
         raise ResourceConflictError("application rotation requests must identify a manual trigger")
     dispatcher = required(api.dispatcher, "rotation executor")
-    dispatcher.require_scope(organisation_id, body.credential_id)
+    await dispatcher.require_scope(organisation_id, body.credential_id)
     inventory = required(api.inventory, "inventory")
     credential = await inventory.get_credential(organisation_id, body.credential_id)
     controls = await inventory.get_controls(

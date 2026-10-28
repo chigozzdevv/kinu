@@ -7,6 +7,7 @@ from contracts import (
     IncidentStatus,
     IngestionEvent,
     RotationRun,
+    RunStatus,
 )
 from core.auth import Permission
 from core.errors import ResourceConflictError
@@ -128,7 +129,22 @@ async def rotate(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INCIDENT_WRITE)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
-    incident, run, applied = await required(api.incidents, "incidents").start_rotation(
+    service = required(api.incidents, "incidents")
+    existing = await service.get(organisation_id, incident_id)
+    if existing.credential_id is None:
+        raise ResourceConflictError("incident requires a confirmed credential")
+    dispatcher = required(api.dispatcher, "rotation executor")
+    await dispatcher.require_scope(organisation_id, existing.credential_id)
+    inventory = required(api.inventory, "inventory")
+    credential = await inventory.get_credential(organisation_id, existing.credential_id)
+    controls = await inventory.get_controls(
+        organisation_id, existing.credential_id, body.control_version
+    )
+    if credential.control_version != controls.id or controls.definition.require_revoke_approval:
+        raise ResourceConflictError(
+            "incident controls changed or require manual revocation approval"
+        )
+    incident, run, applied = await service.start_rotation(
         organisation_id,
         incident_id,
         command_id(identity, organisation_id, key),
@@ -138,6 +154,8 @@ async def rotate(
         body.urgency,
         body.received_at,
     )
+    if run.status is RunStatus.PENDING:
+        await dispatcher.submit(organisation_id, run.id)
     response.status_code = status.HTTP_201_CREATED if applied else status.HTTP_200_OK
     return RotationResponse(incident=incident, run=run, applied=applied)
 

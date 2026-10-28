@@ -24,19 +24,18 @@ from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from policy import GatePolicy
 
-from demo.config import DemoConfig
-from demo.effects import Effects
-from demo.generations import discard
-from demo.journal import Journal
-from demo.snapshot import snapshot
-from demo.stages import Stages, stable
+from rotation.generations import discard
+from rotation.journal import Journal
+from rotation.ports import Effects, Loader
+from rotation.stages import Stages, stable
+from rotation.state import Snapshot
 
 
 class Rotation:
-    def __init__(self, database: Database, effects: Effects, config: DemoConfig) -> None:
-        self.database, self.effects, self.config = database, effects, config
+    def __init__(self, database: Database, effects: Effects, loader: Loader, region: str) -> None:
+        self.database, self.effects, self.loader = database, effects, loader
         self.journal = Journal(database)
-        self.audit = AuditWriter(AuditStore(database), config.region, lambda: datetime.now(UTC))
+        self.audit = AuditWriter(AuditStore(database), region, lambda: datetime.now(UTC))
 
     async def execute(self, org: str, run_id: str, owner: str) -> RotationRun:
         repository = RunStore(self.database)
@@ -51,9 +50,7 @@ class Rotation:
         }:
             return run
         try:
-            state = await snapshot(
-                self.database, self.config, org, run.credential_id, run.control_version
-            )
+            state = await self.loader(org, run.credential_id, run.control_version)
         except ResourceConflictError:
             return await self._reject(repository, run, owner)
         workflow = RunWorkflow(
@@ -69,7 +66,7 @@ class Rotation:
                         actor_id=owner,
                         owner_id=owner,
                         expected_revision=run.revision,
-                        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+                        expires_at=datetime.now(UTC) + timedelta(minutes=14),
                     )
                 )
             ).run
@@ -96,7 +93,7 @@ class Rotation:
         stages = Stages(self.database, self.effects, state, run)
         try:
             while run.status is RunStatus.RUNNING:
-                await self._guard(run)
+                await self._guard(run, state)
                 result = await self.journal.get(org, run_id, run.stage)
                 if result is None:
                     started = datetime.now(UTC)
@@ -127,7 +124,6 @@ class Rotation:
                         "stage": run.stage.value,
                         "checks": ",".join(sorted(result.checks)),
                         "method": "api",
-                        "demo": True,
                     },
                     run_id=run_id,
                     occurred_at=result.completed_at,
@@ -231,7 +227,7 @@ class Rotation:
                     actor_id=owner,
                     owner_id=owner,
                     expected_revision=run.revision,
-                    expires_at=datetime.now(UTC) + timedelta(minutes=5),
+                    expires_at=datetime.now(UTC) + timedelta(minutes=14),
                 )
             )
         ).run
@@ -253,7 +249,7 @@ class Rotation:
             )
         ).run
 
-    async def _guard(self, run: RotationRun) -> None:
+    async def _guard(self, run: RotationRun, state: Snapshot) -> None:
         current = await RunStore(self.database).get(run.organisation_id, run.id)
         if (
             current.revision != run.revision
@@ -263,8 +259,21 @@ class Rotation:
         ):
             raise LeaseConflictError("rotation lease or revision changed")
         async with Records(self.database).read() as rows:
-            from contracts import ManagedCredential
+            from contracts import Connection, ConsumerBinding, ControlVersion, ManagedCredential
 
             credential = await rows.get(ManagedCredential, run.organisation_id, run.credential_id)
-            if credential.control_version != run.control_version or credential.archived_at:
-                raise ResourceConflictError("credential controls changed during the run")
+            binding = await rows.get(ConsumerBinding, run.organisation_id, state.binding.id)
+            controls = await rows.get(ControlVersion, run.organisation_id, state.controls.id)
+            connections = [
+                await rows.get(Connection, run.organisation_id, item.id)
+                for item in (state.provider, state.store, state.runtime)
+            ]
+            if (
+                credential != state.credential
+                or binding != state.binding
+                or controls != state.controls
+                or connections != [state.provider, state.store, state.runtime]
+            ):
+                raise ResourceConflictError(
+                    "credential mapping or connections changed during the run"
+                )

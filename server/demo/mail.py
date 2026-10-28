@@ -19,10 +19,10 @@ from core.workflow import RunWorkflow
 from ingestion.mail import CredentialHint, EmailSource, MailRule, MailTrust
 from psycopg.types.json import Jsonb
 from pydantic import AwareDatetime, Field
+from rotation.stages import stable
 
 from demo.config import DemoConfig
 from demo.queue import Queue
-from demo.stages import stable
 
 
 class MailTask(Contract):

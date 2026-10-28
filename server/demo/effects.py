@@ -10,11 +10,11 @@ from contracts import Connection
 from core.connection.roles import ConnectionRoles
 from core.storage.database import Database
 from core.storage.records import Records
+from rotation.state import Snapshot
 
 from demo.config import DemoConfig
 from demo.rpc import invoke
 from demo.runtime import DemoRuntime
-from demo.snapshot import Snapshot
 
 
 class Effects:
@@ -78,6 +78,18 @@ class Effects:
         )
 
     async def initial(self, state: Snapshot) -> dict[str, Any]:
+        required = {
+            "provider.createCredential",
+            "provider.revokeCredential",
+            "runtime.updateConfiguration",
+            "runtime.health",
+            "secretStore.disableVersion",
+        }
+        if (
+            not required <= state.controls.definition.allowed_tools
+            or state.controls.definition.maximum_observation_seconds != 60
+        ):
+            raise ConnectorError("demo-controls", "demo controls do not permit this execution")
         metadata = await self.metadata(state.current.provider_id or "")
         alias = await self.runtime.current(state.runtime, self.config.consumer_function)
         health = await self.health(state, "live")

@@ -18,9 +18,6 @@ from contracts import (
     Stage,
     Trigger,
 )
-from core.account import AccountService
-from core.account.store import AccountStore
-from core.auth import AuthenticatedIdentity
 from core.errors import ActiveRunConflictError
 from core.storage.database import Database
 from core.storage.history import HistoryStore
@@ -30,41 +27,12 @@ from core.workflow import RunWorkflow
 from demo.config import DemoConfig
 from demo.effects import Effects
 from demo.mail import Mailbox, MailTask, investigate
-from demo.rotate import Rotation
-from demo.seed import seed
-from demo.snapshot import Snapshot
+from demo.snapshot import loader
+from rotation.rotate import Rotation
+from rotation.state import Snapshot
 
 pytestmark = pytest.mark.anyio
 SECRET = "arn:aws:secretsmanager:eu-west-2:123456789012:secret:kinu-demo-key-ABC123"
-
-
-@pytest.fixture
-async def demo(database: Database, identity: AuthenticatedIdentity) -> DemoConfig:
-    def clock() -> datetime:
-        return datetime.now(UTC)
-
-    member = await AccountService(AccountStore(database, clock), clock).create_organisation(
-        identity, "API demo"
-    )
-    config = DemoConfig(
-        organisation_id=member.organisation.id,
-        provider_function="arn:aws:lambda:eu-west-2:123456789012:function:kinu-demo-provider",
-        consumer_function="arn:aws:lambda:eu-west-2:123456789012:function:kinu-demo-consumer",
-        secret=SECRET,
-        region="eu-west-2",
-        assessment_function="kinu-assess",
-    )
-    await seed(
-        database,
-        config,
-        "a" * 24,
-        SECRET + "/versions/" + "1" * 64,
-        "arn:aws:iam::123456789012:role/kinu-demo-access",
-        "test-external-id-" + "x" * 32,
-        identity.actor_id,
-        ready=True,
-    )
-    return config
 
 
 async def create(database: Database, config: DemoConfig, suffix: str = "one") -> str:
@@ -176,7 +144,9 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
 ) -> None:
     run_id = await create(database, demo)
     api = Api(demo)
-    run = await Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_one")
+    run = await Rotation(database, api, loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
     assert run.status is RunStatus.COMPLETED
     assert api.calls.index("revoke") > api.calls.index("observe") > api.calls.index("verify")
     history = await HistoryStore(database).get(demo.organisation_id, run_id)
@@ -189,7 +159,7 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
     assert old.state is GenerationState.REVOKED
     previous_calls = list(api.calls)
     assert (
-        await Rotation(database, api, demo).execute(
+        await Rotation(database, api, loader(database, demo), demo.region).execute(
             demo.organisation_id, run_id, "worker_duplicate"
         )
     ).status is RunStatus.COMPLETED
@@ -201,7 +171,9 @@ async def test_failure_preserves_old_key_and_compensates_candidate(
     database: Database, demo: DemoConfig, stage: Stage
 ) -> None:
     run_id, api = await create(database, demo), Api(demo, stage)
-    run = await Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_one")
+    run = await Rotation(database, api, loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
     assert run.status is RunStatus.FAILED
     assert not api.old_revoked and api.candidate_revoked and not api.promoted
     async with Records(database).read() as rows:
@@ -215,7 +187,9 @@ async def test_failure_after_retirement_keeps_new_workload_and_holds_credential_
     database: Database, demo: DemoConfig
 ) -> None:
     run_id, api = await create(database, demo), Api(demo, Stage.COMPLETE)
-    run = await Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_one")
+    run = await Rotation(database, api, loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
     assert run.status is RunStatus.CLEANUP
     assert api.old_revoked and api.promoted and not api.candidate_revoked
     with pytest.raises(ActiveRunConflictError):
@@ -227,8 +201,12 @@ async def test_concurrent_deliveries_create_only_one_replacement(
 ) -> None:
     run_id, api = await create(database, demo), Api(demo)
     results = await asyncio.gather(
-        Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_one"),
-        Rotation(database, api, demo).execute(demo.organisation_id, run_id, "worker_two"),
+        Rotation(database, api, loader(database, demo), demo.region).execute(
+            demo.organisation_id, run_id, "worker_one"
+        ),
+        Rotation(database, api, loader(database, demo), demo.region).execute(
+            demo.organisation_id, run_id, "worker_two"
+        ),
         return_exceptions=True,
     )
     assert (

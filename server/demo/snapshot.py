@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 from contracts import (
     Connection,
     ConsumerBinding,
@@ -11,18 +9,10 @@ from core.errors import ResourceConflictError
 from core.storage.database import Database
 from core.storage.records import Records
 from policy import digest
+from rotation.ports import Loader
+from rotation.state import Snapshot
 
 from demo.config import DemoConfig
-
-
-@dataclass(frozen=True)
-class Snapshot:
-    credential: ManagedCredential
-    binding: ConsumerBinding
-    current: CredentialGeneration
-    controls: ControlVersion
-    store: Connection
-    runtime: Connection
 
 
 async def snapshot(
@@ -42,6 +32,7 @@ async def snapshot(
         current = await rows.get(CredentialGeneration, org, credential.active_generation_id)
         store = await rows.get(Connection, org, credential.secret_store_connection_id)
         runtime = await rows.get(Connection, org, binding.runtime_connection_id)
+        provider = await rows.get(Connection, org, credential.connection_id)
     if (
         credential.archived_at
         or credential.secret_resource != config.secret
@@ -56,4 +47,11 @@ async def snapshot(
         or credential.scopes != frozenset({"demo:read"})
     ):
         raise ResourceConflictError("demo credential mappings or controls require attention")
-    return Snapshot(credential, binding, current, control, store, runtime)
+    return Snapshot(credential, binding, current, control, store, runtime, provider)
+
+
+def loader(database: Database, config: DemoConfig) -> Loader:
+    async def load(org: str, credential: str, controls: str) -> Snapshot:
+        return await snapshot(database, config, org, credential, controls)
+
+    return load

@@ -14,10 +14,10 @@ from core.errors import ResourceConflictError
 from core.storage.database import Database
 from policy import digest
 
-from demo import generations
-from demo.effects import Effects
-from demo.journal import Journal
-from demo.snapshot import Snapshot
+from rotation import generations
+from rotation.journal import Journal
+from rotation.ports import Effects
+from rotation.state import Snapshot
 
 
 def stable(prefix: str, run_id: str) -> str:
@@ -47,20 +47,9 @@ class Stages:
                 StageBindings(),
             )
         if stage is Stage.PREFLIGHT:
-            required = {
-                "provider.createCredential",
-                "provider.revokeCredential",
-                "runtime.updateConfiguration",
-                "runtime.health",
-                "secretStore.disableVersion",
-            }
-            if (
-                not required <= state.controls.definition.allowed_tools
-                or state.controls.definition.maximum_observation_seconds != 60
-                or not state.controls.definition.preserve_old_generation
-            ):
+            if not state.controls.definition.preserve_old_generation:
                 raise ResourceConflictError(
-                    "demo controls do not permit this rotation and recovery flow"
+                    "controls must preserve the old generation during rollout"
                 )
             result = await self.effects.initial(state)
             checks = {
@@ -90,7 +79,7 @@ class Stages:
                 target_scopes=state.credential.scopes,
                 consumer_ids=(state.binding.service_id,),
                 rollout=(100,),
-                observation_seconds=60,
+                observation_seconds=state.controls.definition.maximum_observation_seconds,
                 recovery_ids={Stage.DEPLOY: stable("rollback", run.id)},
             )
             result = {
@@ -140,17 +129,17 @@ class Stages:
         deployment_output = await self.output(Stage.DEPLOY)
         if stage is Stage.VERIFY:
             result = await self.effects.verify(state, created, deployment_output)
+            checks = {
+                "provider-valid",
+                "store-valid",
+                "deployment-valid",
+                "coverage-complete",
+                "rollback-ready",
+            }
+            if state.controls.definition.require_generation_telemetry:
+                checks.add("telemetry-healthy")
             return (
-                frozenset(
-                    {
-                        "provider-valid",
-                        "store-valid",
-                        "deployment-valid",
-                        "telemetry-healthy",
-                        "coverage-complete",
-                        "rollback-ready",
-                    }
-                ),
+                frozenset(checks),
                 result,
                 StageBindings(),
             )
@@ -159,8 +148,11 @@ class Stages:
             return frozenset({"production-promoted", "rollout-healthy"}), result, StageBindings()
         if stage is Stage.OBSERVE:
             result = await self.effects.observe(state, created)
+            checks = {"consumers-current"}
+            if state.controls.definition.require_generation_telemetry:
+                checks.update({"telemetry-healthy", "old-use-clear"})
             return (
-                frozenset({"telemetry-healthy", "old-use-clear", "consumers-current"}),
+                frozenset(checks),
                 result,
                 StageBindings(),
             )
@@ -202,7 +194,7 @@ class Stages:
                 frozenset(
                     {"consumers-current", "replacement-valid", "old-rejected", "audit-complete"}
                 ),
-                {"generation_id": target, "method": "api", "demo": True},
+                {"generation_id": target, "method": "api"},
                 StageBindings(),
             )
         raise ResourceConflictError("unsupported API rotation stage")

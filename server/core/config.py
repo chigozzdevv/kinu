@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     data_api_database: str = "kinu"
     demo_organisation: str | None = None
     demo_queue_url: str | None = None
+    connector_function: str | None = None
+    connection_principals: str | None = None
+    rotation_queue_url: str | None = None
     public_url: str = "http://localhost:5173"
 
     @model_validator(mode="after")

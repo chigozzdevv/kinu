@@ -14,8 +14,9 @@ from core.storage.records import Records
 from demo.config import DemoConfig
 from demo.effects import Effects
 from demo.mail import Mailbox, MailTask, investigate
-from demo.rotate import Rotation
+from demo.snapshot import loader
 from pydantic import Field, TypeAdapter
+from rotation.rotate import Rotation
 
 
 class RotationTask(Contract):
@@ -69,9 +70,9 @@ async def consume(event: dict[str, Any], owner: str) -> dict[str, Any]:
         )
         if run_id is None:
             return {"batchItemFailures": []}
-        run = await Rotation(database, Effects(aws, database, config), config).execute(
-            task.organisation_id, run_id, owner
-        )
+        run = await Rotation(
+            database, Effects(aws, database, config), loader(database, config), config.region
+        ).execute(task.organisation_id, run_id, owner)
         if run.status is RunStatus.COMPLETED:
             await IncidentStore(database).advance_run(
                 task.organisation_id, run.id, IncidentStatus.RESOLVED, datetime.now(UTC)
