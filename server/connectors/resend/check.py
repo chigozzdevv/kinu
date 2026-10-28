@@ -20,7 +20,8 @@ def classify(status: int, payload: Any) -> State:
     if (
         status == 401
         and name == "restricted_api_key"
-        and message == "This API key is restricted to only send emails."
+        and isinstance(message, str)
+        and message.removesuffix(".") == "This API key is restricted to only send emails"
     ):
         return "sending_access"
     if (

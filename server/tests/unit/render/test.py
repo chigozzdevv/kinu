@@ -1,4 +1,5 @@
 import hashlib
+import json
 import threading
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
@@ -46,12 +47,33 @@ def test_render_workload_returns_nonce_and_fingerprint_without_exposing_key(serv
     assert SECRET not in response.text
 
 
-def test_render_workload_requires_sending_only_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "status,payload,valid",
+    [
+        (200, {"object": "list", "data": []}, None),
+        (
+            401,
+            {
+                "name": "restricted_api_key",
+                "message": "This API key is restricted to only send emails",
+            },
+            True,
+        ),
+        (400, {"name": "validation_error", "message": "API key is invalid"}, False),
+    ],
+)
+def test_render_workload_requires_sending_only_permissions(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    payload: dict[str, object],
+    valid: bool | None,
+) -> None:
     class Response:
-        status = 200
+        def __init__(self) -> None:
+            self.status = status
 
         def read(self, limit: int) -> bytes:
-            return b'{"object":"list","data":[]}'
+            return json.dumps(payload).encode()
 
     class Connection:
         def request(self, method: str, path: str, headers: dict[str, str]) -> None:
@@ -65,5 +87,8 @@ def test_render_workload_requires_sending_only_permissions(monkeypatch: pytest.M
             return
 
     monkeypatch.setattr(app, "HTTPSConnection", lambda *args, **kwargs: Connection())
-    with pytest.raises(ValueError, match="sending-only"):
-        app.verify(SECRET)
+    if valid is None:
+        with pytest.raises(ValueError, match="sending-only"):
+            app.verify(SECRET)
+    else:
+        assert app.verify(SECRET) is valid

@@ -32,6 +32,14 @@ def anyio_backend() -> str:
             },
             "sending_access",
         ),
+        (
+            401,
+            {
+                "name": "restricted_api_key",
+                "message": "This API key is restricted to only send emails",
+            },
+            "sending_access",
+        ),
         (200, {"object": "list", "data": []}, "full_access"),
         (400, {"name": "validation_error", "message": "API key is invalid"}, "rejected"),
         (401, {"name": "validation_error", "message": "API key is invalid"}, "rejected"),
