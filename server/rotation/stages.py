@@ -66,7 +66,14 @@ class Stages:
                 "mutation-declared",
                 "no-conflict",
             }
-            return frozenset(checks), result, StageBindings(current_generation_id=state.current.id)
+            return (
+                frozenset(checks),
+                result,
+                StageBindings(
+                    current_generation_id=state.current.id,
+                    browser_playbook_version=state.playbook.id if state.playbook else None,
+                ),
+            )
         if stage is Stage.PLAN:
             initial = await self.output(Stage.PREFLIGHT)
             plan = RotationPlan(

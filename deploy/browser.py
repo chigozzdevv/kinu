@@ -1,8 +1,10 @@
 import asyncio
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from browser.driver import BrowserDriver
+from browser.planner import Planner
 from capture import SecureCapture
 from connectors.base import SecretValue
 from contracts import (
@@ -52,6 +54,18 @@ class Sink:
         access_token: SecretValue | None = None,
     ) -> dict[str, object]:
         raise AssertionError("Capture unexpectedly required compensation")
+
+
+class Agent:
+    def __init__(self, secret: str) -> None:
+        self.secret, self.calls = secret, 0
+
+    async def navigate(self, organisation_id: str, value: dict[str, Any]) -> dict[str, Any]:
+        assert organisation_id == "org_check" and self.secret not in str(value)
+        self.calls += 1
+        if "control" in value["schema"].get("properties", {}):
+            return {"control": "create_key"}
+        return {"progress": "The approved control was found.", "completed": True}
 
 
 async def check() -> None:
@@ -148,7 +162,12 @@ async def check() -> None:
             sink.value = b""
         finally:
             await browser.close()
-    print("Browser checks passed: capture barriers, private transfer and context disposal.")
+    agent = Agent(secret)
+    choice = await Planner(agent).choose(
+        "org_check", "Create a replacement key", {"create_key": "Create key"}
+    )
+    assert choice == "create_key" and 0 < agent.calls <= 4
+    print("Browser checks passed: private capture, context disposal and Stagehand inference.")
 
 
 if __name__ == "__main__":

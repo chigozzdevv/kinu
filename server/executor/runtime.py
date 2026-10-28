@@ -1,12 +1,16 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from time import time
 
 import httpx
 from agents.native import NativeAgent
+from browser.catalog import Catalog as BrowserCatalog
+from browser.planner import Planner
+from browser.setupserver import Setups
+from browser.worker import Worker as BrowserWorker
 from connectors.aws import AwsClient
 from connectors.aws.secrets import AwsSecrets
-from connectors.http import HttpProviderConnector
 from core.connection.roles import ConnectionRoles
 from core.connection.secrets import ConnectionSecrets
 from core.inventory.store import InventoryStore
@@ -32,6 +36,7 @@ from rotation.snapshot import loader
 
 from executor.authorization import Authorization
 from executor.config import ExecutorSettings
+from executor.provider import Providers
 from executor.reader import Reader
 from executor.vault import Vault
 from executor.versions import Versions
@@ -69,9 +74,13 @@ class Runtime:
             ),
         )
         self.hosts = Hosts(database, vault, http, config.public_url)
-        self.mappings = Mappings(
-            self.hosts, self.versions, HttpProviderConnector(self.authorizations)
+        self.browser_catalog = BrowserCatalog(database, vault)
+        self.browser_setups = Setups(self.browser_catalog)
+        self.browser_worker = BrowserWorker(
+            self.browser_catalog, self.versions, Planner(self.agent)
         )
+        self.providers = Providers(self.authorizations, self.browser_worker, self.versions)
+        self.mappings = Mappings(self.hosts, self.versions, self.providers)
         self.mail_store = Store(vault.database)
         self.rotation = Rotation(
             database,
@@ -129,7 +138,20 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
             await service.mail_store.initialize()
             await service.hosts.grants.initialize()
             await service.versions.initialize()
-            yield service
+
+            async def reap() -> None:
+                while True:
+                    await asyncio.sleep(30)
+                    await service.browser_setups.reap()
+
+            reaper = asyncio.create_task(reap())
+            try:
+                yield service
+            finally:
+                reaper.cancel()
+                with suppress(asyncio.CancelledError):
+                    await reaper
+                await service.browser_setups.shutdown()
     finally:
         await queue.close()
         await private.close()

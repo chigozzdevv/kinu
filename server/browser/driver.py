@@ -44,7 +44,7 @@ class BrowserDriver:
         return self._policy.allowed_domains
 
     async def enforce_egress(self) -> None:
-        await self._page.route("**/*", self._route)
+        await self._page.context.route("**/*", self._route)
 
     async def execute(self, action: BrowserAction) -> None:
         self._blocked_egress = False

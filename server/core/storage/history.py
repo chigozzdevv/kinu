@@ -2,6 +2,7 @@ from contracts import (
     Approval,
     ApprovalEvidenceKind,
     ApprovalEvidenceSnapshot,
+    ComputerUseActivity,
     RotationHistory,
     StageExecutionResult,
 )
@@ -30,6 +31,16 @@ class HistoryStore:
             approvals = await rows.match(Approval, organisation_id, {"run_id": run_id})
         return RotationHistory(
             run_id=run_id,
+            computer_use=tuple(
+                [
+                    ComputerUseActivity.model_validate(
+                        {key: value for key, value in row.items() if key != "_id"}
+                    )
+                    async for row in self._database.collection("browser_activity")
+                    .find({"organisation_id": organisation_id, "run_id": run_id})
+                    .sort("recorded_at", 1)
+                ]
+            ),
             stages=tuple(
                 _activity(StageExecutionResult.model_validate(row["data"]), run, approvals)
                 for row in results

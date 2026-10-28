@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from mail.control import ControlRequest as MailRequest
 from mail.control import control as mail_control
 
+from executor.browser import router as browser_router
 from executor.config import ExecutorSettings
 from executor.deps import authenticated
 from executor.hosts import router as hosts_router
@@ -52,7 +53,9 @@ async def ready(request: Request) -> JSONResponse:
 async def connections(
     body: ControlRequest, service: Annotated[Runtime, Depends(authenticated)]
 ) -> Any:
-    return await control(service.database, AwsClient(), body, service.authorizations)
+    return await control(
+        service.database, AwsClient(), body, service.authorizations, service.providers
+    )
 
 
 @app.post("/mail")
@@ -88,3 +91,4 @@ async def invalid(request: Request, error: RequestValidationError) -> JSONRespon
 app.include_router(integrations_router)
 app.include_router(providers_router)
 app.include_router(hosts_router)
+app.include_router(browser_router)

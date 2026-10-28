@@ -1,9 +1,11 @@
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import AwareDatetime, Field, model_validator
 
 from contracts.base import Contract, Identifier
+from contracts.http import HttpAuth, HttpOperation
 from contracts.plan import OperationStep
 from contracts.state import Stage
 
@@ -55,6 +57,37 @@ class StepOutput(Contract):
     name: Identifier
     selector: Selector
     attribute: str = Field(default="text", pattern=r"^(text|value)$")
+
+
+class BrowserProbe(Contract):
+    base_url: str = Field(min_length=12, max_length=1024)
+    auth: HttpAuth
+    operation: HttpOperation
+    credential_ids: Selector
+    kind: str = Field(default="api-key", min_length=1, max_length=64)
+    supports_overlap: bool = False
+
+    @model_validator(mode="after")
+    def validate_probe(self) -> "BrowserProbe":
+        url = urlsplit(self.base_url)
+        if (
+            url.scheme != "https"
+            or not url.hostname
+            or url.username
+            or url.password
+            or url.path not in {"", "/"}
+            or url.query
+            or url.fragment
+        ):
+            raise ValueError("browser credential verification requires a public HTTPS origin")
+        if (
+            self.operation.method != "GET"
+            or not self.operation.provider_id_field
+            or "{" in self.operation.path
+            or self.operation.body
+        ):
+            raise ValueError("browser verification requires a fixed GET identity endpoint")
+        return self
 
 
 class PlaybookStep(OperationStep):
@@ -123,6 +156,7 @@ class PlaybookDraft(Contract):
     allowed_domains: tuple[str, ...] = ()
     steps: tuple[PlaybookStep, ...] = Field(min_length=1)
     login_url_pattern: str | None = Field(default=None, max_length=1024)
+    verifier: BrowserProbe | None = None
 
     @model_validator(mode="before")
     @classmethod

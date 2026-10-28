@@ -217,6 +217,16 @@ async def archive_connection(
                     "session": session_binding(request),
                 },
             )
+        if (current.authorization_reference or "").startswith("browser://" + current.id + "/"):
+            await required(api.private, "private execution").call(
+                "/browser",
+                {
+                    "operation": "forget",
+                    "organisation_id": organisation_id,
+                    "connection_id": connection_id,
+                    "subject": identity.subject,
+                },
+            )
     await _audit_change(
         api,
         organisation_id,

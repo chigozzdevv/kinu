@@ -16,6 +16,7 @@ from contracts import (
     HttpAuthScheme,
     HttpOperation,
     HttpProviderApi,
+    RotationRun,
 )
 
 from connectors.base import ConnectorContext, ConnectorResponse, SecretValue
@@ -42,6 +43,9 @@ class HttpProviderConnector:
     ) -> None:
         self._secrets = secrets
         self._client = client
+
+    async def preflight(self, connection: Connection, run: RotationRun) -> None:
+        return None
 
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         api = _api(connection)

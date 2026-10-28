@@ -8,6 +8,7 @@ from contracts import (
     ControlVersion,
     CredentialGeneration,
     ManagedCredential,
+    PlaybookVersion,
 )
 from core.errors import ResourceConflictError
 
@@ -28,6 +29,7 @@ class Snapshot:
     controls: ControlVersion
     store: Connection
     provider: Connection
+    playbook: PlaybookVersion | None = None
 
     @property
     def single(self) -> Target:

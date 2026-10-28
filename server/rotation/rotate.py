@@ -130,7 +130,9 @@ class Rotation:
                     {
                         "stage": run.stage.value,
                         "checks": ",".join(sorted(result.checks)),
-                        "method": "api",
+                        "method": "browser"
+                        if state.playbook is not None and run.stage in {Stage.CREATE, Stage.REVOKE}
+                        else "api",
                     },
                     run_id=run_id,
                     occurred_at=result.completed_at,

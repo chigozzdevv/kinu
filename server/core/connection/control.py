@@ -35,6 +35,7 @@ async def control(
     aws: AwsApi,
     request: ControlRequest,
     authorizations: SecretReader | None = None,
+    providers: HttpProviderConnector | None = None,
 ) -> Any:
     rows = Records(database)
     inventory = InventoryStore(database)
@@ -71,7 +72,9 @@ async def control(
         raise ResourceConflictError("connection is not ready")
     roles = ConnectionRoles(database, managed=True, read_only=True)
     secrets = AwsSecrets(aws, roles)
-    provider = HttpProviderConnector(authorizations or ConnectionSecrets(inventory, secrets))
+    provider = providers or HttpProviderConnector(
+        authorizations or ConnectionSecrets(inventory, secrets)
+    )
     if request.operation == "provider":
         return await provider.metadata(connection)
     if request.operation == "identity":

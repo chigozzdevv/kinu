@@ -269,6 +269,8 @@ def compile_controls(
                 "browser.secure-capture",
                 "browser.revokeCredential",
                 "provider.testCredential",
+                "provider.createCredential",
+                "provider.revokeCredential",
             }
         )
         protected_tools.add("browser.secure-capture")

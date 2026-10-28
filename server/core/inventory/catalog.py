@@ -93,10 +93,6 @@ class InventoryCatalog:
             raise ResourceConflictError("archived connection cannot discover credentials")
         if ConnectionRole.PROVIDER not in connection.roles:
             raise ResourceConflictError("credential discovery requires a provider connection")
-        if connection.interface is not ConnectionInterface.API:
-            raise ResourceConflictError(
-                "browser credential discovery must run through its playbook"
-            )
         if connection.status is not ConnectionStatus.READY:
             raise ResourceConflictError("provider connection is not ready")
         if "provider.listCredentialMetadata" not in connection.capabilities:

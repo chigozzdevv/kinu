@@ -4,8 +4,8 @@ Credential rotation with policy checks, private execution and an audit trail.
 
 Kinu runs through Docker Compose. MongoDB stores application data, Redis and BullMQ run
 background jobs, and email/password authentication uses opaque cookie sessions. Agent-Native
-shares the dashboard's identity and workspace permissions. Resend delivers verification and
-password-reset emails.
+shares the dashboard's identity and workspace permissions. Resend delivers account, invitation
+and notification emails.
 
 ## Run
 
@@ -18,7 +18,8 @@ python3 -m deploy.setup
 Edit `.env`: set `KINU_RESEND_KEY` and `KINU_EMAIL_SENDER` using a domain verified in Resend.
 
 ```sh
-docker compose up -d --build
+make image
+docker compose up -d --no-build
 ```
 
 Run `python3 -m deploy.setup --link` on the installation host. Open its private setup link,
@@ -44,7 +45,7 @@ overwriting existing values. Keep `.env`, `.secrets/` and database volumes in yo
 Existing database passwords must be changed in MongoDB as well as the configuration. Changing
 an encryption key without migrating its encrypted records makes those records unreadable.
 
-Update with `git pull` followed by `docker compose up -d --build`. Index migrations run before
+Update with `git pull`, `make image`, then `docker compose up -d --no-build`. Index migrations run before
 application services start. `docker compose down` preserves data; adding `--volumes` deletes it.
 
 Invitations and notification emails use the same Resend settings as sign-in. The worker retries
@@ -117,7 +118,17 @@ own encrypted grant database. Generic chat, terminals and MCP proxy routes are d
 Rotation preserves the old key during deployment and observation. Retirement requires current
 verification evidence. An interrupted mutation is held for evidence review rather than replayed
 blindly. The Chromium smoke test verifies capture barriers, private transfer and context disposal.
-A general browser rotation worker is not yet live.
+Browser providers use a published playbook imported under **Playbooks → Add playbook**.
+Definitions declare exact public hostnames, checked page controls, private capture fields and a
+fixed read-only issuer identity probe. Sign in through the connection's private browser once.
+Stagehand routes sanitized control choices through the workspace's Builder account; Playwright
+executes approved actions privately. The model never observes the provider page, screenshots or
+login state. Creation closes that browser context after encrypted capture. Each protected step
+can use several AI calls within the shared daily limit.
+
+Browser rotation currently requires a readable predecessor, overlapping issuer keys and registered
+hosting consumers. Imported procedures require review; automatic playbook generation and live
+rotation takeover are unavailable. Expired provider sessions require reconnecting the connection.
 
 ## Development
 
@@ -132,4 +143,6 @@ The storage suite starts an isolated MongoDB replica set. Set `KINU_TEST_REDIS_U
 Redis database 15 to include queue integration tests. No cloud account or model call is needed for
 these checks. Run `python3 -m deploy.check` against a running Compose installation to check routing,
 database isolation and encrypted vault persistence. Run
-`docker compose exec -T executor python < deploy/browser.py` for the fake-key capture check. The Compose deployment has separate API, executor, worker, agent and web image targets.
+`docker compose exec -T executor python < deploy/browser.py` for private capture and Stagehand
+checks with fake keys and mocked inference. The Compose deployment has separate API, executor,
+worker, agent and web image targets.

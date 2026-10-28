@@ -69,8 +69,7 @@ class Effects:
             self.hosts.database, state, {"run_id": run.id, "fencing_token": run.fencing_token}
         )
         await acquire(self.hosts.database, state, run.id)
-        metadata = await self.provider.metadata(state.provider)
-        _active(await self.metadata(state, state.current.provider_id or ""), state)
+        await self.provider.preflight(state.provider, run)
         if (
             await self.versions.current(state.store, state.credential.secret_resource)
             != state.credential.secret_reference
@@ -78,6 +77,10 @@ class Effects:
             raise ConnectorError("secret-current", "Current secret generation changed")
         expected = None
         readable = await self.versions.has_value(state.store, state.credential.secret_reference)
+        if state.playbook is not None and not readable:
+            raise ConnectorError(
+                "browser-probe", "Browser rotation requires a readable predecessor"
+            )
         if readable:
             with await self.versions.access_for(
                 state.store, state.credential.secret_reference
@@ -90,6 +93,8 @@ class Effects:
                     "secret_reference": state.credential.secret_reference,
                 },
             )
+        metadata = await self.provider.metadata(state.provider)
+        _active(await self.metadata(state, state.current.provider_id or ""), state)
         management_fingerprint = await self.provider.auth_fingerprint(state.provider)
         deployments = {}
         for target in state.targets:
@@ -179,8 +184,8 @@ class Effects:
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
-        _active(await self.metadata(state, created["provider_id"]), state)
         await self.identity(state, created)
+        _active(await self.metadata(state, created["provider_id"]), state)
         await self.rollout.verify(state, created, deployment)
         return {"consumer_healthy": True, "consumers": len(state.targets)}
 
@@ -262,5 +267,26 @@ class Effects:
         return True
 
     async def cleanup_unrecorded(self, state: Snapshot, run_id: str) -> bool:
+        if state.playbook is not None:
+            run = await self.hosts.database.collection("runs").find_one(
+                {"organisation_id": state.credential.organisation_id, "id": run_id}
+            )
+            if not run:
+                return False
+            await validate(
+                self.hosts.database,
+                state,
+                {"run_id": run_id, "fencing_token": run["data"]["fencing_token"]},
+            )
+            return (
+                await self.hosts.database.collection("browser_actions").find_one(
+                    {
+                        "organisation_id": state.credential.organisation_id,
+                        "session_id": stable("browser", run_id + ":create:"),
+                        "action.protected": True,
+                    }
+                )
+                is None
+            )
         # An unknown issuer outcome needs review before another mutation.
         return False

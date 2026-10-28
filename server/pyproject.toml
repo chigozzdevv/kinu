@@ -20,7 +20,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-browser = ["playwright>=1.55,<2", "websockets>=15,<17"]
+browser = [
+    "playwright>=1.55,<2",
+    "stagehand==4.3.0",
+    "websockets>=15,<17",
+]
 mcp = ["httpx2>=2,<3", "mcp>=2,<3"]
 
 [tool.uv.sources]

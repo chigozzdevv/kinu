@@ -6,7 +6,7 @@
     handle /_agent-native/* {
         reverse_proxy agent:8001
     }
-    @api path /v1/* /auth/* /health/* /connections/*
+    @api path /v1/* /auth/* /health/* /connections/* /browser-gateway/*
     handle @api {
         reverse_proxy api:8000
     }

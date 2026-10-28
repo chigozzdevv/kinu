@@ -10,6 +10,8 @@ from contracts import (
     CredentialGeneration,
     GenerationState,
     ManagedCredential,
+    PlaybookState,
+    PlaybookVersion,
 )
 from core.connection.roles import ConnectionRoles
 from core.errors import ResourceConflictError
@@ -53,6 +55,25 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         current = await rows.get(CredentialGeneration, org, credential.active_generation_id)
         store = await rows.get(Connection, org, credential.secret_store_connection_id)
         provider = await rows.get(Connection, org, credential.connection_id)
+        playbook = None
+        if provider.interface is ConnectionInterface.BROWSER:
+            if not provider.playbook_version_id or store.platform != "kinu":
+                raise ResourceConflictError(
+                    "Browser rotation requires a published playbook and the workspace vault"
+                )
+            playbook = await rows.get(PlaybookVersion, org, provider.playbook_version_id)
+            verifier = playbook.definition.verifier
+            if (
+                playbook.playbook_id != provider.playbook_id
+                or playbook.state is not PlaybookState.PUBLISHED
+                or playbook.digest != digest(playbook.definition)
+                or not verifier
+                or not verifier.supports_overlap
+                or not set(playbook.definition.allowed_domains) <= set(provider.allowed_resources)
+            ):
+                raise ResourceConflictError(
+                    "Publish a browser playbook with overlapping-key verification"
+                )
         targets = []
         for binding in bindings:
             runtime = await rows.get(Connection, org, binding.runtime_connection_id)
@@ -113,15 +134,20 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         or not 60 <= control.definition.maximum_observation_seconds <= 600
         or not control.definition.preserve_old_generation
         or not required <= control.definition.allowed_tools
-        or provider.interface is not ConnectionInterface.API
+        or provider.interface not in {ConnectionInterface.API, ConnectionInterface.BROWSER}
         or provider.roles != frozenset({ConnectionRole.PROVIDER})
-        or provider.http is None
-        or not provider.http.supports_overlap
-        or provider.http.test_credential is None
-        or provider.http.list_credentials.name_field is None
-        or provider.http.list_credentials.method != "GET"
-        or provider.http.test_credential.method != "GET"
-        or provider.http.credential_auth is None
+        or (
+            provider.interface is ConnectionInterface.API
+            and (
+                provider.http is None
+                or not provider.http.supports_overlap
+                or provider.http.test_credential is None
+                or provider.http.list_credentials.name_field is None
+                or provider.http.list_credentials.method != "GET"
+                or provider.http.test_credential.method != "GET"
+                or provider.http.credential_auth is None
+            )
+        )
         or (provider.authorization_reference or "").partition("/versions/")[0]
         == credential.secret_resource
         or provider.platform != credential.provider
@@ -143,4 +169,4 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         roles = ConnectionRoles(database, managed=True, read_only=True)
         await roles.resolve(store)
         await roles.resolve(targets[0].runtime)
-    return Snapshot(credential, tuple(targets), current, control, store, provider)
+    return Snapshot(credential, tuple(targets), current, control, store, provider, playbook)

@@ -29,6 +29,6 @@ async def available(organisation_id: Identifier, identity: Identity, request: Re
         gmail=await api.gmail.ready() if api.gmail else False,
         provider_api=api.inventory is not None and api.inventory.provider_available,
         browser_setup=api.browser_setup is not None,
-        browser_execution=api.browsers is not None,
+        browser_execution=api.private is not None,
         playbook_generation=api.walkthroughs is not None and api.agents is not None,
     )

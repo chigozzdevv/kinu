@@ -3,7 +3,13 @@ from urllib.parse import urlsplit
 
 from connectors.hosting.models import Variable
 from connectors.http import HttpProviderConnector
-from contracts import Connection, ConnectionStatus, ManagedCredential, ProviderCredentialMetadata
+from contracts import (
+    Connection,
+    ConnectionInterface,
+    ConnectionStatus,
+    ManagedCredential,
+    ProviderCredentialMetadata,
+)
 from core.errors import ResourceConflictError
 from core.ids import new_id
 from executor.versions import Versions, root
@@ -49,7 +55,7 @@ async def prepare(
         if (
             provider.archived_at
             or provider.status is not ConnectionStatus.READY
-            or provider.http is None
+            or (provider.http is None and provider.interface is not ConnectionInterface.BROWSER)
         ):
             raise ResourceConflictError("Choose a connected API credential provider")
         metadata = [
@@ -91,6 +97,10 @@ async def prepare(
             raise ResourceConflictError("Link this key through its existing credential")
         value = await adapter.read(variable)
         try:
+            if provider.interface is ConnectionInterface.BROWSER and value is None:
+                raise ResourceConflictError(
+                    "Browser providers require a readable existing key for verification"
+                )
             if value and fingerprint(value.bytes()) == await provider_api.auth_fingerprint(
                 provider
             ):
@@ -101,6 +111,16 @@ async def prepare(
                 raise ResourceConflictError(
                     "Selected variable belongs to another provider credential"
                 )
+            if provider.interface is ConnectionInterface.BROWSER:
+                metadata = [
+                    ProviderCredentialMetadata.model_validate(item)
+                    for item in await provider_api.metadata(provider)
+                    if item["provider_id"] == choice.provider_id
+                ]
+                if len(metadata) != 1:
+                    raise ResourceConflictError(
+                        "Browser credential disappeared during verification"
+                    )
             if current:
                 reference = current.secret_reference
                 if await versions.current(store, current.secret_resource) != reference:

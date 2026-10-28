@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import httpx
 from agents.memory import AgentMemoryService
 from agents.store import AgentStore
+from browser.bridge import Bridge as BrowserBridge
 from core.account import AccountService
 from core.account.installation import Installation
 from core.account.store import AccountStore
@@ -115,6 +116,7 @@ async def runtime(
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
                     private=private,
+                    browser_setup=BrowserBridge(private, config.public_url) if private else None,
                     installation=Installation(database),
                     audit=audit,
                     incidents=IncidentService(
