@@ -7,6 +7,8 @@ from pathlib import Path
 from connectors.aws import AwsClient
 from connectors.aws.client import AwsError
 
+from infra.stack import existing
+
 
 async def main() -> None:
     region = os.environ.get("AWS_REGION", "eu-west-2")
@@ -40,6 +42,15 @@ async def main() -> None:
         "CodeBucket": bucket,
         "CodeKey": key,
     }
+    executor = await existing(aws, region, "kinu-executor")
+    if executor:
+        values = {item["OutputKey"]: item["OutputValue"] for item in executor["Outputs"]}
+        parameters.update(
+            ConnectorArn=values["ConnectorArn"],
+            ConnectionPrincipals=values["Principals"],
+            RotationQueueArn=values["QueueArn"],
+            RotationQueueUrl=values["QueueUrl"],
+        )
     try:
         demo = await aws.call("cloudformation", "describe_stacks", region, StackName="kinu-demo")
     except AwsError as error:

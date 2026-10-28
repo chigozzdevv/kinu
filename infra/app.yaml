@@ -10,8 +10,14 @@ Parameters:
   DemoQueueArn: {Type: String, Default: ''}
   DemoQueueUrl: {Type: String, Default: ''}
   DemoOrganisation: {Type: String, Default: ''}
+  ConnectorArn: {Type: String, Default: ''}
+  ConnectionPrincipals: {Type: String, Default: ''}
+  RotationQueueArn: {Type: String, Default: ''}
+  RotationQueueUrl: {Type: String, Default: ''}
 Conditions:
   HasDemo: !Not [!Equals [!Ref DemoQueueArn, '']]
+  HasConnections: !Not [!Equals [!Ref ConnectorArn, '']]
+  HasRotations: !Not [!Equals [!Ref RotationQueueArn, '']]
 Resources:
   Site:
     Type: AWS::S3::Bucket
@@ -48,6 +54,22 @@ Resources:
             Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       Policies:
+        - !If
+          - HasConnections
+          - PolicyName: connection-checks
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !Ref ConnectorArn}
+          - !Ref AWS::NoValue
+        - !If
+          - HasRotations
+          - PolicyName: rotation-dispatch
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'sqs:SendMessage', Resource: !Ref RotationQueueArn}
+          - !Ref AWS::NoValue
         - !If
           - HasDemo
           - PolicyName: demo-dispatch
@@ -99,6 +121,9 @@ Resources:
           KINU_ENVIRONMENT: production
           KINU_DEMO_QUEUE_URL: !Ref DemoQueueUrl
           KINU_DEMO_ORGANISATION: !Ref DemoOrganisation
+          KINU_CONNECTOR_FUNCTION: !Ref ConnectorArn
+          KINU_CONNECTION_PRINCIPALS: !Ref ConnectionPrincipals
+          KINU_ROTATION_QUEUE_URL: !Ref RotationQueueUrl
           KINU_SITE_BUCKET: !Ref Site
           KINU_AWS_REGION: !Ref AWS::Region
           KINU_DATA_API_CLUSTER_ARN: !Ref ClusterArn

@@ -12,15 +12,15 @@ exposes the same scoped actions used by the dashboard.
 2. Email events are deduplicated and correlated with the current credential. Builder AI
    assesses a small structured summary; application policy decides whether rotation is allowed.
 3. An SQS worker validates the pinned controls and creates a replacement through the provider API.
-4. The provider writes the key directly to AWS Secrets Manager and returns its reference.
+4. The private executor stores the key in the selected AWS Secrets Manager secret and returns a version reference.
 5. Kinu verifies consumer access, publishes an immutable Lambda version and promotes its live alias.
-6. After 60 seconds of healthy observations without old-key use, Kinu retires the old provider
-   key, proves it is rejected and updates the inventory and audit history.
+6. After the configured healthy observation window, Kinu retires the old provider key, proves it
+   is rejected and updates inventory and audit history. The isolated demo also checks old-key usage.
 
-The deployed executor is limited to the isolated demo provider and consumer. It uses real
-AWS resources and actual key validation. The email is an explicitly labelled MIME fixture;
-it is not a connected inbox. Real mailbox OAuth and additional provider/runtime adapters
-remain separate integrations. AgentCore Browser awaits an AWS quota approval; the browser
+The API executor supports a declared HTTP credential provider, Secrets Manager and one selected
+Lambda consumer. The isolated demo remains available with its own provider and consumer.
+Its email is an explicitly labelled MIME fixture, not a connected inbox. Gmail OAuth is not
+implemented yet. AgentCore Browser awaits an AWS quota approval; the browser
 adapter and capture guards have local tests, but the browser rotation is not live verified.
 
 Failures before retirement restore the previous consumer and revoke the candidate when safe.
@@ -39,9 +39,10 @@ confidence, candidate count and a policy result. It receives no workload key, ma
 AWS credentials or arbitrary execution tools. Generic Agent-Native chat, terminals, MCP proxy
 routes and alternative authentication methods remain disabled.
 
-The API and Agent-Native roles cannot assume customer roles. The worker uses a role restricted
-to the selected demo resources; it cannot read workload secret values. Only the provider's
-write path and consumer's read path handle those values. Inventory and execution evidence store
+The API and Agent-Native roles cannot assume customer roles. Private connection checks and
+rotation functions assume a workspace-specific role using an external ID and session tag.
+Session policies restrict each operation to the selected resources. Only these private functions
+and the consumer handle secret values; the dashboard, model and execution history receive
 references, identifiers and checks.
 
 ## Available features
@@ -49,12 +50,42 @@ references, identifiers and checks.
 The default runtime persists playbooks, probe definitions, approval decisions, agent records,
 notifications, overview counts and rotation history in PostgreSQL. Approval capabilities require
 matching saved verification evidence and a separate approver, and can be consumed only once.
-The demo executor still rejects controls requiring manual revocation approval.
+The API executors reject controls requiring manual revocation approval. The Lambda HTTP adapter
+also rejects generation-telemetry requirements until a telemetry adapter is connected.
 
-The authenticated features endpoint reports external integration availability. GitHub onboarding,
-customer AWS onboarding, browser sessions and playbook generation remain unavailable until their
-execution adapters are configured; their frontend actions are disabled. This does not disable the
-working demo rotation or the workspace Builder connection.
+The authenticated features endpoint reports deployed integration availability. AWS onboarding and
+HTTP provider setup require the private connection function. GitHub onboarding, browser sessions
+and playbook generation remain disabled until their adapters are configured.
+
+## Connect a workload
+
+1. Open **Connections → AWS**. Select the account, region, exact secret ARNs and Lambda ARNs.
+   Include customer KMS key ARNs when needed. Install the generated CloudFormation access role,
+   then return to Kinu and connect. Pending connections can resume with **Finish setup**.
+2. Add a **Custom API** connection. Upload its operation mappings and select a separate management
+   credential version from Secrets Manager. List metadata must include ID, name, kind, scopes and
+   active/disabled status; the credential test must return its ID. Declare concurrent key support.
+3. Add a credential and select its current secret version, provider identity and Lambda binding.
+   Kinu checks those relationships before saving the mapping.
+
+The Lambda must have a published `live` alias and an environment variable containing the full
+immutable reference `arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME-SUFFIX/versions/VERSION`.
+Kinu updates only that binding, preserves other environment variables and checks alias revisions.
+Route production invocations through `live`; other aliases and unqualified invocations are not managed.
+
+Implement a health operation accepting `{"kinu":{"operation":"health","challenge":"VALUE"}}`.
+An optional `secret_reference` inside `kinu` asks the consumer to test a staged version of the same
+secret. Restrict overrides to that secret. Read the version with the consumer's AWS role and make a
+real, harmless provider request. Return only:
+
+```json
+{"kinu":{"challenge":"VALUE","healthy":true,"secret_reference":"FULL_VERSION_REFERENCE","provider_id":"KEY_ID"}}
+```
+
+For an authenticated rejection return `healthy: false` and `reason: "credential-rejected"` with the
+same challenge. Network errors must not report credential rejection. Never return the key.
+The current adapter supports one consumer, 60–600 seconds of observation and automatic revocation.
+It does not claim application-wide traffic or old-key telemetry coverage.
 
 ## Development
 
@@ -87,8 +118,7 @@ Local Cognito tests use signed fixture tokens. A passing local suite does not pr
 or Builder account authorization. The SDK's disabled chat dependency has a transitive Zod 3
 advisory; review it before enabling any generic chat route.
 
-Infrastructure templates and deployment utilities are in `infra/`. Invitation delivery and
-arbitrary production provider connections are not implemented.
+Infrastructure templates and deployment utilities are in `infra/`. Invitation delivery is not implemented.
 
 ## Deployment
 
@@ -103,6 +133,7 @@ python -m infra.deploy
 python -m infra.native
 python -m infra.bootstrap --native
 python -m infra.launch
+python -m infra.executor
 python -m infra.deploy
 ```
 
@@ -125,7 +156,8 @@ Existing demo role bindings are recovered from PostgreSQL.
 | `client/` | Operator dashboard |
 | `agent/` | Agent-Native actions and Builder AI connection |
 | `server/api/`, `server/core/` | Auth, inventory, policy and workflow |
-| `server/demo/`, `server/cloud/` | Scoped API executor, provider and consumer |
+| `server/rotation/`, `server/cloud/` | Shared staged executor and private AWS functions |
+| `server/demo/` | Isolated demo provider, consumer and email fixture |
 | `server/browser/`, `server/capture/` | Protected browser observations and capture |
 | `server/connectors/` | AWS and provider adapters |
 | `packages/` | Shared contracts, policy and telemetry |

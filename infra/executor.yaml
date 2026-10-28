@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinu private connection checks and selected-resource rotation
+Parameters:
+  ClusterArn: {Type: String}
+  DatabaseSecretArn: {Type: String}
+  CodeBucket: {Type: String}
+  CodeKey: {Type: String}
+Resources:
+  Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 5400
+      MessageRetentionPeriod: 86400
+      RedrivePolicy: {deadLetterTargetArn: !GetAtt DeadLetters.Arn, maxReceiveCount: 3}
+  DeadLetters:
+    Type: AWS::SQS::Queue
+    Properties: {SqsManagedSseEnabled: true, MessageRetentionPeriod: 259200}
+  ConnectLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/kinu-connect, RetentionInDays: 3}
+  ExecutorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/kinu-executor, RetentionInDays: 3}
+  ConnectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: kinu-connect
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      Policies:
+        - PolicyName: selected-connections
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BeginTransaction, rds-data:CommitTransaction, rds-data:RollbackTransaction]
+                Resource: !Ref ClusterArn
+              - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref DatabaseSecretArn}
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kinu-connect:*'
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: 'arn:aws:iam::*:role/kinu/aws_*'
+                Condition:
+                  'Null': {'sts:ExternalId': 'false', 'aws:RequestTag/kinu-org': 'false'}
+              - Effect: Allow
+                Action: sts:TagSession
+                Resource: 'arn:aws:iam::*:role/kinu/aws_*'
+                Condition:
+                  'Null': {'aws:RequestTag/kinu-org': 'false'}
+                  'ForAllValues:StringEquals': {'aws:TagKeys': ['kinu-org']}
+  ExecutorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: kinu-executor
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}]
+      Policies:
+        - PolicyName: selected-rotations
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BeginTransaction, rds-data:CommitTransaction, rds-data:RollbackTransaction]
+                Resource: !Ref ClusterArn
+              - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref DatabaseSecretArn}
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/kinu-executor:*'
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes, sqs:ChangeMessageVisibility]
+                Resource: !GetAtt Queue.Arn
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: 'arn:aws:iam::*:role/kinu/aws_*'
+                Condition:
+                  'Null': {'sts:ExternalId': 'false', 'aws:RequestTag/kinu-org': 'false'}
+              - Effect: Allow
+                Action: sts:TagSession
+                Resource: 'arn:aws:iam::*:role/kinu/aws_*'
+                Condition:
+                  'Null': {'aws:RequestTag/kinu-org': 'false'}
+                  'ForAllValues:StringEquals': {'aws:TagKeys': ['kinu-org']}
+  Connect:
+    Type: AWS::Lambda::Function
+    DependsOn: ConnectLogs
+    Properties:
+      FunctionName: kinu-connect
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: cloud.connect.handler
+      Role: !GetAtt ConnectRole.Arn
+      MemorySize: 512
+      Timeout: 25
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          KINU_AWS_REGION: !Ref AWS::Region
+          KINU_DATA_API_CLUSTER_ARN: !Ref ClusterArn
+          KINU_DATA_API_SECRET_ARN: !Ref DatabaseSecretArn
+  Executor:
+    Type: AWS::Lambda::Function
+    DependsOn: ExecutorLogs
+    Properties:
+      FunctionName: kinu-executor
+      Runtime: python3.12
+      Architectures: [x86_64]
+      Handler: cloud.execute.handler
+      Role: !GetAtt ExecutorRole.Arn
+      MemorySize: 512
+      Timeout: 900
+      Code: {S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey}
+      Environment:
+        Variables:
+          KINU_ROTATION_QUEUE_ARN: !GetAtt Queue.Arn
+          KINU_AWS_REGION: !Ref AWS::Region
+          KINU_DATA_API_CLUSTER_ARN: !Ref ClusterArn
+          KINU_DATA_API_SECRET_ARN: !Ref DatabaseSecretArn
+  Jobs:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref Executor
+      EventSourceArn: !GetAtt Queue.Arn
+      BatchSize: 1
+      FunctionResponseTypes: [ReportBatchItemFailures]
+      ScalingConfig: {MaximumConcurrency: 2}
+Outputs:
+  ConnectorArn: {Value: !GetAtt Connect.Arn}
+  Principals: {Value: !Join [',', [!GetAtt ConnectRole.Arn, !GetAtt ExecutorRole.Arn]]}
+  QueueArn: {Value: !GetAtt Queue.Arn}
+  QueueUrl: {Value: !Ref Queue}
