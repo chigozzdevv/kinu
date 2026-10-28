@@ -71,6 +71,12 @@ Custom API providers accept their management token once. The executor keeps it e
 reuses that connection across credentials. HTTP operation mappings must declare overlapping keys,
 credential metadata and an authenticated credential test.
 
+Resend has a built-in provider connection. Supply a full-access management token and choose a
+verified sending domain. Workload keys stay sending-only and scoped to that domain. Resend cannot
+identify an existing key from its token, so Kinu only manages keys whose creation it recorded.
+Creation receipts bind the issuer ID, scope and token fingerprint privately; unknown keys cannot
+be imported or retired through this connection.
+
 For hosting, choose Vercel, Railway or Render, select allowed projects, then open the connection's
 **Credentials** tab. Choose key variables and their issuer identities. Kinu creates inventory and
 consumer bindings automatically and reuses the existing connections across keys. Render uses an
@@ -146,3 +152,20 @@ database isolation and encrypted vault persistence. Run
 `docker compose exec -T executor python < deploy/browser.py` for private capture and Stagehand
 checks with fake keys and mocked inference. The Compose deployment has separate API, executor,
 worker, agent and web image targets.
+
+The dedicated Render sandbox is defined in `examples/render/render.yaml`. It runs `kinu-check` on
+Render's Free plan, with `RESEND_API_KEY=setup-required` until initialization. Connect Render and
+Resend in Kinu, select this service, then run the following on the installation host using the
+workspace, connection, service and administrator IDs from that installation:
+
+```sh
+docker compose exec -T executor python -m hosting.seed \
+  --workspace WORKSPACE_ID --host RENDER_CONNECTION_ID --provider RESEND_CONNECTION_ID \
+  --project RENDER_SERVICE_ID --url https://YOUR_SERVICE.onrender.com/probe --actor ADMIN_ACTOR_ID
+```
+
+This setup command accepts only the dedicated `kinu-check` service and its unchanged placeholder.
+It creates one domain-scoped sending key, stores it privately, deploys it and registers its inventory
+mapping. It never prints the key or sends email. An interrupted attempt requires evidence review;
+rerunning it cannot create another key. A completed attempt returns its existing credential.
+The workload's `/health` endpoint checks liveness; `/probe` verifies the loaded key with Resend.

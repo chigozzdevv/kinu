@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: kinu-check
+    runtime: docker
+    plan: free
+    dockerfilePath: ./examples/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: RESEND_API_KEY
+        value: setup-required

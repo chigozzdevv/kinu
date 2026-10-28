@@ -13,15 +13,15 @@ sync:
 	npm --prefix agent ci
 
 format:
-	$(UV_ENV) uv run ruff format server packages deploy
-	$(UV_ENV) uv run ruff check --fix server packages deploy
+	$(UV_ENV) uv run ruff format server packages deploy examples
+	$(UV_ENV) uv run ruff check --fix server packages deploy examples
 
 lint:
-	$(UV_ENV) uv run ruff format --check server packages deploy
-	$(UV_ENV) uv run ruff check server packages deploy
+	$(UV_ENV) uv run ruff format --check server packages deploy examples
+	$(UV_ENV) uv run ruff check server packages deploy examples
 
 type:
-	$(UV_ENV) uv run mypy server packages deploy
+	$(UV_ENV) uv run mypy server packages deploy examples
 
 test:
 	$(UV_ENV) uv run pytest
