@@ -28,6 +28,7 @@ async def record(
                     attempt_id=run_id,
                     secret_reference=created["secret_reference"],
                     predecessor_id=state.current.id,
+                    fingerprint=created.get("fingerprint"),
                     created_at=datetime.now(UTC),
                 ),
                 org,
@@ -63,19 +64,21 @@ async def promote(database: Database, state: Snapshot, target_id: str, report_id
     org, now = state.credential.organisation_id, datetime.now(UTC)
     async with Records(database).write(org) as rows:
         credential = await rows.get(ManagedCredential, org, state.credential.id)
-        binding = await rows.get(ConsumerBinding, org, state.binding.id)
+        bindings = tuple(
+            [await rows.get(ConsumerBinding, org, target.binding.id) for target in state.targets]
+        )
         old = await rows.get(CredentialGeneration, org, state.current.id)
         target = await rows.get(CredentialGeneration, org, target_id)
         if credential.active_generation_id == target_id:
             if (
-                binding.current_generation_id != target_id
+                any(binding.current_generation_id != target_id for binding in bindings)
                 or old.state is not GenerationState.REVOKED
             ):
                 raise ResourceConflictError("promoted generation records are inconsistent")
             return
         if (
             credential != state.credential
-            or binding != state.binding
+            or bindings != tuple(target.binding for target in state.targets)
             or old.state is not GenerationState.ACTIVE
         ):
             raise ResourceConflictError("credential mapping changed during rotation")
@@ -92,18 +95,19 @@ async def promote(database: Database, state: Snapshot, target_id: str, report_id
             ),
             credential.revision,
         )
-        await rows.replace(
-            binding.model_copy(
-                update={
-                    "current_generation_id": target_id,
-                    "secret_reference": target.secret_reference,
-                    "target_generation_id": None,
-                    "verification_report_id": report_id,
-                    "revision": binding.revision + 1,
-                }
-            ),
-            binding.revision,
-        )
+        for binding in bindings:
+            await rows.replace(
+                binding.model_copy(
+                    update={
+                        "current_generation_id": target_id,
+                        "secret_reference": target.secret_reference,
+                        "target_generation_id": None,
+                        "verification_report_id": report_id,
+                        "revision": binding.revision + 1,
+                    }
+                ),
+                binding.revision,
+            )
         await rows.replace(
             old.model_copy(
                 update={

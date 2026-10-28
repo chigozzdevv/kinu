@@ -77,14 +77,16 @@ class Stages:
                 control_version=run.control_version,
                 strategy=RotationStrategy.PARALLEL,
                 target_scopes=state.credential.scopes,
-                consumer_ids=(state.binding.service_id,),
+                consumer_ids=state.credential.consumer_ids,
                 rollout=(100,),
                 observation_seconds=state.controls.definition.maximum_observation_seconds,
                 recovery_ids={Stage.DEPLOY: stable("rollback", run.id)},
             )
             result = {
                 "plan": plan.model_dump(mode="json"),
-                "rollback_revision": initial["alias"]["version"],
+                "rollback_revisions": {
+                    key: value["version"] for key, value in initial["deployments"].items()
+                },
             }
             return (
                 frozenset({"plan-bound", "controls-pinned", "plan-hashed", "recovery-ready"}),
@@ -110,21 +112,32 @@ class Stages:
         if stage is Stage.DEPLOY:
             result = await self.effects.deploy(state, created, run.id)
             initial = await self.output(Stage.PREFLIGHT)
-            if result["rollback_revision"] != initial["alias"]["version"]:
-                raise ResourceConflictError("consumer changed before candidate deployment")
-            deployment = RuntimeDeployment(
-                binding_id=state.binding.id,
-                connection_id=state.runtime.id,
-                service=state.binding.runtime_resource,
-                candidate_revision=result["candidate_revision"],
-                rollback_revision=result["rollback_revision"],
-            )
+            outputs = result["deployments"]
+            if set(outputs) != {target.binding.id for target in state.targets}:
+                raise ResourceConflictError("Deployment coverage is incomplete")
+            deployments = []
+            for consumer in state.targets:
+                output = outputs[consumer.binding.id]
+                if (
+                    output["rollback_revision"]
+                    != initial["deployments"][consumer.binding.id]["version"]
+                ):
+                    raise ResourceConflictError("Consumer changed before candidate deployment")
+                deployments.append(
+                    RuntimeDeployment(
+                        binding_id=consumer.binding.id,
+                        connection_id=consumer.runtime.id,
+                        service=consumer.binding.runtime_resource,
+                        candidate_revision=output["candidate_revision"],
+                        rollback_revision=output["rollback_revision"],
+                    )
+                )
             return (
                 frozenset(
                     {"candidate-deployed", "version-bound", "generation-tagged", "rollback-ready"}
                 ),
                 result,
-                StageBindings(deployments=(deployment,)),
+                StageBindings(deployments=tuple(deployments)),
             )
         deployment_output = await self.output(Stage.DEPLOY)
         if stage is Stage.VERIFY:

@@ -36,6 +36,18 @@ async def ensure_indexes(database: Database) -> None:
                 name="incident_event",
             ),
         ],
+        "host_bindings": [
+            IndexModel([("organisation_id", 1), ("binding_id", 1)], unique=True),
+            IndexModel(
+                [("organisation_id", 1), ("connection_id", 1), ("reference", 1)], unique=True
+            ),
+        ],
+        "runtime_locks": [
+            IndexModel([("organisation_id", 1), ("connection_id", 1), ("resource", 1)], unique=True)
+        ],
+        "host_rollouts": [
+            IndexModel([("organisation_id", 1), ("run_id", 1), ("binding_id", 1)], unique=True)
+        ],
         "runs": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
         "run_locks": [IndexModel([("organisation_id", 1), ("credential_id", 1)], unique=True)],
         "commands": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],

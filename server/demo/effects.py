@@ -91,7 +91,7 @@ class Effects:
         ):
             raise ConnectorError("demo-controls", "demo controls do not permit this execution")
         metadata = await self.metadata(state.current.provider_id or "")
-        alias = await self.runtime.current(state.runtime, self.config.consumer_function)
+        alias = await self.runtime.current(state.single.runtime, self.config.consumer_function)
         health = await self.health(state, "live")
         _healthy(health, state.current.provider_id, state.credential.secret_reference)
         versions = await self.secrets.versions_for(state.store, state.credential.secret_resource)
@@ -102,7 +102,11 @@ class Effects:
             raise ConnectorError(
                 "demo-state-mismatch", "The current provider and secret versions differ"
             )
-        return {"alias": alias, "old_uses": metadata["uses"], "health": health}
+        return {
+            "deployments": {state.single.binding.id: alias},
+            "old_uses": metadata["uses"],
+            "health": health,
+        }
 
     async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]:
         result = await self.provider("create", request_id=run_id)
@@ -131,7 +135,7 @@ class Effects:
                 "demo-secret-boundary", "Consumer probe escaped the assigned secret"
             )
         return await self.runtime.health(
-            state.runtime, self.config.consumer_function, qualifier, candidate
+            state.single.runtime, self.config.consumer_function, qualifier, candidate
         )
 
     async def access(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
@@ -140,14 +144,23 @@ class Effects:
         return result
 
     async def deploy(self, state: Snapshot, created: dict[str, Any], run_id: str) -> dict[str, Any]:
-        return await self.runtime.candidate(
-            state.runtime, self.config.consumer_function, created["secret_reference"], run_id
-        )
+        return {
+            "deployments": {
+                state.single.binding.id: await self.runtime.candidate(
+                    state.single.runtime,
+                    self.config.consumer_function,
+                    created["secret_reference"],
+                    run_id,
+                )
+            }
+        }
 
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
-        result = await self.health(state, deployment["candidate_revision"])
+        result = await self.health(
+            state, deployment["deployments"][state.single.binding.id]["candidate_revision"]
+        )
         _healthy(result, created["provider_id"], created["secret_reference"])
         metadata = await self.metadata(created["provider_id"])
         if metadata["state"] != "active" or metadata["uses"] < 1:
@@ -160,11 +173,11 @@ class Effects:
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
         await self.runtime.promote(
-            state.runtime,
+            state.single.runtime,
             self.config.consumer_function,
-            deployment["candidate_revision"],
-            deployment["rollback_revision"],
-            deployment["alias_revision"],
+            deployment["deployments"][state.single.binding.id]["candidate_revision"],
+            deployment["deployments"][state.single.binding.id]["rollback_revision"],
+            deployment["deployments"][state.single.binding.id]["alias_revision"],
         )
         await self.secrets.promote(
             state.store, created["secret_reference"], state.credential.secret_reference
@@ -196,9 +209,11 @@ class Effects:
         _healthy(
             await self.health(state, "live"), created["provider_id"], created["secret_reference"]
         )
-        alias = await self.runtime.current(state.runtime, self.config.consumer_function)
+        alias = await self.runtime.current(state.single.runtime, self.config.consumer_function)
         versions = await self.secrets.versions_for(state.store, state.credential.secret_resource)
-        if alias["version"] != deployment["candidate_revision"] or not any(
+        if alias["version"] != deployment["deployments"][state.single.binding.id][
+            "candidate_revision"
+        ] or not any(
             item["name"] == created["secret_reference"] and "AWSCURRENT" in item["stages"]
             for item in versions
         ):
@@ -208,7 +223,9 @@ class Effects:
         await self.provider(
             "revoke", provider_id=state.current.provider_id, expected_uses=observed["old_uses"]
         )
-        old = await self.health(state, deployment["rollback_revision"])
+        old = await self.health(
+            state, deployment["deployments"][state.single.binding.id]["rollback_revision"]
+        )
         if old.get("ok") is not False or old.get("state") != "provider-rejected":
             raise ConnectorError(
                 "demo-old-key-accepted", "Provider did not reject the retired credential"
@@ -228,14 +245,22 @@ class Effects:
         if (await self.metadata(state.current.provider_id or ""))["state"] != "active":
             return False
         if deployment:
-            current = await self.runtime.current(state.runtime, self.config.consumer_function)
-            if current["version"] != deployment["rollback_revision"]:
-                if current["version"] != deployment["candidate_revision"]:
+            current = await self.runtime.current(
+                state.single.runtime, self.config.consumer_function
+            )
+            if (
+                current["version"]
+                != deployment["deployments"][state.single.binding.id]["rollback_revision"]
+            ):
+                if (
+                    current["version"]
+                    != deployment["deployments"][state.single.binding.id]["candidate_revision"]
+                ):
                     return False
                 await self.runtime.promote(
-                    state.runtime,
+                    state.single.runtime,
                     self.config.consumer_function,
-                    deployment["rollback_revision"],
+                    deployment["deployments"][state.single.binding.id]["rollback_revision"],
                     current["version"],
                     current["revision"],
                 )

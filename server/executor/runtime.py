@@ -6,11 +6,13 @@ import httpx
 from agents.native import NativeAgent
 from connectors.aws import AwsClient
 from connectors.aws.secrets import AwsSecrets
+from connectors.http import HttpProviderConnector
 from core.connection.roles import ConnectionRoles
 from core.connection.secrets import ConnectionSecrets
 from core.inventory.store import InventoryStore
 from core.private import PrivateClient
 from core.storage.database import Database
+from hosting.mapping import Mappings
 from hosting.service import Service as Hosts
 from jobs.queue import Jobs
 from mail.assessment import Assessment
@@ -21,13 +23,17 @@ from mail.service import Service
 from mail.store import Store
 from mail.vault import Vault as MailVault
 from rotation.effects import Effects
+from rotation.hosting import Effects as HostEffects
 from rotation.queue import Dispatcher
 from rotation.rotate import Rotation
+from rotation.router import Router
 from rotation.snapshot import loader
 
 from executor.authorization import Authorization
 from executor.config import ExecutorSettings
+from executor.reader import Reader
 from executor.vault import Vault
+from executor.versions import Versions
 
 
 class Runtime:
@@ -48,18 +54,30 @@ class Runtime:
         )
         assert config.native_token is not None
         self.agent = NativeAgent(PrivateClient(http, config.native_url, config.native_token))
+        self.versions = Versions(vault)
         self.authorizations = Authorization(
             vault,
             ConnectionSecrets(
                 InventoryStore(database),
-                AwsSecrets(AwsClient(), ConnectionRoles(database, managed=True, read_only=True)),
+                Reader(
+                    self.versions,
+                    AwsSecrets(
+                        AwsClient(), ConnectionRoles(database, managed=True, read_only=True)
+                    ),
+                ),
             ),
         )
         self.hosts = Hosts(database, vault, http, config.public_url)
+        self.mappings = Mappings(
+            self.hosts, self.versions, HttpProviderConnector(self.authorizations)
+        )
         self.mail_store = Store(vault.database)
         self.rotation = Rotation(
             database,
-            Effects(AwsClient(), database, self.authorizations),
+            Router(
+                HostEffects(self.hosts, self.versions, self.mappings.provider),
+                Effects(AwsClient(), database, self.authorizations),
+            ),
             loader(database),
             config.aws_region,
         )
@@ -106,6 +124,7 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
             service = Runtime(config, database, vault, http, queue)
             await service.mail_store.initialize()
             await service.hosts.grants.initialize()
+            await service.versions.initialize()
             yield service
     finally:
         await queue.close()

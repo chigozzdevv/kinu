@@ -6,7 +6,7 @@ from core.auth import AuthenticatedIdentity, Permission
 from core.errors import AuthenticationError, KinuError
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
-from hosting.models import Begin, Platform, Selection
+from hosting.models import Begin, Import, Platform, Selection
 
 from api.deps import Identity, browser_session, required, services, session_binding
 from api.inventory.shared import _audit_change
@@ -138,3 +138,37 @@ async def variables(
         connection_id=connection_id,
         project_id=project_id,
     )
+
+
+@router.post(PREFIX + "/{connection_id}/credentials")
+async def import_keys(
+    organisation_id: Identifier,
+    connection_id: Identifier,
+    body: Import,
+    identity: Identity,
+    request: Request,
+) -> Any:
+    result = await call(
+        request,
+        identity,
+        organisation_id,
+        "import",
+        connection_id=connection_id,
+        data=body.model_dump(mode="json"),
+    )
+    await _audit_change(
+        services(request),
+        organisation_id,
+        identity.actor_id,
+        "hosting.credentials-imported",
+        connection_id,
+        0,
+    )
+    return result
+
+
+@router.get(PREFIX + "/{connection_id}/credentials")
+async def mapped(
+    organisation_id: Identifier, connection_id: Identifier, identity: Identity, request: Request
+) -> Any:
+    return await call(request, identity, organisation_id, "mapped", connection_id=connection_id)

@@ -19,7 +19,6 @@ from core.audit.writer import AuditWriter
 from core.errors import LeaseConflictError, ResourceConflictError
 from core.state import RotationMachine
 from core.storage.database import Database
-from core.storage.records import Records
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from policy import GatePolicy
@@ -266,22 +265,5 @@ class Rotation:
             or current.lease.expires_at <= datetime.now(UTC)
         ):
             raise LeaseConflictError("rotation lease or revision changed")
-        async with Records(self.database).read() as rows:
-            from contracts import Connection, ConsumerBinding, ControlVersion, ManagedCredential
-
-            credential = await rows.get(ManagedCredential, run.organisation_id, run.credential_id)
-            binding = await rows.get(ConsumerBinding, run.organisation_id, state.binding.id)
-            controls = await rows.get(ControlVersion, run.organisation_id, state.controls.id)
-            connections = [
-                await rows.get(Connection, run.organisation_id, item.id)
-                for item in (state.provider, state.store, state.runtime)
-            ]
-            if (
-                credential != state.credential
-                or binding != state.binding
-                or controls != state.controls
-                or connections != [state.provider, state.store, state.runtime]
-            ):
-                raise ResourceConflictError(
-                    "credential mapping or connections changed during the run"
-                )
+        if await self.loader(run.organisation_id, run.credential_id, run.control_version) != state:
+            raise ResourceConflictError("Credential mapping or connections changed during the run")

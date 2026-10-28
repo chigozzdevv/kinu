@@ -67,7 +67,10 @@ class Api(Effects):
 
     async def initial(self, state: Snapshot) -> dict[str, Any]:
         await asyncio.sleep(0.01)
-        return {"alias": {"version": "1", "revision": "revision-one"}, "old_uses": 1}
+        return {
+            "deployments": {state.single.binding.id: {"version": "1", "revision": "revision-one"}},
+            "old_uses": 1,
+        }
 
     async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]:
         self.created = True
@@ -87,9 +90,13 @@ class Api(Effects):
     async def deploy(self, state: Snapshot, created: dict[str, Any], run_id: str) -> dict[str, Any]:
         self.calls.append("deploy")
         return {
-            "candidate_revision": "2",
-            "rollback_revision": "1",
-            "alias_revision": "revision-one",
+            "deployments": {
+                state.single.binding.id: {
+                    "candidate_revision": "2",
+                    "rollback_revision": "1",
+                    "alias_revision": "revision-one",
+                }
+            }
         }
 
     async def verify(

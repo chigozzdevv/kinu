@@ -25,6 +25,7 @@ from core.storage.database import Database
 from executor.vault import Vault
 
 from hosting.grants import Grants
+from hosting.lifecycle import Lifecycle
 from hosting.models import Begin, Platform, Selection
 from hosting.oauth import OAuth
 
@@ -50,8 +51,23 @@ class Service:
         self.grants, self.inventory = Grants(vault), InventoryStore(database)
 
     async def begin(self, org: str, actor: str, session: str, body: Begin) -> dict[str, str]:
-        identity = new_id("connection")
-        details = {"platform": body.platform, "display_name": body.display_name, "id": identity}
+        identity = body.connection_id or new_id("connection")
+        details: dict[str, Any] = {
+            "platform": body.platform,
+            "display_name": body.display_name,
+            "id": identity,
+        }
+        if body.connection_id:
+            connection = await self.inventory.get_connection(org, identity)
+            if (
+                connection.archived_at
+                or connection.platform != body.platform
+                or connection.authorization_reference != "hosting://" + identity
+                or connection.revision != body.expected_revision
+            ):
+                raise ResourceConflictError("Connection changed; refresh and try again")
+            details["display_name"] = connection.display_name
+            details["expected_revision"] = connection.revision
         if body.platform == "render":
             if not body.token or not body.token.get_secret_value().strip():
                 raise ResourceConflictError("Enter a Render API key")
@@ -102,6 +118,24 @@ class Service:
         return str(details["id"])
 
     async def _draft(self, org: str, actor: str, session: str, grant: dict[str, Any]) -> None:
+        if "expected_revision" in grant:
+            connection = await self.inventory.get_connection(org, grant["id"])
+            available = {
+                project_ref(grant["platform"], item.id)
+                for item in await self.adapter(grant).projects()
+            }
+            if not set(connection.allowed_resources) <= available:
+                raise ResourceConflictError("Authorize every project used by this connection")
+            paused = await Lifecycle(self.database, self.grants).replace(org, grant)
+            await self.inventory.update_authentication(
+                org,
+                paused.id,
+                paused.revision,
+                paused.authorization_reference,
+                ConnectionStatus.READY,
+                datetime.now(UTC),
+            )
+            return
         await self.grants.put(
             org,
             grant["id"],

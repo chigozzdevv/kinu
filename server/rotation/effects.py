@@ -47,7 +47,9 @@ class Effects:
         metadata = await self.provider.metadata(state.provider)
         current = await self.metadata(state, state.current.provider_id or "")
         _active(current, state)
-        alias = await self.runtime.current(state.runtime, state.binding.runtime_resource)
+        alias = await self.runtime.current(
+            state.single.runtime, state.single.binding.runtime_resource
+        )
         _healthy(
             await self.health(state, "live"),
             state.current.provider_id,
@@ -57,7 +59,10 @@ class Effects:
             state, state.current.provider_id or "", state.credential.secret_reference
         )
         await self.current_secret(state, state.credential.secret_reference)
-        return {"alias": alias, "provider_ids": [item["provider_id"] for item in metadata]}
+        return {
+            "deployments": {state.single.binding.id: alias},
+            "provider_ids": [item["provider_id"] for item in metadata],
+        }
 
     async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]:
         run = await RunStore(self.database).get(state.credential.organisation_id, run_id)
@@ -87,7 +92,7 @@ class Effects:
         self, state: Snapshot, qualifier: str, candidate: str | None = None
     ) -> dict[str, Any]:
         return await self.runtime.health(
-            state.runtime, state.binding.runtime_resource, qualifier, candidate
+            state.single.runtime, state.single.binding.runtime_resource, qualifier, candidate
         )
 
     async def identity(self, state: Snapshot, identity: str, reference: str) -> None:
@@ -112,21 +117,27 @@ class Effects:
         return result
 
     async def deploy(self, state: Snapshot, created: dict[str, Any], run_id: str) -> dict[str, Any]:
-        return await self.runtime.candidate(
-            state.runtime,
-            state.binding.runtime_resource,
-            created["secret_reference"],
-            run_id,
-            state.binding.runtime_secret_name,
-            state.credential.secret_reference,
-        )
+        return {
+            "deployments": {
+                state.single.binding.id: await self.runtime.candidate(
+                    state.single.runtime,
+                    state.single.binding.runtime_resource,
+                    created["secret_reference"],
+                    run_id,
+                    state.single.binding.runtime_secret_name,
+                    state.credential.secret_reference,
+                )
+            }
+        }
 
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
         _active(await self.metadata(state, created["provider_id"]), state)
         await self.identity(state, created["provider_id"], created["secret_reference"])
-        result = await self.health(state, deployment["candidate_revision"])
+        result = await self.health(
+            state, deployment["deployments"][state.single.binding.id]["candidate_revision"]
+        )
         _healthy(result, created["provider_id"], created["secret_reference"])
         return result
 
@@ -134,11 +145,11 @@ class Effects:
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
         await self.runtime.promote(
-            state.runtime,
-            state.binding.runtime_resource,
-            deployment["candidate_revision"],
-            deployment["rollback_revision"],
-            deployment["alias_revision"],
+            state.single.runtime,
+            state.single.binding.runtime_resource,
+            deployment["deployments"][state.single.binding.id]["candidate_revision"],
+            deployment["deployments"][state.single.binding.id]["rollback_revision"],
+            deployment["deployments"][state.single.binding.id]["alias_revision"],
         )
         await self.secrets.promote(
             state.store, created["secret_reference"], state.credential.secret_reference
@@ -169,9 +180,12 @@ class Effects:
     ) -> dict[str, Any]:
         await self.verify(state, created, deployment)
         await self.current_secret(state, created["secret_reference"])
-        alias = await self.runtime.current(state.runtime, state.binding.runtime_resource)
+        alias = await self.runtime.current(
+            state.single.runtime, state.single.binding.runtime_resource
+        )
         if (
-            alias["version"] != deployment["candidate_revision"]
+            alias["version"]
+            != deployment["deployments"][state.single.binding.id]["candidate_revision"]
             or observed.get("consumer_healthy") is not True
         ):
             raise ConnectorError("runtime-current", "consumer changed before retirement")
@@ -185,7 +199,9 @@ class Effects:
             raise ConnectorError(
                 "provider-retirement", "provider did not reject the retired credential"
             )
-        old = await self.health(state, deployment["rollback_revision"])
+        old = await self.health(
+            state, deployment["deployments"][state.single.binding.id]["rollback_revision"]
+        )
         if old.get("ok") is not False or old.get("state") != "provider-rejected":
             raise ConnectorError(
                 "runtime-retirement", "old consumer still accepts the retired credential"
@@ -225,14 +241,23 @@ class Effects:
     ) -> bool:
         old = await self.metadata(state, state.current.provider_id or "")
         _active(old, state)
-        current = await self.runtime.current(state.runtime, state.binding.runtime_resource)
-        if deployment and current["version"] != deployment["rollback_revision"]:
-            if current["version"] != deployment["candidate_revision"]:
+        current = await self.runtime.current(
+            state.single.runtime, state.single.binding.runtime_resource
+        )
+        if (
+            deployment
+            and current["version"]
+            != deployment["deployments"][state.single.binding.id]["rollback_revision"]
+        ):
+            if (
+                current["version"]
+                != deployment["deployments"][state.single.binding.id]["candidate_revision"]
+            ):
                 return False
             await self.runtime.promote(
-                state.runtime,
-                state.binding.runtime_resource,
-                deployment["rollback_revision"],
+                state.single.runtime,
+                state.single.binding.runtime_resource,
+                deployment["deployments"][state.single.binding.id]["rollback_revision"],
                 current["version"],
                 current["revision"],
             )
@@ -248,9 +273,9 @@ class Effects:
             state.credential.secret_reference,
         )
         await self.runtime.restore_draft(
-            state.runtime,
-            state.binding.runtime_resource,
-            state.binding.runtime_secret_name,
+            state.single.runtime,
+            state.single.binding.runtime_resource,
+            state.single.binding.runtime_secret_name,
             created["secret_reference"],
             state.credential.secret_reference,
         )

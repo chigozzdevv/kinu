@@ -9,6 +9,7 @@ from contracts import (
     Connection,
     ConnectionAuthorization,
     ConsumerBinding,
+    ConsumerService,
     ControlVersion,
     ManagedCredential,
     RunStatus,
@@ -131,6 +132,13 @@ async def mapping(
         )
         await rows.replace(credential, credential.revision - 1)
         binding = bindings[0]
+        consumer = await rows.get(ConsumerService, demo.organisation_id, binding.service_id)
+        await rows.replace(
+            consumer.model_copy(
+                update={"runtime_connection_id": connection.id, "revision": consumer.revision + 1}
+            ),
+            consumer.revision,
+        )
         await rows.replace(
             binding.model_copy(
                 update={

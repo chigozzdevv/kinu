@@ -34,6 +34,8 @@ class Vercel:
             targets = item.get("target", [])
             if not isinstance(targets, list):
                 targets = [targets]
+            if len(targets) != 1:
+                continue
             for environment in targets:
                 if environment not in {"production", "preview"} or item.get("type") == "system":
                     continue

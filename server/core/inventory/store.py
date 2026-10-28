@@ -235,6 +235,14 @@ class InventoryStore:
             raise ResourceConflictError("archive requires inventory")
         org = resources[0].organisation_id
         async with self._records.write(org) as rows:
+            credential_ids = {
+                value.id for value in resources if isinstance(value, ManagedCredential)
+            } | {binding.credential_id for binding in bindings}
+            if await rows.database.collection("run_locks").find_one(
+                {"organisation_id": org, "credential_id": {"$in": sorted(credential_ids)}},
+                session=rows.session,
+            ):
+                raise ResourceConflictError("Finish active rotations before removing inventory")
             for value in resources:
                 if value.organisation_id != org or value.archived_at is None:
                     raise ResourceConflictError("archive must stay within one workspace")
@@ -243,6 +251,9 @@ class InventoryStore:
                 if binding.organisation_id != org:
                     raise ResourceConflictError("binding belongs to another workspace")
                 await rows.remove(binding)
+                await rows.database.collection("host_bindings").delete_one(
+                    {"organisation_id": org, "binding_id": binding.id}, session=rows.session
+                )
             for model in (Environment, ConsumerService, ManagedCredential, ConsumerBinding):
                 for active in await rows.list(model, org):
                     if getattr(active, "archived_at", None) is None:

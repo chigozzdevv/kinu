@@ -1,6 +1,7 @@
 from contracts import (
     Connection,
     ConsumerBinding,
+    ConsumerService,
     ControlVersion,
     CredentialGeneration,
     ManagedCredential,
@@ -10,7 +11,7 @@ from core.storage.database import Database
 from core.storage.records import Records
 from policy import digest
 from rotation.ports import Loader
-from rotation.state import Snapshot
+from rotation.state import Snapshot, Target
 
 from demo.config import DemoConfig
 
@@ -33,6 +34,7 @@ async def snapshot(
         store = await rows.get(Connection, org, credential.secret_store_connection_id)
         runtime = await rows.get(Connection, org, binding.runtime_connection_id)
         provider = await rows.get(Connection, org, credential.connection_id)
+        service = await rows.get(ConsumerService, org, binding.service_id)
     if (
         credential.archived_at
         or credential.secret_resource != config.secret
@@ -47,7 +49,9 @@ async def snapshot(
         or credential.scopes != frozenset({"demo:read"})
     ):
         raise ResourceConflictError("demo credential mappings or controls require attention")
-    return Snapshot(credential, binding, current, control, store, runtime, provider)
+    return Snapshot(
+        credential, (Target(binding, runtime, service),), current, control, store, provider
+    )
 
 
 def loader(database: Database, config: DemoConfig) -> Loader:

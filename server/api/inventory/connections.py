@@ -10,7 +10,7 @@ from core.auth import Permission
 from core.errors import ResourceConflictError
 from fastapi import APIRouter, Query, Request, status
 
-from api.deps import Identity, required, services
+from api.deps import Identity, required, services, session_binding
 from api.inventory.schemas import ArchiveRequest, ConnectionUpdateRequest, ResolveCredentialRequest
 from api.inventory.shared import _audit_change, _organisation
 
@@ -206,6 +206,17 @@ async def archive_connection(
         changed = await inventory.archive_connection(
             organisation_id, connection_id, body.expected_revision, body.cascade
         )
+        if current.authorization_reference == "hosting://" + current.id:
+            await required(api.private, "private execution").call(
+                "/hosting",
+                {
+                    "operation": "forget",
+                    "organisation_id": organisation_id,
+                    "connection_id": connection_id,
+                    "actor_id": identity.actor_id,
+                    "session": session_binding(request),
+                },
+            )
     await _audit_change(
         api,
         organisation_id,

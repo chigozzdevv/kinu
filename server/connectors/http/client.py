@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -112,6 +113,10 @@ class HttpProviderConnector:
         secret_connection: Connection,
         secret_reference: str,
     ) -> str:
+        with await self._secrets.access_for(secret_connection, secret_reference) as value:
+            return await self.identify(connection, value)
+
+    async def identify(self, connection: Connection, value: SecretValue) -> str:
         api = _api(connection)
         operation = api.test_credential
         auth = api.credential_auth
@@ -120,8 +125,7 @@ class HttpProviderConnector:
                 "credential-identity-unavailable",
                 "provider connection has no credential identity test",
             )
-        with await self._secrets.access_for(secret_connection, secret_reference) as value:
-            response = await self._call(api, operation, _value_headers(value, auth), {})
+        response = await self._call(api, operation, _value_headers(value, auth), {})
         _expected(response, set(operation.success_statuses))
         payload = _object(response.json(), "credential identity")
         identity = _dig(payload, operation.provider_id_field)
@@ -131,6 +135,15 @@ class HttpProviderConnector:
                 "provider credential identity response has no credential identifier",
             )
         return identity
+
+    async def auth_fingerprint(self, connection: Connection) -> str:
+        reference = connection.authorization_reference
+        if not reference:
+            raise ConnectorError(
+                "missing-auth-reference", "Provider connection is not authenticated"
+            )
+        with await self._secrets.access_for(connection, reference) as value:
+            return hashlib.sha256(value.bytes()).hexdigest()
 
     async def prepare(
         self,
