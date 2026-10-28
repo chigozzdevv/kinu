@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -151,3 +152,59 @@ async def test_secret_reference_round_trip() -> None:
     assert value.region == "eu-west-2"
     assert value.account == "123456789012"
     assert value.reference(version) == f"{arn}/versions/{version}"
+
+
+async def test_assumed_role_passes_the_selected_session_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session(
+        aws_access_key_id="test", aws_secret_access_key="test", region_name="eu-west-2"
+    )
+    sts, vault = session.client("sts"), session.client("secretsmanager")
+    monkeypatch.setattr(
+        session, "client", lambda service, **kwargs: sts if service == "sts" else vault
+    )
+    monkeypatch.setattr("connectors.aws.client.Session", lambda **kwargs: session)
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "secretsmanager:DescribeSecret",
+                "Resource": "arn:aws:secretsmanager:eu-west-2:123456789012:secret:selected-Ab12Cd",
+            }
+        ],
+    }
+    role = Role(
+        "arn:aws:iam::123456789012:role/kinu/aws_one",
+        "external-workspace",
+        "kinu-test",
+        (("kinu-org", "org_one"),),
+        policy,
+    )
+    with Stubber(sts) as assumed, Stubber(vault) as resources:
+        assumed.add_response(
+            "assume_role",
+            {
+                "Credentials": {
+                    "AccessKeyId": "A" * 20,
+                    "SecretAccessKey": "B" * 40,
+                    "SessionToken": "C" * 32,
+                    "Expiration": datetime.now(UTC),
+                }
+            },
+            {
+                "RoleArn": role.arn,
+                "ExternalId": role.external_id,
+                "RoleSessionName": role.session_name,
+                "DurationSeconds": 900,
+                "Tags": [{"Key": "kinu-org", "Value": "org_one"}],
+                "Policy": json.dumps(policy, separators=(",", ":")),
+            },
+        )
+        resources.add_response("describe_secret", {"Name": "selected"}, {"SecretId": "selected"})
+        result = await AwsClient(session).call(
+            "secretsmanager", "describe_secret", "eu-west-2", role=role, SecretId="selected"
+        )
+        assert result["Name"] == "selected"
+        assumed.assert_no_pending_responses()

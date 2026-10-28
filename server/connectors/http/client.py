@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import re
 from datetime import UTC, datetime
@@ -320,13 +321,20 @@ class HttpProviderConnector:
         url = _operation_url(api, path)
         body = _render_body(operation.body, payload) if operation.body else None
         client = self._client or httpx.AsyncClient(
-            transport=PublicTransport(), timeout=30, trust_env=False, follow_redirects=False
+            transport=PublicTransport(), timeout=10, trust_env=False, follow_redirects=False
         )
         close = self._client is None
         try:
-            async with client.stream(
-                operation.method, url, headers=headers, params=operation.query or None, json=body
-            ) as response:
+            async with (
+                asyncio.timeout(12),
+                client.stream(
+                    operation.method,
+                    url,
+                    headers=headers,
+                    params=operation.query or None,
+                    json=body,
+                ) as response,
+            ):
                 content = bytearray()
                 async for part in response.aiter_bytes():
                     content.extend(part)
@@ -335,6 +343,8 @@ class HttpProviderConnector:
                 return httpx.Response(
                     response.status_code, headers=response.headers, content=bytes(content)
                 )
+        except TimeoutError:
+            raise httpx.ReadTimeout("provider request exceeded its deadline") from None
         finally:
             if close:
                 await client.aclose()

@@ -67,7 +67,11 @@ class AwsClient:
                         ExternalId=role.external_id,
                         RoleSessionName=role.session_name,
                         DurationSeconds=900,
-                        **({"Policy": json.dumps(role.policy)} if role.policy else {}),
+                        **(
+                            {"Policy": json.dumps(role.policy, separators=(",", ":"))}
+                            if role.policy
+                            else {}
+                        ),
                         **(
                             {"Tags": [{"Key": key, "Value": value} for key, value in role.tags]}
                             if role.tags
