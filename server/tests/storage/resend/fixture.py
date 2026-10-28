@@ -49,7 +49,13 @@ class Platform:
                     json={
                         "has_more": False,
                         "data": [
-                            {"id": item["id"], "name": item["name"]} for item in self.keys.values()
+                            {
+                                "id": item["id"],
+                                "name": item["name"],
+                                "created_at": "2026-10-28 20:46:24.150023+00",
+                                "last_used_at": "2026-10-28 20:53:16.599452+00",
+                            }
+                            for item in self.keys.values()
                         ],
                     },
                 )

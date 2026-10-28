@@ -95,3 +95,37 @@ async def test_captured_setup_resumes_without_issuing_another_key(
         )
         assert credential.provider_id == platform.created[0] and len(platform.created) == 1
         assert platform.deployments == 1 and not platform.revoked
+
+
+@pytest.mark.parametrize("changed", [False, True])
+async def test_registration_resumes_from_the_recorded_live_deployment_only(
+    database: Database,
+    identity: AuthenticatedIdentity,
+    monkeypatch: pytest.MonkeyPatch,
+    changed: bool,
+) -> None:
+    async def unavailable(*args: object) -> None:
+        raise ResourceConflictError("Registration interrupted")
+
+    platform = Platform()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(platform.response)) as http:
+        org, host, seed = await setup(database, identity, http)
+        original = seed.mappings.save
+        monkeypatch.setattr(seed.mappings, "save", unavailable)
+        with pytest.raises(ResourceConflictError, match="interrupted"):
+            await seed.setup(org, host, "provider_resend", "app", URL, identity.actor_id)
+        row = await seed.rows.find_one({"organisation_id": org})
+        assert row and row["phase"] == "deploying" and platform.deployments == 1
+        monkeypatch.setattr(seed.mappings, "save", original)
+        if changed:
+            platform.current = "unexpected-deployment"
+            with pytest.raises(ResourceConflictError, match="recorded"):
+                await seed.setup(
+                    org, host, "provider_resend", "app", URL, identity.actor_id, resume=True
+                )
+        else:
+            credential = await seed.setup(
+                org, host, "provider_resend", "app", URL, identity.actor_id, resume=True
+            )
+            assert credential.provider_id == platform.created[0]
+        assert len(platform.created) == 1 and platform.deployments == 1 and not platform.revoked

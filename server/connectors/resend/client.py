@@ -1,4 +1,5 @@
 from asyncio import Lock, sleep
+from datetime import datetime
 from time import monotonic
 from typing import Any, Protocol
 
@@ -128,6 +129,17 @@ class Resend(HttpProviderConnector):
         self.validate(connection)
         result = []
         for item in await super().metadata(connection):
+            for field in ("created_at", "last_used_at"):
+                if field in item:
+                    try:
+                        date = datetime.fromisoformat(item[field])
+                        if date.utcoffset() is None:
+                            raise ValueError
+                        item[field] = date.isoformat()
+                    except (ValueError, TypeError):
+                        raise ConnectorError(
+                            "resend-date", "Resend returned an invalid timestamp"
+                        ) from None
             recorded = await self.receipts.metadata(connection, str(item["provider_id"]))
             result.append(
                 {

@@ -2,10 +2,12 @@ import argparse
 import asyncio
 import json
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlsplit
 
 from connectors.base import ConnectorResponse, SecretValue
 from connectors.base.errors import ConnectorError
+from connectors.hosting.models import Variable
 from connectors.resend.client import Resend
 from contracts import ManagedCredential
 from core.auth import PrincipalGrant, Role
@@ -74,7 +76,7 @@ class Seed:
                 return await hosts.inventory.get_credential(org, existing["credential_id"])
             if (
                 not resume
-                or existing["phase"] != "stored"
+                or existing["phase"] not in {"stored", "deploying"}
                 or existing["provider_connection_id"] != provider_id
             ):
                 raise ResourceConflictError(
@@ -83,6 +85,27 @@ class Seed:
         elif resume:
             raise ResourceConflictError("No captured sandbox key is available to resume")
         adapter = hosts.adapter(grant)
+        if existing and existing["phase"] == "deploying":
+            if not existing.get("deployment_id"):
+                raise ResourceConflictError(
+                    "Deployment outcome is unknown; review it before continuing"
+                )
+            deployed = await adapter.status(selected, existing["deployment_id"])
+            active = await adapter.current(selected)
+            if deployed.state != "ready" or active.id != deployed.id:
+                raise ResourceConflictError("The recorded sandbox deployment must be live")
+            captured = await vault.get(org, existing["id"])
+            with SecretValue(captured["token"].encode()) as secret:
+                expected = fingerprint(secret.bytes())
+                if await self.provider.identify(provider, secret) != existing["provider_id"]:
+                    raise ResourceConflictError("Stored sandbox key has changed identity")
+            loaded = await adapter.read(selected)
+            if loaded is None:
+                raise ResourceConflictError("The installed sandbox key cannot be verified")
+            with loaded:
+                if fingerprint(loaded.bytes()) != expected:
+                    raise ResourceConflictError("Sandbox configuration changed after deployment")
+            return await self.register(existing, selected, url, actor, expected)
         value = await adapter.read(selected)
         if value is None:
             raise ResourceConflictError("The test app must have a readable placeholder")
@@ -167,29 +190,44 @@ class Seed:
             raise ConnectorError(
                 "sandbox-deploy", "Test deployment is pending; inspect its recorded ID"
             )
+        saved = await self.rows.find_one(query | {"id": attempt})
+        assert saved is not None
+        return await self.register(saved, selected, url, actor, expected)
+
+    async def register(
+        self,
+        row: dict[str, Any],
+        selected: Variable,
+        url: str,
+        actor: str,
+        expected: str,
+    ) -> ManagedCredential:
+        org, vault = row["organisation_id"], self.mappings.versions.vault
         credentials = await self.mappings.save(
             org,
-            host_id,
+            row["host_id"],
             actor,
             Import(
-                project_id=project,
+                project_id=selected.project_id,
                 mappings=(
                     Mapping(
                         variable_reference=selected.reference,
-                        provider_connection_id=provider_id,
-                        provider_id=response.result["provider_id"],
+                        provider_connection_id=row["provider_connection_id"],
+                        provider_id=row["provider_id"],
                         health_url=url,
                     ),
                 ),
             ),
         )
-        consumer = await hosts.inventory.get_service(org, credentials[0].consumer_ids[0])
+        consumer = await self.mappings.hosts.inventory.get_service(
+            org, credentials[0].consumer_ids[0]
+        )
         await self.proof.check(consumer, selected.name, expected)
         await vault.database.collection("secrets").delete_one(
-            {"organisation_id": org, "id": attempt}
+            {"organisation_id": org, "id": row["id"]}
         )
         await self.rows.update_one(
-            query,
+            {"organisation_id": org, "id": row["id"]},
             {
                 "$set": {
                     "phase": "completed",
