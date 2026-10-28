@@ -3,15 +3,14 @@ import json
 import re
 from typing import Any
 
-from contracts import Connection, ConnectionRole, ConnectionStatus
-
 from connectors.aws import AwsApi
 from connectors.aws.refs import SecretRef
 from connectors.aws.roles import RoleResolver
 from connectors.base.errors import ConnectorError
+from contracts import Connection, ConnectionRole, ConnectionStatus
 
 
-class AwsRuntime:
+class DemoRuntime:
     def __init__(self, aws: AwsApi, roles: RoleResolver) -> None:
         self._aws, self._roles = aws, roles
 

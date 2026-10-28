@@ -4,7 +4,6 @@ from typing import Any
 
 from connectors.aws import AwsApi
 from connectors.aws.refs import SecretRef
-from connectors.aws.runtime import AwsRuntime
 from connectors.aws.secrets import AwsSecrets
 from connectors.base.errors import ConnectorError
 from contracts import Connection
@@ -14,6 +13,7 @@ from core.storage.records import Records
 
 from demo.config import DemoConfig
 from demo.rpc import invoke
+from demo.runtime import DemoRuntime
 from demo.snapshot import Snapshot
 
 
@@ -21,7 +21,7 @@ class Effects:
     def __init__(self, aws: AwsApi, database: Database, config: DemoConfig) -> None:
         self.aws, self.config, self.database = aws, config, database
         roles = ConnectionRoles(database)
-        self.runtime = AwsRuntime(aws, roles)
+        self.runtime = DemoRuntime(aws, roles)
         self.secrets = AwsSecrets(aws, roles)
 
     async def metadata(self, provider_id: str) -> dict[str, Any]:
