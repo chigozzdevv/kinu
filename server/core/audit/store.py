@@ -1,10 +1,9 @@
 from datetime import datetime
 
 from contracts import AuditEvent
-from psycopg.types.json import Jsonb
 
 from core.audit.chain import GENESIS, event_hash
-from core.errors import IdempotencyConflictError, ResourceNotFoundError
+from core.errors import IdempotencyConflictError
 from core.storage.database import Database
 
 
@@ -35,20 +34,11 @@ class AuditStore:
             "occurred_at": occurred_at,
             "region": region,
         }
-        async with self._database.connection() as connection, connection.transaction():
-            exists = await (
-                await connection.execute(
-                    "SELECT id FROM kinu.organisations WHERE id = %s FOR UPDATE", (organisation_id,)
-                )
-            ).fetchone()
-            if exists is None:
-                raise ResourceNotFoundError("workspace is unavailable")
-            duplicate = await (
-                await connection.execute(
-                    "SELECT data FROM kinu.audit WHERE organisation_id = %s AND id = %s",
-                    (organisation_id, event_id),
-                )
-            ).fetchone()
+        async with self._database.transaction(organisation_id) as session:
+            duplicate = await self._database.collection("audit").find_one(
+                {"organisation_id": organisation_id, "id": event_id},
+                session=session,
+            )
             if duplicate:
                 stored = AuditEvent.model_validate(duplicate["data"])
                 if any(getattr(stored, key) != value for key, value in values.items()):
@@ -56,13 +46,11 @@ class AuditStore:
                         "audit identity was already used for another event"
                     )
                 return stored
-            previous = await (
-                await connection.execute(
-                    "SELECT data FROM kinu.audit WHERE organisation_id = %s "
-                    "ORDER BY sequence DESC LIMIT 1",
-                    (organisation_id,),
-                )
-            ).fetchone()
+            previous = await self._database.collection("audit").find_one(
+                {"organisation_id": organisation_id},
+                sort=[("sequence", -1)],
+                session=session,
+            )
             last = AuditEvent.model_validate(previous["data"]) if previous else None
             sequence, previous_hash = (last.sequence + 1, last.event_hash) if last else (0, GENESIS)
             hashed = event_hash(
@@ -93,19 +81,24 @@ class AuditStore:
                 occurred_at=occurred_at,
                 region=region,
             )
-            await connection.execute(
-                "INSERT INTO kinu.audit VALUES (%s,%s,%s,%s)",
-                (organisation_id, event_id, sequence, Jsonb(event.model_dump(mode="json"))),
+            await self._database.collection("audit").insert_one(
+                {
+                    "organisation_id": organisation_id,
+                    "id": event_id,
+                    "sequence": sequence,
+                    "data": event.model_dump(mode="json"),
+                },
+                session=session,
             )
             return event
 
     async def list_events(self, organisation_id: str, limit: int) -> tuple[AuditEvent, ...]:
-        async with self._database.connection() as connection:
-            rows = await (
-                await connection.execute(
-                    "SELECT data FROM kinu.audit WHERE organisation_id = %s "
-                    "ORDER BY sequence DESC LIMIT %s",
-                    (organisation_id, min(max(limit, 1), 500)),
-                )
-            ).fetchall()
-        return tuple(AuditEvent.model_validate(row["data"]) for row in rows)
+        return tuple(
+            [
+                AuditEvent.model_validate(row["data"])
+                async for row in self._database.collection("audit")
+                .find({"organisation_id": organisation_id})
+                .sort("sequence", -1)
+                .limit(min(max(limit, 1), 500))
+            ]
+        )

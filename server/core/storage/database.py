@@ -1,63 +1,86 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
+from time import monotonic
+from typing import Any
 
-from psycopg import AsyncConnection, Error
-from psycopg.rows import DictRow, dict_row
-from psycopg_pool import AsyncConnectionPool
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.client_session import AsyncClientSession
+from pymongo.asynchronous.collection import AsyncCollection
+from pymongo.errors import PyMongoError
+from pymongo.read_concern import ReadConcern
+from pymongo.write_concern import WriteConcern
 
-from core.errors import StorageUnavailableError
-from core.storage.dataapi import DataApi
-from core.storage.sql import SqlConnection
+from core.errors import ResourceNotFoundError, StorageUnavailableError
 
 
 class Database:
-    def __init__(self, url: str | None = None, *, data_api: DataApi | None = None) -> None:
-        if (url is None) == (data_api is None):
-            raise ValueError("configure one application database transport")
-        self._data_api = data_api
-        self._pool = (
-            AsyncConnectionPool[AsyncConnection[DictRow]](
-                url,
-                # Keep statement names safe when a proxy multiplexes connections.
-                kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None},
-                min_size=1,
-                max_size=5,
-                timeout=5,
-                open=False,
-            )
-            if url is not None
-            else None
+    def __init__(self, url: str, name: str = "kinu") -> None:
+        self.client: AsyncMongoClient[dict[str, Any]] = AsyncMongoClient(
+            url, tz_aware=True, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000
         )
+        self.documents = self.client[name]
+
+    def collection(self, name: str) -> AsyncCollection[dict[str, Any]]:
+        return self.documents[name]
 
     async def open(self) -> None:
-        if self._pool is not None:
-            await self._pool.open(wait=True, timeout=5)
-
-    async def close(self) -> None:
-        if self._pool is not None:
-            await self._pool.close()
-
-    @asynccontextmanager
-    async def connection(self) -> AsyncIterator[SqlConnection]:
         try:
-            if self._data_api:
-                yield self._data_api.connection()
-            else:
-                assert self._pool is not None
-                async with self._pool.connection() as connection:
-                    yield connection
-        except Error as error:
+            hello = await self.client.admin.command("hello")
+            if not hello.get("setName") and hello.get("msg") != "isdbgrid":
+                raise StorageUnavailableError("MongoDB requires a replica set for transactions")
+        except PyMongoError as error:
             raise StorageUnavailableError("application storage is unavailable") from error
 
-    async def migrate(self) -> None:
-        source = Path(__file__).with_name("schema.sql").read_text()
-        async with self.connection() as connection:
-            if self._data_api:
-                import sqlparse
+    async def close(self) -> None:
+        await self.client.close()
 
-                async with connection.transaction():
-                    for statement in sqlparse.split(source):
-                        await connection.execute(statement)
-            else:
-                await connection.execute(source, prepare=False)
+    @asynccontextmanager
+    async def transaction(
+        self, organisation_id: str | None = None
+    ) -> AsyncIterator[AsyncClientSession]:
+        async with self.client.start_session() as session:
+            deadline = monotonic() + 10
+            while True:
+                await session.start_transaction(
+                    read_concern=ReadConcern("snapshot"), write_concern=WriteConcern("majority")
+                )
+                try:
+                    if organisation_id is not None:
+                        result = await self.collection("organisations").update_one(
+                            {"id": organisation_id}, {"$inc": {"write_version": 1}}, session=session
+                        )
+                        if not result.matched_count:
+                            raise ResourceNotFoundError("workspace is unavailable")
+                    break
+                except PyMongoError as error:
+                    await session.abort_transaction()
+                    if (
+                        not error.has_error_label("TransientTransactionError")
+                        or monotonic() >= deadline
+                    ):
+                        raise StorageUnavailableError(
+                            "application transaction is unavailable"
+                        ) from error
+                    await asyncio.sleep(0.01)
+            try:
+                yield session
+                while True:
+                    try:
+                        await session.commit_transaction()
+                        break
+                    except PyMongoError as error:
+                        if (
+                            not error.has_error_label("UnknownTransactionCommitResult")
+                            or monotonic() >= deadline
+                        ):
+                            raise
+            except BaseException:
+                if session.in_transaction:
+                    await session.abort_transaction()
+                raise
+
+    async def migrate(self) -> None:
+        from core.storage.indexes import ensure_indexes
+
+        await ensure_indexes(self)

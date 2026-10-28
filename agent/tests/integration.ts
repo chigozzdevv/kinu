@@ -1,44 +1,42 @@
 import assert from "node:assert/strict"
 import { createHash, randomBytes } from "node:crypto"
-import { readFile } from "node:fs/promises"
-import { PGlite } from "@electric-sql/pglite"
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket"
+import { MongoClient } from "mongodb"
+import { MongoMemoryReplSet } from "mongodb-memory-server"
 import { freePort, root, service, stop } from "./fixture"
 
-const db = await PGlite.create()
-const socket = new PGLiteSocketServer({ db, port: 0, host: "127.0.0.1", maxConnections: 5 })
+const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+const client = await new MongoClient(mongo.getUri()).connect()
+const db = client.db("kinu_integration")
 const children: ReturnType<typeof service>[] = []
 try {
-  await db.exec(await readFile(`${root}server/core/storage/schema.sql`, "utf8"))
-  await socket.start()
   const apiUrl = `http://127.0.0.1:${await freePort()}`
   const agentUrl = `http://127.0.0.1:${await freePort()}`
   const publicUrl = "http://localhost:5173"
   const identity = {
-    subject: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example#user-one",
-    issuer: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example",
-    email: "owner@example.com", email_verified: true, display_name: "Owner", connected_via: "Cognito",
+    subject: "user_one",
+    issuer: "http://localhost:5173/auth",
+    email: "owner@example.com", email_verified: true, display_name: "Owner", connected_via: "Email and password",
   }
   const token = randomBytes(32).toString("base64url")
   const digest = createHash("sha256").update(token).digest("hex")
   const csrf = randomBytes(32).toString("base64url")
-  await db.query("INSERT INTO kinu.sessions VALUES ($1, $2, $3, $4)", [
-    digest, JSON.stringify(identity), csrf, new Date(Date.now() + 300_000),
-  ])
+  await db.collection("sessions").insertOne({ token_hash: digest, identity, csrf_token: csrf,
+    expires_at: new Date(Date.now() + 300_000).toISOString(), expires_on: new Date(Date.now() + 300_000) })
   const api = service("uv", ["run", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", new URL(apiUrl).port, "--no-access-log"], root, {
     ...process.env,
     UV_CACHE_DIR: ".cache/uv", UV_PYTHON_INSTALL_DIR: ".cache/python",
     KINU_ENVIRONMENT: "development", KINU_PUBLIC_URL: publicUrl,
-    KINU_DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?sslmode=disable`, KINU_TELEMETRY_ENABLED: "false",
-    KINU_COGNITO_POOL_ID: "us-east-1_example", KINU_COGNITO_CLIENT_ID: "kinuclient",
+    KINU_MONGO_URL: mongo.getUri(), KINU_MONGO_DATABASE: "kinu_integration",
+    KINU_AUTH_SECRET: "integration-auth-secret-at-least-32-characters", KINU_TELEMETRY_ENABLED: "false",
   })
   children.push(api)
   await api.ready(`${apiUrl}/health/ready`)
   const agentEnv = { ...process.env }
-  delete agentEnv.KINU_DATABASE_URL
+  delete agentEnv.KINU_MONGO_URL
   const agent = service("node", [".output/server/index.mjs"], `${root}agent`, {
     ...agentEnv, KINU_ENVIRONMENT: "development", KINU_PUBLIC_URL: publicUrl, KINU_API_URL: apiUrl,
-    DATABASE_URL: "pglite:memory://",
+    KINU_NATIVE_MONGO_URL: mongo.getUri(), KINU_NATIVE_DATABASE: "native_integration",
+    KINU_NATIVE_KEY: "integration-native-encryption-at-least-32-characters",
     NITRO_HOST: "127.0.0.1", NITRO_PORT: new URL(agentUrl).port,
   })
   children.push(agent)
@@ -69,10 +67,7 @@ try {
   assert.equal(stored.status, 200)
   const records = await stored.json() as { id: string }[]
   assert.equal(records[0]?.id, connection.id)
-  const persisted = await db.query<{ count: number }>(
-    "SELECT count(*)::int AS count FROM kinu.inventory WHERE organisation_id = $1 AND kind = 'connection'", [workspace],
-  )
-  assert.equal(persisted.rows[0]?.count, 1)
+  assert.equal(await db.collection("inventory").countDocuments({ organisation_id: workspace, kind: "connection" }), 1)
   assert.equal((await fetch(`${apiUrl}/v1/organisations/org_other/inventory/connections`, { headers: { cookie } })).status, 403)
   const sessionUrl = `${agentUrl}/_agent-native/auth/session`
   const headers = { cookie, "x-kinu-workspace": workspace }
@@ -113,21 +108,20 @@ try {
   for (const path of ["/mcp", "/_agent-native/terminal", "/_agent-native/auth/login", "/_agent-native/auth/logout"]) {
     assert.equal((await fetch(`${agentUrl}${path}`, { headers })).status, 404)
   }
-  await db.query("UPDATE kinu.members SET data = jsonb_set(data, '{enabled}', 'false') WHERE organisation_id = $1", [workspace])
+  await db.collection("members").updateOne({ organisation_id: workspace }, { $set: { "data.enabled": false } })
   assert.equal((await fetch(sessionUrl, { headers })).status, 403)
-  await db.query("UPDATE kinu.members SET data = jsonb_set(data, '{enabled}', 'true') WHERE organisation_id = $1", [workspace])
+  await db.collection("members").updateOne({ organisation_id: workspace }, { $set: { "data.enabled": true } })
   assert.equal((await fetch(sessionUrl, { headers })).status, 200)
   assert.equal((await fetch(`${apiUrl}/v1/organisations`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Forged" }) })).status, 403)
   assert.equal((await fetch(`${apiUrl}/auth/logout`, { method: "POST", headers: writeHeaders })).status, 200)
   assert.equal((await fetch(sessionUrl, { headers })).status, 401)
   assert.equal((await fetch(`${apiUrl}/auth/session`, { headers: { cookie } })).status, 401)
-  await db.query("INSERT INTO kinu.sessions VALUES ($1, $2, $3, $4)", [
-    digest, JSON.stringify(identity), csrf, new Date(Date.now() - 1000),
-  ])
+  await db.collection("sessions").insertOne({ token_hash: digest, identity, csrf_token: csrf,
+    expires_at: new Date(Date.now() - 1000).toISOString(), expires_on: new Date(Date.now() - 1000) })
   assert.equal((await fetch(sessionUrl, { headers })).status, 401)
   process.stdout.write("API and Agent-Native integration passed: inventory persistence, identity, workspace isolation, CSRF, expiry, and revocation.\n")
 } finally {
   await Promise.all(children.map(({ child }) => stop(child)))
-  await socket.stop()
-  await db.close()
+  await client.close()
+  await mongo.stop()
 }

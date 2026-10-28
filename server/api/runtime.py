@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 import httpx
 from agents.memory import AgentMemoryService
 from agents.store import AgentStore
-from connectors.aws import AwsClient
 from core.account import AccountService
 from core.account.store import AccountStore
 from core.approval import ApprovalService
@@ -14,8 +13,8 @@ from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
 from core.auth import AccessControl
 from core.auth.browser import BrowserAuth
-from core.auth.cognito import CognitoTokenVerifier
 from core.auth.forms import FormStore
+from core.auth.password import PasswordClient
 from core.auth.store import SessionStore
 from core.config import Settings
 from core.connection.bridge import ConnectionBridge, RuntimeMetadata, SecretMetadata
@@ -29,6 +28,7 @@ from core.overview import OverviewService
 from core.overview.store import OverviewStore
 from core.playbook import PlaybookService
 from core.playbook.store import PlaybookStore
+from core.private import PrivateClient
 from core.storage.factory import application_database
 from core.storage.history import HistoryStore
 from core.storage.notification import NotificationStore
@@ -36,9 +36,9 @@ from core.storage.runs import RunStore
 from core.verification import ProbeService
 from core.verification.store import ProbeStore
 from core.workflow import RunWorkflow
-from demo.mail import Source
-from demo.queue import Queue
+from emailer.resend import Resend
 from fastapi import FastAPI
+from jobs.queue import Jobs
 from mail.bridge import Bridge as GmailBridge
 from rotation.queue import Dispatcher
 
@@ -66,21 +66,15 @@ async def runtime(
                 agents = AgentStore(database)
                 notifications = NotificationService(NotificationStore(database), _now)
                 audit = AuditWriter(AuditStore(database), config.aws_region, _now)
-                queue = (
-                    Queue(
-                        AwsClient(),
-                        config.aws_region,
-                        config.demo_queue_url,
-                        config.demo_organisation,
-                    )
-                    if config.demo_queue_url and config.demo_organisation
+                queue = Jobs(config.redis_url.get_secret_value()) if config.executor_token else None
+                if queue:
+                    stack.push_async_callback(queue.close)
+                private = (
+                    PrivateClient(http, config.executor_url, config.executor_token)
+                    if config.executor_token
                     else None
                 )
-                bridge = (
-                    ConnectionBridge(AwsClient(), config.aws_region, config.connector_function)
-                    if config.connector_function and config.connection_principals
-                    else None
-                )
+                bridge = ConnectionBridge(private) if private else None
                 app.state.services = ApiServices(
                     access=AccessControl(accounts),
                     accounts=AccountService(accounts, _now),
@@ -98,7 +92,7 @@ async def runtime(
                         tuple((config.connection_principals or "").split(",")),
                         _now,
                     )
-                    if bridge
+                    if bridge and config.connection_principals
                     else None,
                     workflow=workflow,
                     playbooks=PlaybookService(PlaybookStore(database), _now, inventory),
@@ -109,13 +103,8 @@ async def runtime(
                     agent_continuity=AgentMemoryService(agents, _now),
                     history=HistoryStore(database),
                     notifications=notifications,
-                    dispatcher=Dispatcher(
-                        database, AwsClient(), config.aws_region, config.rotation_queue_url, queue
-                    ),
-                    demo=Source(database, queue) if queue else None,
-                    gmail=GmailBridge(AwsClient(), config.aws_region, config.gmail_function)
-                    if config.gmail_function
-                    else None,
+                    dispatcher=Dispatcher(database, queue),
+                    gmail=GmailBridge(private) if private else None,
                     audit=audit,
                     incidents=IncidentService(
                         IncidentStore(database),
@@ -126,13 +115,18 @@ async def runtime(
                         audit=audit,
                     ),
                 )
-            if browser is None and config.browser:
+            if browser is None and config.browser and config.auth_secret:
                 app.state.browser = BrowserAuth(
                     config.browser,
                     SessionStore(database, _now),
                     FormStore(database, _now),
-                    CognitoTokenVerifier(config.browser.cognito, http),
-                    http,
+                    PasswordClient(
+                        database,
+                        Resend(http, config.resend_key, config.email_sender),
+                        config.browser.issuer,
+                        config.auth_secret,
+                        _now,
+                    ),
                     _now,
                 )
         try:

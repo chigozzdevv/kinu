@@ -13,13 +13,13 @@ from core.storage.database import Database
 from mail.google import Google
 from mail.links import save_connection
 from mail.models import CALLBACK, Grant, Mailbox, Pending, SenderUpdate
-from mail.store import Store
+from mail.port import MailStore
 from mail.vault import Vault
 
 
 class Service:
     def __init__(
-        self, store: Store, google: Google, vault: Vault, database: Database, origin: str
+        self, store: MailStore, google: Google, vault: Vault, database: Database, origin: str
     ) -> None:
         self.store, self.google, self.vault, self.database, self.origin = (
             store,

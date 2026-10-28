@@ -1,7 +1,8 @@
+from pathlib import Path
+
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from core.auth.cognito import CognitoConfig
 from core.auth.options import BrowserOptions, validate_origin
 
 
@@ -11,47 +12,38 @@ class Settings(BaseSettings):
     )
 
     environment: str = "development"
-    cognito_pool_id: str | None = None
-    cognito_client_id: str | None = None
-    database_url: SecretStr | None = None
+    mongo_url: SecretStr = SecretStr("mongodb://localhost:27017/?replicaSet=kinu")
+    mongo_database: str = "kinu"
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
+    auth_secret: SecretStr | None = None
+    session_hours: int = 12
+    resend_key: SecretStr | None = None
+    email_sender: str = "Kinu <noreply@example.com>"
     aws_region: str = "eu-west-2"
-    data_api_cluster_arn: str | None = None
-    data_api_secret_arn: str | None = None
-    data_api_database: str = "kinu"
-    demo_organisation: str | None = None
-    demo_queue_url: str | None = None
-    connector_function: str | None = None
+    executor_url: str = "http://executor:8002"
+    executor_token: SecretStr | None = None
+    executor_token_file: Path | None = None
+    auth_secret_file: Path | None = None
     connection_principals: str | None = None
-    rotation_queue_url: str | None = None
-    gmail_function: str | None = None
     public_url: str = "http://localhost:5173"
 
     @model_validator(mode="after")
-    def validate_cognito(self) -> "Settings":
-        if bool(self.data_api_cluster_arn) != bool(self.data_api_secret_arn):
-            raise ValueError("Data API storage requires both cluster and secret ARNs")
-        if self.database_url and self.data_api_cluster_arn:
-            raise ValueError("configure one application database transport")
-        if self.cognito_pool_id is not None or self.cognito_client_id is not None:
-            CognitoConfig(self.cognito_pool_id or "", self.cognito_client_id or "")
+    def validate_settings(self) -> "Settings":
+        for key in ("auth_secret", "executor_token"):
+            path = getattr(self, key + "_file")
+            if path:
+                setattr(self, key, SecretStr(path.read_text().strip()))
         self.public_url = validate_origin(self.public_url, self.environment == "development")
+        if self.auth_secret and len(self.auth_secret.get_secret_value()) < 32:
+            raise ValueError("authentication secret requires at least 32 characters")
+        if not 1 <= self.session_hours <= 24:
+            raise ValueError("session lifetime must be between 1 and 24 hours")
         return self
 
     @property
     def has_storage(self) -> bool:
-        return bool(self.database_url or self.data_api_cluster_arn)
-
-    @property
-    def cognito(self) -> CognitoConfig | None:
-        if self.cognito_pool_id is None or self.cognito_client_id is None:
-            return None
-        return CognitoConfig(self.cognito_pool_id, self.cognito_client_id)
+        return bool(self.mongo_url)
 
     @property
     def browser(self) -> BrowserOptions | None:
-        if self.cognito is None or not self.has_storage:
-            return None
-        return BrowserOptions(
-            self.cognito,
-            self.public_url,
-        )
+        return BrowserOptions(self.public_url, self.session_hours) if self.auth_secret else None

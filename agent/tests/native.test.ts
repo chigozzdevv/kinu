@@ -1,83 +1,100 @@
 import assert from "node:assert/strict"
-import test from "node:test"
-import { readFile } from "node:fs/promises"
-import { PGlite } from "@electric-sql/pglite"
-import { withDbExec, type DbExec } from "@agent-native/core/db"
-import { defineAppConfig } from "@agent-native/core/server"
-import { saveMcpOAuthCredentials, readMcpOAuthCredentials } from "@agent-native/core/mcp-client"
-import { grantOwner, mirrorIdentity, pendingOrg, status, disconnect, validateScopes } from "../server/grant"
+import { after, before, test } from "node:test"
+import { MongoClient, type Db } from "mongodb"
+import { MongoMemoryReplSet } from "mongodb-memory-server"
+import { access, pendingOrg, status, disconnect, validateScopes } from "../server/grant"
 import { decrypt, encrypt, hash } from "../server/storage"
-import { bindSql } from "../server/sql"
+import { builderEngine } from "../server/engine"
 
-defineAppConfig({ migration: { skipEnsureTables: true } })
-process.env.APP_NAME = "kinu-agent"
-process.env.KINU_AGENT_SECRETS_ENCRYPTION_KEY = "native-test-encryption-material-32bytes"
+process.env.KINU_NATIVE_KEY = "native-test-encryption-material-32bytes"
+let mongo: MongoMemoryReplSet, client: MongoClient, db: Db
+before(async () => {
+  mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+  client = await new MongoClient(mongo.getUri()).connect()
+  db = client.db("native_test")
+  await db.collection("connections").createIndex({ organisation_id: 1 }, { unique: true })
+})
+after(async () => { await client?.close(); await mongo?.stop() })
 
-test("native SDK tokens are encrypted, scoped by workspace, and removable", async () => {
-  const pg = await PGlite.create()
-  await pg.exec(await readFile(new URL("../../infra/native.sql", import.meta.url), "utf8"))
-  const exec: DbExec = {
-    execute: async (statement) => {
-      const query = typeof statement === "string" ? { sql: statement, args: [] } : statement
-      const result = await pg.query(bindSql(query.sql, query.args?.length ?? 0).replace(/:p(\d+)/g, "$$$1"), query.args)
-      return { rows: result.rows, rowsAffected: result.affectedRows ?? 0 }
-    },
-  }
-  try {
-    await withDbExec(exec, async () => {
-      const session = { userId: "user_one", email: "owner@example.com", emailVerified: true, orgId: "org_one", orgRole: "administrator" }
-      await mirrorIdentity(exec, session)
-      await saveMcpOAuthCredentials({ ...grantOwner("org_one"), credentials: {
-        serverUrl: "https://api.builder.io", clientInformation: { client_id: "test-client", issuer: "https://mcp.builder.io" },
-        tokens: { access_token: "test-access-private", refresh_token: "test-refresh-private", token_type: "Bearer", scope: "builder:ai:invoke", issuer: "https://mcp.builder.io" },
-      } })
-      await exec.execute({ sql: "INSERT INTO builder_connections VALUES (?,?,?,?,?,NULL)", args: ["org_one", session.email, session.userId, "gpt-6-luna", Date.now()] })
-      assert.equal((await status(exec, "org_one")).connected, true)
-      assert.equal((await status(exec, "org_two")).connected, false)
-      const stored = await pg.query<{ tokens: string }>("SELECT tokens FROM oauth_tokens")
-      assert.match(stored.rows[0]!.tokens, /^v1:/)
-      assert.equal(stored.rows[0]!.tokens.includes("test-access-private"), false)
-      assert.equal((await readMcpOAuthCredentials(grantOwner("org_two"))), null)
-      await disconnect(exec, "org_one")
-      assert.equal((await status(exec, "org_one")).connected, false)
-    })
-  } finally { await pg.close() }
+const grant = { serverUrl: "https://api.builder.io", clientInformation: { client_id: "test-client" },
+  tokens: { access_token: "test-access-private", refresh_token: "test-refresh-private",
+    token_type: "Bearer", scope: "builder:ai:invoke" } }
+
+test("Builder grants are encrypted, bound to their workspace, and removable", async () => {
+  const sealed = encrypt(grant, "org_one")
+  await db.collection("connections").insertOne({ organisation_id: "org_one", owner_id: "user_one",
+    owner_email: "owner@example.com", model: "gpt-6-luna", grant: sealed, revision: 0 })
+  assert.equal((await status(db, "org_one")).connected, true)
+  assert.equal((await status(db, "org_two")).connected, false)
+  assert.equal(await access(db, "org_one"), "test-access-private")
+  await assert.rejects(access(db, "org_two"))
+  assert.equal(JSON.stringify(await db.collection("connections").findOne()).includes("test-access-private"), false)
+  assert.throws(() => decrypt(sealed, "org_two"))
+  await disconnect(db, "org_one")
+  assert.equal((await status(db, "org_one")).connected, false)
 })
 
-test("OAuth pending state is bound to the browser session and expiry", async () => {
-  const pg = await PGlite.create()
-  await pg.exec(await readFile(new URL("../../infra/native.sql", import.meta.url), "utf8"))
+test("pending consent is bound to the session and expires", async () => {
   const state = "a".repeat(43)
-  await pg.query("INSERT INTO builder_pending VALUES ($1,$2,$3,$4,$5,$6)", [hash(state), hash("session-one"), "org_one", "user_one", Date.now() + 10000, encrypt({ verifier: "private" })])
-  const exec: DbExec = { execute: async (statement) => {
-    assert.notEqual(typeof statement, "string")
-    const query = statement as { sql: string, args: unknown[] }
-    const result = await pg.query(bindSql(query.sql, query.args.length).replace(/:p(\d+)/g, "$$$1"), query.args)
-    return { rows: result.rows, rowsAffected: 0 }
-  } }
-  try {
-    assert.equal(await pendingOrg(exec, state, "session-one"), "org_one")
-    assert.equal(await pendingOrg(exec, state, "session-two"), null)
-    await pg.exec("UPDATE builder_pending SET expires_at = 0")
-    assert.equal(await pendingOrg(exec, state, "session-one"), null)
-    const sealed = encrypt({ verifier: "private" })
-    assert.equal(sealed.includes("private"), false)
-    assert.deepEqual(decrypt(sealed), { verifier: "private" })
-    assert.throws(() => decrypt(sealed.slice(0, -3) + "aaa"))
-  } finally { await pg.close() }
+  await db.collection("pending").insertOne({ state_hash: hash(state), session_hash: hash("session-one"),
+    organisation_id: "org_pending", expires_at: new Date(Date.now() + 10000) })
+  assert.equal(await pendingOrg(db, state, "session-one"), "org_pending")
+  assert.equal(await pendingOrg(db, state, "session-two"), null)
+  await db.collection("pending").updateOne({}, { $set: { expires_at: new Date(0) } })
+  assert.equal(await pendingOrg(db, state, "session-one"), null)
 })
 
-test("SQL binding preserves quoted values and rejects mismatched parameters", () => {
-  assert.equal(bindSql("SELECT '?', ? AS value, $$?$$ AS literal -- ?\n", 1), "SELECT '?', :p1 AS value, $$?$$ AS literal -- ?\n")
-  assert.throws(() => bindSql("SELECT ?", 0), /count/)
-  assert.equal(bindSql("SELECT '$1', $2, $1, $1", 2), "SELECT '$1', :p2, :p1, :p1")
-  assert.throws(() => bindSql("SELECT $2", 2), /count/)
-  assert.throws(() => bindSql("SELECT $0", 1), /count/)
-  assert.throws(() => bindSql("SELECT $1, ?", 2), /Mixed/)
+test("refresh rotates encrypted tokens with a revision and rejects invalid destinations", async () => {
+  const expired = { ...grant, tokenExpiresAt: 1, discoveryState: { authorizationServerMetadata: {
+    token_endpoint: "https://mcp.builder.io/token",
+  } } }
+  await db.collection("connections").insertOne({ organisation_id: "org_refresh", revision: 0,
+    grant: encrypt(expired, "org_refresh") })
+  const request: typeof fetch = async (input, init) => {
+    assert.equal(String(input), "https://mcp.builder.io/token")
+    assert.match(String(init?.body), /refresh_token=test-refresh-private/)
+    return Response.json({ access_token: "fresh-private", expires_in: 3600, refresh_token: "fresh-refresh" })
+  }
+  assert.equal(await access(db, "org_refresh", request), "fresh-private")
+  assert.equal(await access(db, "org_refresh", async () => { throw new Error("no refresh needed") }), "fresh-private")
+  const row = await db.collection("connections").findOne({ organisation_id: "org_refresh" })
+  assert.equal(row?.revision, 1)
+  assert.equal(JSON.stringify(row).includes("fresh-private"), false)
 })
 
-test("Builder consent permits AI and refresh without project or content access", () => {
+test("Builder scope stays limited to AI invocation and refresh", () => {
   validateScopes("builder:ai:invoke offline_access")
-  assert.throws(() => validateScopes("builder:ai:invoke builder:projects:write"))
+  assert.throws(() => validateScopes("builder:ai:invoke builder:content:write"))
   assert.throws(() => validateScopes("offline_access"))
+})
+
+test("Agent-Native sends Mongo-backed OAuth to Builder without SQL or key credentials", async () => {
+  const events = [
+    ["message_start", { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant",
+      model: "gpt-6-luna", content: [], usage: { input_tokens: 2, output_tokens: 0 } } }],
+    ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }],
+    ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello" } }],
+    ["content_block_stop", { type: "content_block_stop", index: 0 }],
+    ["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }],
+    ["message_stop", { type: "message_stop" }],
+  ].map(([name, body]) => `event: ${name}\ndata: ${JSON.stringify(body)}\n\n`).join("")
+  let calls = 0
+  const request: typeof fetch = async (input) => {
+    calls++
+    const call = input as Request
+    assert.equal(call.url, "https://api.builder.io/agent-native/gateway/v1/messages")
+    assert.equal(call.headers.get("authorization"), "Bearer oauth-private")
+    assert.equal(call.headers.get("x-api-key"), null)
+    const body = await call.json() as { model: string }
+    assert.equal(body.model, "gpt-6-luna")
+    return new Response(events, { headers: { "content-type": "text/event-stream" } })
+  }
+  const result = []
+  for await (const event of builderEngine("oauth-private", request).stream({
+    model: "gpt-6-luna", systemPrompt: "Reply briefly", messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+    tools: [], abortSignal: new AbortController().signal, maxOutputTokens: 100,
+  })) result.push(event)
+  assert.equal(calls, 1)
+  assert.equal(result.some((event) => event.type === "text-delta" && event.text === "hello"), true, JSON.stringify(result))
+  assert.equal(JSON.stringify(result).includes("oauth-private"), false)
 })

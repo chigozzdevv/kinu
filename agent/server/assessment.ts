@@ -1,22 +1,25 @@
-import { createBuilderEngine } from "@agent-native/core/agent/engine"
-import { runWithRequestContext } from "@agent-native/core/server/request-context"
+import { MongoServerError } from "mongodb"
 import type { z } from "zod"
 import { assess, inputSchema } from "./decision"
-import { connection } from "./grant"
+import { access, connection } from "./grant"
+import { builderEngine } from "./engine"
 import { withStorage } from "./storage"
 
 export async function assessment(orgId: string, input: z.infer<typeof inputSchema>) {
   return withStorage(async (db) => {
     const current = await connection(db, orgId)
-    if (!current) throw new Error("Connect Builder.io for this workspace first")
-    const allowance = await db.execute({
-      sql: "INSERT INTO builder_usage VALUES (?, ?, 1) ON CONFLICT (organisation_id,day) DO UPDATE SET calls = builder_usage.calls + 1 WHERE builder_usage.calls < 20 RETURNING calls",
-      args: [orgId, new Date().toISOString().slice(0, 10)],
-    })
-    if (!allowance.rows.length) throw new Error("The workspace reached its daily limit of 20 AI calls")
-    const result = await runWithRequestContext({ userEmail: current.owner_email, orgId, credentialScope: "org" }, () =>
-      assess(input, createBuilderEngine({ credentials: { privateKey: null, publicKey: null } }), current.model))
-    await db.execute({ sql: "UPDATE builder_connections SET verified_at = ? WHERE organisation_id = ?", args: [Date.now(), orgId] })
+    if (!current || current.reconnect) throw new Error("Connect Builder.io for this workspace first")
+    try {
+      await db.collection("usage").updateOne({ organisation_id: orgId,
+        day: new Date().toISOString().slice(0, 10), calls: { $lt: 20 } },
+      { $inc: { calls: 1 } }, { upsert: true })
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) throw new Error("The workspace reached its daily limit of 20 AI calls")
+      throw error
+    }
+    const result = await assess(input, builderEngine(await access(db, orgId)), current.model)
+    await db.collection("connections").updateOne({ organisation_id: orgId, revision: current.revision },
+      { $set: { verified_at: Date.now() } })
     return result
   })
 }

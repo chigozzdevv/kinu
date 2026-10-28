@@ -13,7 +13,6 @@ from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionCo
 from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.storage.database import Database
 from core.storage.notification import NotificationStore
-from pydantic import SecretStr
 from tests.browser import HEADERS, make_browser
 
 pytestmark = pytest.mark.anyio
@@ -113,7 +112,7 @@ async def test_default_runtime_serves_notification_settings_without_email_delive
     monkeypatch.setattr("api.runtime.application_database", lambda config: database)
     app = create_app(
         browser=make_browser(identity),
-        settings=Settings(database_url=SecretStr("postgresql://test")),
+        settings=Settings(),
     )
     async with (
         app.router.lifespan_context(app),

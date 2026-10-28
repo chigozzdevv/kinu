@@ -10,6 +10,8 @@ class BrowserSession:
     identity: AuthenticatedIdentity
     csrf_token: str
     expires_at: datetime
+    account_id: str | None = None
+    account_version: int = 0
 
 
 class SessionRepository(Protocol):

@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from agents.decision import Decision, IncidentInput
-from connectors.aws.agent import NativeAgent
+from agents.decision import Decision, IncidentAgent, IncidentInput
 from contracts import ConnectionStatus, IncidentStatus, RunStatus
 from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
@@ -20,16 +19,16 @@ from rotation.queue import Dispatcher
 from rotation.stages import stable
 
 from mail.models import Mailbox, Sender
+from mail.port import MailStore
 from mail.proof import authenticated
-from mail.store import Store
 
 
 class Assessment:
     def __init__(
         self,
         database: Database,
-        store: Store,
-        agent: NativeAgent,
+        store: MailStore,
+        agent: IncidentAgent,
         dispatcher: Dispatcher,
         region: str,
     ) -> None:

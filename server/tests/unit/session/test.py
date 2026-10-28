@@ -104,8 +104,9 @@ async def test_browser_authentication_follows_application_lifecycle(
     events = []
 
     class Database:
-        def __init__(self, url: str) -> None:
-            assert url == "postgresql://test"
+        def __init__(self, url: str, name: str) -> None:
+            assert url == "mongodb://test"
+            assert name == "kinu"
 
         async def open(self) -> None:
             events.append("open")
@@ -116,9 +117,8 @@ async def test_browser_authentication_follows_application_lifecycle(
     monkeypatch.setattr("core.storage.factory.Database", Database)
     app = create_app(
         settings=Settings(
-            cognito_pool_id="us-east-1_example",
-            cognito_client_id="kinuclient",
-            database_url=SecretStr("postgresql://test"),
+            mongo_url=SecretStr("mongodb://test"),
+            auth_secret=SecretStr("a" * 32),
         )
     )
     before = app.state.browser
@@ -134,10 +134,8 @@ async def test_browser_authentication_follows_application_lifecycle(
 @pytest.mark.parametrize(
     "values",
     [
-        {"cognito_pool_id": "us-east-1_example"},
-        {"cognito_client_id": "kinuclient"},
-        {"cognito_pool_id": "https://attacker.example", "cognito_client_id": "kinuclient"},
-        {"cognito_pool_id": "us-east-1_example", "cognito_client_id": "bad/client"},
+        {"auth_secret": "short"},
+        {"session_hours": "0"},
         {"environment": "production", "public_url": "http://localhost:5173"},
     ],
 )

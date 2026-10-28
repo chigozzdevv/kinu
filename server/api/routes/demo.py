@@ -1,6 +1,5 @@
 from contracts import Contract, Identifier
 from core.auth import Permission
-from core.config import Settings
 from fastapi import APIRouter, Request, Response
 
 from api.deps import IdempotencyKey, Identity, command_id, required, services
@@ -18,9 +17,8 @@ async def status(
 ) -> dict[str, object]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
-    config: Settings = request.app.state.config
     return {
-        "configured": config.demo_organisation == organisation_id and bool(config.demo_queue_url),
+        "configured": api.demo is not None,
         "source": "demo-email",
         "credential_id": "credential_demo",
         "browser": "not-configured",

@@ -3,7 +3,6 @@ from typing import Any
 from contracts import Stage, StageExecutionResult
 from core.errors import ResourceConflictError
 from core.storage.database import Database
-from psycopg.types.json import Jsonb
 
 
 class Journal:
@@ -11,24 +10,25 @@ class Journal:
         self.database = database
 
     async def get(self, org: str, run_id: str, stage: Stage) -> StageExecutionResult | None:
-        async with self.database.connection() as sql:
-            row = await (
-                await sql.execute(
-                    "SELECT data FROM kinu.executions "
-                    "WHERE organisation_id=%s AND run_id=%s AND stage=%s",
-                    (org, run_id, stage.value),
-                )
-            ).fetchone()
+        row = await self.database.collection("executions").find_one(
+            {"organisation_id": org, "run_id": run_id, "stage": stage.value}
+        )
         return StageExecutionResult.model_validate(row["data"]) if row else None
 
     async def save(self, result: StageExecutionResult) -> StageExecutionResult:
         data = result.model_dump(mode="json")
         if _sensitive(data):
             raise ResourceConflictError("rotation journal cannot contain credential values")
-        async with self.database.connection() as sql:
-            await sql.execute(
-                "INSERT INTO kinu.executions VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-                (result.organisation_id, result.run_id, result.stage.value, Jsonb(data)),
+        async with self.database.transaction(result.organisation_id) as session:
+            await self.database.collection("executions").update_one(
+                {
+                    "organisation_id": result.organisation_id,
+                    "run_id": result.run_id,
+                    "stage": result.stage.value,
+                },
+                {"$setOnInsert": {"data": data}},
+                upsert=True,
+                session=session,
             )
         stored = await self.get(result.organisation_id, result.run_id, result.stage)
         if stored != result:

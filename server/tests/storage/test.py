@@ -27,13 +27,8 @@ async def test_session_persistence_stores_only_token_digest(
     await first.save(token, session)
     second = SessionStore(database, lambda: now)
     assert await second.get(token) == session
-    async with database.connection() as connection:
-        cursor = await connection.execute(
-            "SELECT token_hash FROM kinu.sessions WHERE identity->>'subject' = %s",
-            (identity.subject,),
-        )
-        row = await cursor.fetchone()
-        assert row and row["token_hash"] != token
+    row = await database.collection("sessions").find_one({"identity.subject": identity.subject})
+    assert row and row["token_hash"] != token
     await second.delete(token)
     with pytest.raises(AuthenticationError):
         await first.get(token)
@@ -80,9 +75,8 @@ async def test_attempt_limits_are_atomic_shared_and_expire(database: Database) -
     assert sum(isinstance(item, AttemptLimitError) for item in results) == 5
     now += timedelta(minutes=16)
     await FormStore(database, lambda: now).limit(email, "127.0.0.1", "signin")
-    async with database.connection() as sql:
-        row = await (await sql.execute("SELECT key FROM kinu.auth_limits LIMIT 1")).fetchone()
-        assert row and email not in row["key"]
+    row = await database.collection("auth_limits").find_one()
+    assert row and email not in row["key"]
 
 
 async def test_password_reset_revokes_only_matching_account_sessions(

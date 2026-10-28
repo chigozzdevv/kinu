@@ -52,8 +52,6 @@ from core.verification.store import ProbeStore
 from demo.config import DemoConfig
 from demo.seed import seed
 from policy import digest
-from psycopg.types.json import Jsonb
-from pydantic import SecretStr
 from rotation.journal import Journal
 from testkit import make_run
 from tests.browser import HEADERS, make_browser
@@ -116,7 +114,7 @@ async def test_default_runtime_serves_data_and_reports_unavailable_integrations(
     monkeypatch.setattr("api.runtime.application_database", lambda config: database)
     app = create_app(
         browser=make_browser(identity),
-        settings=Settings(database_url=SecretStr("postgresql://test")),
+        settings=Settings(),
     )
     async with (
         app.router.lifespan_context(app),
@@ -309,11 +307,15 @@ async def test_approval_is_bound_to_evidence_and_consumed_once(
             "plan_hash": "a" * 64,
         }
     )
-    async with database.connection() as sql:
-        await sql.execute(
-            "INSERT INTO kinu.runs VALUES (%s,%s,%s,%s,%s)",
-            (org, run.id, run.credential_id, run.revision, Jsonb(run.model_dump(mode="json"))),
-        )
+    await database.collection("runs").insert_one(
+        {
+            "organisation_id": org,
+            "id": run.id,
+            "credential_id": run.credential_id,
+            "revision": run.revision,
+            "data": run.model_dump(mode="json"),
+        }
+    )
     evidence = StageExecutionResult(
         id="evidence_one",
         organisation_id=org,

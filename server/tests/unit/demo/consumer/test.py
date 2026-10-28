@@ -1,8 +1,8 @@
 from typing import Any
 
+import demo.consumer as consumer
 import httpx
 import pytest
-from cloud import consumer
 
 pytestmark = pytest.mark.anyio
 

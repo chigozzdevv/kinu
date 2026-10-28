@@ -1,22 +1,15 @@
 import secrets
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Protocol
 from urllib.parse import urlsplit
 
-import httpx
 from pydantic import SecretStr
 
 from core.auth.forms import Attempt, AuthForm, FormRepository
-from core.auth.identity import AuthenticatedIdentity
 from core.auth.options import BrowserOptions
-from core.auth.password import PasswordClient
+from core.auth.password import Passwords
 from core.auth.session import BrowserSession, SessionRepository
 from core.errors import AuthenticationError, AuthorizationError
-
-
-class LoginVerifier(Protocol):
-    async def verify_login(self, token: str) -> tuple[AuthenticatedIdentity, datetime]: ...
 
 
 class BrowserAuth:
@@ -25,13 +18,11 @@ class BrowserAuth:
         options: BrowserOptions,
         store: SessionRepository,
         forms: FormRepository,
-        verifier: LoginVerifier,
-        http: httpx.AsyncClient,
+        passwords: Passwords,
         clock: Callable[[], datetime],
     ) -> None:
         self.options, self.store, self.forms = options, store, forms
-        self.verifier, self.clock = verifier, clock
-        self.passwords = PasswordClient(options.cognito, http)
+        self.passwords, self.clock = passwords, clock
 
     async def prepare(self, token: str | None) -> tuple[str, AuthForm]:
         if token:
@@ -62,16 +53,21 @@ class BrowserAuth:
         self, email: str, password: SecretStr, form: str, csrf: str, previous: str | None
     ) -> tuple[str | None, BrowserSession | None, str]:
         result = await self.passwords.signin(email, password)
-        if result.token is None:
+        if result.identity is None:
             return None, None, result.next
-        identity, expiry = await self.verifier.verify_login(result.token.get_secret_value())
-        if not identity.email or identity.email.casefold() != email.casefold():
+        identity = result.identity
+        if (
+            not identity.email
+            or identity.email.casefold() != email.casefold()
+            or not identity.email_verified
+            or identity.issuer != self.options.issuer
+        ):
             raise AuthenticationError("Sign-in identity does not match the requested account.")
-        expires_at = min(expiry, self.clock() + timedelta(hours=12))
-        if expires_at <= self.clock():
-            raise AuthenticationError("Sign-in identity has expired.")
+        expires_at = self.clock() + timedelta(hours=self.options.session_hours)
         await self.forms.consume(form, csrf)
-        session = BrowserSession(identity, secrets.token_urlsafe(32), expires_at)
+        session = BrowserSession(
+            identity, secrets.token_urlsafe(32), expires_at, identity.subject, result.version
+        )
         token = secrets.token_urlsafe(32)
         await self.store.save(token, session)
         if previous:

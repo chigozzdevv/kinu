@@ -42,8 +42,8 @@ export async function builderResponse(request: Request, session: AuthSession, co
     const schema = z.strictObject({ model: z.enum(BUILDER_SUPPORTED_MODELS).refine((model) => model !== "auto") })
     const parsed = schema.safeParse(await boundedBody(request))
     if (!parsed.success) throw new HTTPError({ status: 422, message: "Select an available model" })
-    const result = await db.execute({ sql: "UPDATE builder_connections SET model = ?, verified_at = NULL WHERE organisation_id = ?", args: [parsed.data.model, session.orgId] })
-    if (!result.rowsAffected) throw new HTTPError({ status: 409, message: "Connect Builder.io first" })
+    const result = await db.collection("connections").updateOne({ organisation_id: session.orgId }, { $set: { model: parsed.data.model, verified_at: null } })
+    if (!result.matchedCount) throw new HTTPError({ status: 409, message: "Connect Builder.io first" })
     return Response.json(await status(db, session.orgId!))
   })
 }

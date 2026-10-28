@@ -1,40 +1,16 @@
-import asyncio
-import json
 from typing import Any
 
-from connectors.aws import AwsApi
-from core.errors import ResourceConflictError, ResourceNotFoundError, ResourceSetupRequiredError
+from core.private import PrivateClient
 
 from mail.models import Mailbox, SenderUpdate
 
 
 class Bridge:
-    def __init__(self, aws: AwsApi, region: str, function: str) -> None:
-        self.aws, self.region, self.function = aws, region, function
+    def __init__(self, client: PrivateClient) -> None:
+        self.client = client
 
     async def call(self, operation: str, **values: Any) -> Any:
-        result = await self.aws.call(
-            "lambda",
-            "invoke",
-            self.region,
-            FunctionName=self.function,
-            InvocationType="RequestResponse",
-            Payload=json.dumps({"operation": operation, **values}).encode(),
-        )
-        stream = result["Payload"]
-        try:
-            value = json.loads(await asyncio.to_thread(stream.read, 131_073))
-        finally:
-            stream.close()
-        if result.get("FunctionError") or not isinstance(value, dict):
-            raise ResourceConflictError("Gmail is unavailable; try again")
-        if value.get("error") == "setup-required":
-            raise ResourceSetupRequiredError("Gmail setup is not complete")
-        if value.get("error") == "not-found":
-            raise ResourceNotFoundError("Gmail connection is unavailable")
-        if "result" not in value:
-            raise ResourceConflictError(value.get("message", "Gmail connection failed; try again"))
-        return value["result"]
+        return await self.client.call("/mail", {"operation": operation, **values})
 
     async def ready(self) -> bool:
         try:

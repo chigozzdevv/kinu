@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Protocol
 
 from contracts import Contract
 from pydantic import Field
@@ -34,3 +34,7 @@ class Decision(Contract):
         "approved-control-visible",
         "control-unavailable",
     ]
+
+
+class IncidentAgent(Protocol):
+    async def assess(self, organisation_id: str, value: DecisionInput) -> Decision: ...

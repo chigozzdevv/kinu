@@ -20,14 +20,12 @@ class HistoryStore:
 
     async def get(self, organisation_id: str, run_id: str) -> RotationHistory:
         run = await RunStore(self._database).get(organisation_id, run_id)
-        async with self._database.connection() as sql:
-            results = await (
-                await sql.execute(
-                    "SELECT data FROM kinu.executions WHERE organisation_id=%s AND run_id=%s "
-                    "ORDER BY data->>'started_at',stage",
-                    (organisation_id, run_id),
-                )
-            ).fetchall()
+        results = (
+            await self._database.collection("executions")
+            .find({"organisation_id": organisation_id, "run_id": run_id})
+            .sort([("data.started_at", 1), ("stage", 1)])
+            .to_list()
+        )
         async with Records(self._database).read() as rows:
             approvals = await rows.match(Approval, organisation_id, {"run_id": run_id})
         return RotationHistory(
@@ -43,14 +41,17 @@ class HistoryStore:
     ) -> ApprovalEvidenceSnapshot:
         async with Records(self._database).read() as rows:
             approval = await rows.get(Approval, organisation_id, approval_id)
-        async with self._database.connection() as sql:
-            results = await (
-                await sql.execute(
-                    "SELECT data FROM kinu.executions WHERE organisation_id=%s AND run_id=%s "
-                    "AND stage IN ('verify','observe')",
-                    (organisation_id, approval.run_id),
-                )
-            ).fetchall()
+        results = (
+            await self._database.collection("executions")
+            .find(
+                {
+                    "organisation_id": organisation_id,
+                    "run_id": approval.run_id,
+                    "stage": {"$in": ["verify", "observe"]},
+                }
+            )
+            .to_list()
+        )
         for row in results:
             evidence = StageExecutionResult.model_validate(row["data"])
             if digest(evidence) == approval.evidence_hash:

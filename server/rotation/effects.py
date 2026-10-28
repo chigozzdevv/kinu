@@ -1,4 +1,4 @@
-import asyncio
+from asyncio import sleep
 from datetime import UTC, datetime
 from typing import Any
 
@@ -148,7 +148,7 @@ class Effects:
         seconds = state.controls.definition.maximum_observation_seconds
         samples = 3
         for _ in range(samples):
-            await asyncio.sleep(seconds / samples)
+            await sleep(seconds / samples)
             _healthy(
                 await self.health(state, "live"),
                 created["provider_id"],

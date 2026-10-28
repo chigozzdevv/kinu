@@ -1,8 +1,10 @@
 import asyncio
+from importlib import import_module
 from typing import Any
 
 import pytest
-from cloud import provider
+
+provider = import_module("demo.handler")
 
 
 def test_warm_provider_can_alternate_iam_and_http_requests(monkeypatch: pytest.MonkeyPatch) -> None:

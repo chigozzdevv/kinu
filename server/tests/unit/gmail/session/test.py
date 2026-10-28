@@ -46,7 +46,7 @@ async def test_oauth_is_bound_to_actor_session_workspace_and_consumed_once() -> 
             store,
             Google(CONFIG, client),
             Vault(CONFIG),
-            Database("postgresql://unused"),
+            Database("mongodb://unused"),
             "https://kinu.example",
         )
         target = await service.begin("org_one", "actor_one", "session_one", None)

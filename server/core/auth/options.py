@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from core.auth.cognito import CognitoConfig
-
 
 def validate_origin(value: str, development: bool) -> str:
     parts = urlsplit(value)
@@ -28,11 +26,17 @@ def validate_origin(value: str, development: bool) -> str:
 
 @dataclass(frozen=True, slots=True)
 class BrowserOptions:
-    cognito: CognitoConfig
     origin: str
+    session_hours: int = 12
 
     def __post_init__(self) -> None:
         validate_origin(self.origin, True)
+        if not 1 <= self.session_hours <= 24:
+            raise ValueError("session lifetime must be between 1 and 24 hours")
+
+    @property
+    def issuer(self) -> str:
+        return self.origin + "/auth"
 
     @property
     def secure(self) -> bool:

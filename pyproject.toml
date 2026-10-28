@@ -75,5 +75,5 @@ search-path = [
 ]
 
 [[tool.mypy.overrides]]
-module = ["dkim", "dkim.*"]
+module = ["dkim", "dkim.*", "bullmq", "bullmq.*"]
 ignore_missing_imports = true

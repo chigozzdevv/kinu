@@ -25,12 +25,10 @@ class ApprovalStore:
         self._records = Records(database)
 
     async def _binding(self, rows: RecordTransaction, action: ProtectedAction) -> None:
-        row = await (
-            await rows.sql.execute(
-                "SELECT data FROM kinu.runs WHERE organisation_id=%s AND id=%s",
-                (action.organisation_id, action.run_id),
-            )
-        ).fetchone()
+        row = await rows.database.collection("runs").find_one(
+            {"organisation_id": action.organisation_id, "id": action.run_id},
+            session=rows.session,
+        )
         if row is None:
             raise ApprovalError("approval run is unavailable")
         run = RotationRun.model_validate(row["data"])
@@ -49,13 +47,18 @@ class ApprovalStore:
             or generation.provider_id != action.provider_id
         ):
             raise ApprovalError("approval no longer matches the active run and credential")
-        evidence = await (
-            await rows.sql.execute(
-                "SELECT data FROM kinu.executions WHERE organisation_id=%s AND run_id=%s "
-                "AND stage IN ('verify','observe')",
-                (action.organisation_id, action.run_id),
+        evidence = (
+            await rows.database.collection("executions")
+            .find(
+                {
+                    "organisation_id": action.organisation_id,
+                    "run_id": action.run_id,
+                    "stage": {"$in": ["verify", "observe"]},
+                },
+                session=rows.session,
             )
-        ).fetchall()
+            .to_list()
+        )
         if not any(
             result.status is StageExecutionStatus.SUCCEEDED
             and digest(result) == action.evidence_hash

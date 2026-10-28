@@ -180,7 +180,7 @@ async def test_selected_resources_rotate_or_restore_without_exposing_values(
         async def sleep(seconds: float) -> None:
             assert seconds == 20
 
-        monkeypatch.setattr("rotation.effects.asyncio.sleep", sleep)
+        monkeypatch.setattr("rotation.effects.sleep", sleep)
         result = await Rotation(database, effects, loader(database), "eu-west-2").execute(
             demo.organisation_id, run.id, "worker_generic"
         )
@@ -195,9 +195,7 @@ async def test_selected_resources_rotate_or_restore_without_exposing_values(
         observed = next(item for item in history.stages if item.stage is Stage.OBSERVE)
         assert "telemetry-healthy" not in observed.checks
     with pytest.raises(ResourceNotFoundError):
-        await Dispatcher(database, cloud, "eu-west-2", "queue").require_scope(
-            "org_other", credential.id
-        )
+        await Dispatcher(database, JobQueue()).require_scope("org_other", credential.id)
 
 
 async def test_control_uses_saved_scope_and_returns_no_environment_values(
@@ -230,3 +228,8 @@ async def test_control_uses_saved_scope_and_returns_no_environment_values(
                 revision=connection.revision,
             ),
         )
+
+
+class JobQueue:
+    async def rotation(self, organisation_id: str, run_id: str) -> None:
+        pass

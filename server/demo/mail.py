@@ -17,7 +17,6 @@ from core.storage.database import Database
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from ingestion.mail import CredentialHint, EmailSource, MailRule, MailTrust
-from psycopg.types.json import Jsonb
 from pydantic import AwareDatetime, Field
 from rotation.stages import stable
 
@@ -61,48 +60,44 @@ class Mailbox:
         self.database = database
 
     async def put(self, task: MailTask) -> MailTask:
-        async with self.database.connection() as sql:
-            await sql.execute(
-                "INSERT INTO kinu.mail (organisation_id,id,data) VALUES (%s,%s,%s) "
-                "ON CONFLICT DO NOTHING",
-                (task.organisation_id, task.id, Jsonb(task.model_dump(mode="json"))),
+        async with self.database.transaction(task.organisation_id) as session:
+            await self.database.collection("mail").update_one(
+                {"organisation_id": task.organisation_id, "id": task.id},
+                {
+                    "$setOnInsert": {
+                        "data": task.model_dump(mode="json"),
+                        "done": False,
+                        "assessment": None,
+                    }
+                },
+                upsert=True,
+                session=session,
             )
         stored, _ = await self.get(task.organisation_id, task.id)
         return stored
 
     async def get(self, org: str, task_id: str) -> tuple[MailTask, bool]:
-        async with self.database.connection() as sql:
-            row = await (
-                await sql.execute(
-                    "SELECT data,done FROM kinu.mail WHERE organisation_id=%s AND id=%s",
-                    (org, task_id),
-                )
-            ).fetchone()
+        row = await self.database.collection("mail").find_one(
+            {"organisation_id": org, "id": task_id}
+        )
         if not row:
             raise ResourceNotFoundError("demo email fixture is unavailable")
         return MailTask.model_validate(row["data"]), bool(row["done"])
 
     async def complete(self, task: MailTask) -> None:
-        async with self.database.connection() as sql:
-            await sql.execute(
-                "UPDATE kinu.mail SET done=true WHERE organisation_id=%s AND id=%s",
-                (task.organisation_id, task.id),
-            )
+        await self.database.collection("mail").update_one(
+            {"organisation_id": task.organisation_id, "id": task.id},
+            {"$set": {"done": True}},
+        )
 
     async def decision(self, task: MailTask, value: Decision | None = None) -> Decision | None:
-        async with self.database.connection() as sql:
-            if value is not None:
-                await sql.execute(
-                    "UPDATE kinu.mail SET assessment=%s "
-                    "WHERE organisation_id=%s AND id=%s AND assessment IS NULL",
-                    (Jsonb(value.model_dump(mode="json")), task.organisation_id, task.id),
-                )
-            row = await (
-                await sql.execute(
-                    "SELECT assessment FROM kinu.mail WHERE organisation_id=%s AND id=%s",
-                    (task.organisation_id, task.id),
-                )
-            ).fetchone()
+        query = {"organisation_id": task.organisation_id, "id": task.id}
+        if value is not None:
+            await self.database.collection("mail").update_one(
+                {**query, "assessment": None},
+                {"$set": {"assessment": value.model_dump(mode="json")}},
+            )
+        row = await self.database.collection("mail").find_one(query)
         return Decision.model_validate(row["assessment"]) if row and row["assessment"] else None
 
 

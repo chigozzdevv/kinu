@@ -13,12 +13,12 @@ sync:
 	npm --prefix agent ci
 
 format:
-	$(UV_ENV) uv run ruff format server packages infra
-	$(UV_ENV) uv run ruff check --fix server packages infra
+	$(UV_ENV) uv run ruff format server packages
+	$(UV_ENV) uv run ruff check --fix server packages
 
 lint:
-	$(UV_ENV) uv run ruff format --check server packages infra
-	$(UV_ENV) uv run ruff check server packages infra
+	$(UV_ENV) uv run ruff format --check server packages
+	$(UV_ENV) uv run ruff check server packages
 
 type:
 	$(UV_ENV) uv run mypy server packages
@@ -34,7 +34,6 @@ native:
 	npm --prefix agent run check
 	npm --prefix agent test
 	npm --prefix agent run build
-	$(UV_ENV) uv run python -m infra.assessment
 
 storage:
 	npm --prefix agent run test:storage
@@ -51,7 +50,7 @@ agent:
 	npm --prefix agent run dev
 
 db:
-	npm --prefix agent run db
+	docker compose up -d mongo redis
 
 migrate:
 	$(UV_ENV) uv run --env-file .env python -m core.storage.migrate

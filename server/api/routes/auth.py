@@ -158,7 +158,7 @@ async def forgot(body: EmailRequest, request: Request) -> dict[str, str]:
 async def reset(body: ResetRequest, request: Request, response: Response) -> dict[str, str]:
     browser = await _guard(request, body.email, "code")
     await browser.passwords.reset(body.email, body.code, body.password)
-    await browser.store.revoke(body.email, browser.options.cognito.issuer)
+    await browser.store.revoke(body.email, browser.options.issuer)
     response.delete_cookie(
         browser.options.cookie_name,
         secure=browser.options.secure,

@@ -1,152 +1,206 @@
+import asyncio
+import hashlib
+import hmac
+import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal, NoReturn
-from urllib.parse import urlsplit
+from datetime import datetime, timedelta
+from typing import Literal, Protocol
 
-import httpx
+from pwdlib import PasswordHash
 from pydantic import SecretStr
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
-from core.auth.cognito import CognitoConfig
-from core.auth.forms import AttemptLimitError, FormError
-from core.errors import IdentityUnavailableError
+from core.auth.forms import FormError
+from core.auth.identity import AuthenticatedIdentity
+from core.ids import new_id
+from core.storage.database import Database
 
 
 @dataclass(frozen=True, slots=True)
 class SignInResult:
     next: Literal["complete", "verify", "forgot"]
-    token: SecretStr | None = None
+    identity: AuthenticatedIdentity | None = None
+    version: int = 0
 
 
-class CognitoError(Exception):
-    pass
+class AuthMailer(Protocol):
+    async def code(self, email: str, code: str, purpose: str, message_id: str) -> None: ...
+
+
+class Passwords(Protocol):
+    async def signin(self, email: str, password: SecretStr) -> SignInResult: ...
+    async def signup(self, email: str, name: str, password: SecretStr) -> bool: ...
+    async def verify(self, email: str, code: SecretStr) -> None: ...
+    async def resend(self, email: str) -> None: ...
+    async def forgot(self, email: str) -> None: ...
+    async def reset(self, email: str, code: SecretStr, password: SecretStr) -> None: ...
 
 
 class PasswordClient:
-    def __init__(self, config: CognitoConfig, http: httpx.AsyncClient) -> None:
-        self.config, self.http = config, http
-        self.endpoint = "https://" + str(urlsplit(config.issuer).hostname) + "/"
+    def __init__(
+        self,
+        database: Database,
+        mailer: AuthMailer,
+        issuer: str,
+        pepper: SecretStr,
+        clock: Callable[[], datetime],
+    ) -> None:
+        self.database, self.mailer, self.issuer, self.clock = database, mailer, issuer, clock
+        self.pepper = pepper.get_secret_value().encode()
+        self.hasher = PasswordHash.recommended()
+        self.dummy = self.hasher.hash(secrets.token_urlsafe(32))
 
     async def signin(self, email: str, password: SecretStr) -> SignInResult:
+        user = await self.database.collection("users").find_one({"email": email.casefold()})
+        hashed = user["password_hash"] if user else self.dummy
         try:
-            result = await self.call(
-                "InitiateAuth",
-                {
-                    "AuthFlow": "USER_PASSWORD_AUTH",
-                    "AuthParameters": {"USERNAME": email, "PASSWORD": password.get_secret_value()},
-                },
+            valid, replacement = await asyncio.to_thread(
+                self.hasher.verify_and_update, password.get_secret_value(), hashed
             )
-        except CognitoError as error:
-            if str(error) == "UserNotConfirmedException":
-                return SignInResult("verify")
-            if str(error) == "PasswordResetRequiredException":
-                return SignInResult("forgot")
-            if str(error) in {"NotAuthorizedException", "UserNotFoundException"}:
-                raise FormError("Email or password is incorrect.", 401) from None
-            self.failure(error)
-        token = result.get("AuthenticationResult", {}).get("IdToken")
-        if result.get("ChallengeName"):
-            raise FormError(
-                "This account needs additional verification. Contact your administrator.", 403
+        except Exception:
+            valid, replacement = False, None
+        if not valid or not user or user.get("disabled"):
+            raise FormError("Email or password is incorrect.", 401)
+        if not user["verified"]:
+            return SignInResult("verify")
+        if replacement:
+            await self.database.collection("users").update_one(
+                {"id": user["id"], "password_hash": hashed},
+                {"$set": {"password_hash": replacement}},
             )
-        if not isinstance(token, str) or not token:
-            raise IdentityUnavailableError("Sign-in service returned an invalid response.")
-        return SignInResult("complete", SecretStr(token))
-
-    async def signup(self, email: str, name: str, password: SecretStr) -> bool:
-        try:
-            result = await self.call(
-                "SignUp",
-                {
-                    "Username": email,
-                    "Password": password.get_secret_value(),
-                    "UserAttributes": [
-                        {"Name": "email", "Value": email},
-                        {"Name": "name", "Value": name},
-                    ],
-                },
-            )
-        except CognitoError as error:
-            if str(error) == "UsernameExistsException":
-                return False
-            self.failure(error)
-        return result.get("UserConfirmed") is True
-
-    async def verify(self, email: str, code: SecretStr) -> None:
-        await self.operation("ConfirmSignUp", email, ConfirmationCode=code.get_secret_value())
-
-    async def resend(self, email: str) -> None:
-        await self.operation("ResendConfirmationCode", email, obscure=True)
-
-    async def forgot(self, email: str) -> None:
-        await self.operation("ForgotPassword", email, obscure=True)
-
-    async def reset(self, email: str, code: SecretStr, password: SecretStr) -> None:
-        await self.operation(
-            "ConfirmForgotPassword",
-            email,
-            ConfirmationCode=code.get_secret_value(),
-            Password=password.get_secret_value(),
+        return SignInResult(
+            "complete",
+            AuthenticatedIdentity(
+                subject=user["id"],
+                issuer=self.issuer,
+                email=user["email"],
+                email_verified=True,
+                display_name=user["name"],
+                connected_via="Email and password",
+            ),
+            user["auth_version"],
         )
 
-    async def operation(
-        self, name: str, email: str, *, obscure: bool = False, **parameters: Any
-    ) -> None:
+    async def signup(self, email: str, name: str, password: SecretStr) -> bool:
+        _password(password)
+        hashed = await asyncio.to_thread(self.hasher.hash, password.get_secret_value())
+        user = {
+            "id": new_id("user"),
+            "email": email.casefold(),
+            "name": name,
+            "password_hash": hashed,
+            "verified": False,
+            "disabled": False,
+            "auth_version": 0,
+            "created_at": self.clock(),
+        }
         try:
-            await self.call(name, {"Username": email, **parameters})
-        except CognitoError as error:
-            if obscure and str(error) in {
-                "UserNotFoundException",
-                "InvalidParameterException",
-                "NotAuthorizedException",
-            }:
-                return
-            self.failure(error)
+            await self.database.collection("users").insert_one(user)
+        except DuplicateKeyError:
+            return False
+        await self._send(email, "verify")
+        return False
 
-    async def call(self, name: str, parameters: dict[str, Any]) -> dict[str, Any]:
-        try:
-            response = await self.http.post(
-                self.endpoint,
-                headers={
-                    "Content-Type": "application/x-amz-json-1.1",
-                    "X-Amz-Target": "AWSCognitoIdentityProviderService." + name,
+    async def verify(self, email: str, code: SecretStr) -> None:
+        async with self.database.transaction() as session:
+            saved = await self.database.collection("auth_codes").find_one_and_delete(
+                {
+                    "email": email.casefold(),
+                    "purpose": "verify",
+                    "digest": self._digest(email, "verify", code.get_secret_value()),
+                    "expires_on": {"$gt": self.clock()},
                 },
-                json={"ClientId": self.config.client_id, **parameters},
-                timeout=10,
-                follow_redirects=False,
+                session=session,
             )
-            if len(response.content) > 65536:
-                raise ValueError("response limit")
-            result = response.json()
-            if not isinstance(result, dict):
-                raise ValueError("response format")
-        except (httpx.HTTPError, ValueError):
-            raise IdentityUnavailableError("Sign-in service is temporarily unavailable.") from None
-        if response.status_code >= 400:
-            code = str(result.get("__type", "Unknown")).rsplit("#", 1)[-1]
-            raise CognitoError(code)
-        return result
+            if not saved:
+                raise FormError("Code is invalid or expired. Request a new code.")
+            await self.database.collection("users").update_one(
+                {"id": saved["user_id"]},
+                {"$set": {"verified": True}},
+                session=session,
+            )
 
-    @staticmethod
-    def failure(error: CognitoError) -> NoReturn:
-        code = str(error)
-        if code in {
-            "TooManyRequestsException",
-            "TooManyFailedAttemptsException",
-            "LimitExceededException",
-        }:
-            raise AttemptLimitError(60) from None
-        if code in {"InvalidPasswordException", "PasswordHistoryPolicyViolationException"}:
-            raise FormError(
-                "Use at least 12 characters with uppercase, lowercase, a number and a symbol."
-            ) from None
-        if code in {
-            "CodeMismatchException",
-            "ExpiredCodeException",
-            "UserNotFoundException",
-            "NotAuthorizedException",
-        }:
-            raise FormError(
-                "The code could not be verified. Request a new code or try signing in."
-            ) from None
-        if code == "InvalidParameterException":
-            raise FormError("Check the form fields and try again.") from None
-        raise IdentityUnavailableError("Sign-in service is temporarily unavailable.") from None
+    async def resend(self, email: str) -> None:
+        await self._send(email, "verify")
+
+    async def forgot(self, email: str) -> None:
+        await self._send(email, "reset")
+
+    async def reset(self, email: str, code: SecretStr, password: SecretStr) -> None:
+        _password(password)
+        hashed = await asyncio.to_thread(self.hasher.hash, password.get_secret_value())
+        async with self.database.transaction() as session:
+            saved = await self.database.collection("auth_codes").find_one_and_delete(
+                {
+                    "email": email.casefold(),
+                    "purpose": "reset",
+                    "digest": self._digest(email, "reset", code.get_secret_value()),
+                    "expires_on": {"$gt": self.clock()},
+                },
+                session=session,
+            )
+            if not saved:
+                raise FormError("Code is invalid or expired. Request a new code.")
+            await self.database.collection("users").update_one(
+                {"id": saved["user_id"], "verified": True},
+                {"$set": {"password_hash": hashed}, "$inc": {"auth_version": 1}},
+                session=session,
+            )
+            await self.database.collection("sessions").delete_many(
+                {"identity.subject": saved["user_id"]},
+                session=session,
+            )
+
+    async def _send(self, email: str, purpose: str) -> None:
+        email = email.casefold()
+        user = await self.database.collection("users").find_one({"email": email})
+        if (
+            not user
+            or user.get("disabled")
+            or (purpose == "verify" and user["verified"])
+            or (purpose == "reset" and not user["verified"])
+        ):
+            return
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        identity = new_id("email")
+        saved = await self.database.collection("auth_codes").find_one_and_update(
+            {"email": email, "purpose": purpose},
+            {
+                "$set": {
+                    "user_id": user["id"],
+                    "digest": self._digest(email, purpose, code),
+                    "expires_on": self.clock() + timedelta(minutes=10),
+                    "message_id": identity,
+                }
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        assert saved is not None
+        try:
+            await self.mailer.code(email, code, purpose, identity)
+        except Exception:
+            await self.database.collection("auth_codes").delete_one(
+                {"_id": saved["_id"], "message_id": identity}
+            )
+            raise
+
+    def _digest(self, email: str, purpose: str, code: str) -> str:
+        return hmac.new(
+            self.pepper, f"{email.casefold()}:{purpose}:{code}".encode(), hashlib.sha256
+        ).hexdigest()
+
+
+def _password(password: SecretStr) -> None:
+    value = password.get_secret_value()
+    if len(value) < 12 or not all(
+        (
+            any(c.isupper() for c in value),
+            any(c.islower() for c in value),
+            any(c.isdigit() for c in value),
+            any(not c.isalnum() for c in value),
+        )
+    ):
+        raise FormError("Use 12+ characters with uppercase, lowercase, a number and a symbol.")

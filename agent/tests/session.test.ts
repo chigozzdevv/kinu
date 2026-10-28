@@ -64,7 +64,7 @@ test("API failures stay unavailable without falling back to another identity", a
 test("unsafe auth configuration and private API credentials are rejected", () => {
   for (const env of [
     { AUTH_DISABLED: "true" }, { AUTH_MODE: "local" }, { ACCESS_TOKEN: "static" },
-    { KINU_DATABASE_URL: "private" }, { KINU_API_URL: "https://user:password@example.com" },
+    { KINU_MONGO_URL: "private" }, { KINU_API_URL: "https://user:password@example.com" },
     { KINU_GMAIL_SECRET_ARN: "private" }, { KINU_GMAIL_TABLE: "private" },
     { KINU_ENVIRONMENT: "production", KINU_PUBLIC_URL: "http://localhost:5173" },
   ]) assert.throws(() => loadConfig(env))

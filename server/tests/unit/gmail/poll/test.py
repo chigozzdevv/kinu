@@ -4,7 +4,6 @@ from typing import Any
 
 import httpx
 import pytest
-from cloud import mail as cloud
 from core.errors import ResourceConflictError
 from core.storage.database import Database
 from mail.assessment import Assessment
@@ -97,7 +96,7 @@ async def test_refresh_deduplication_and_disconnect_during_delivery(disconnect: 
             store,
             Google(config, client),
             Vault(config),
-            Database("postgresql://unused"),
+            Database("mongodb://unused"),
             "https://kinu.example",
         )
         grant = Grant(
@@ -123,22 +122,3 @@ async def test_refresh_deduplication_and_disconnect_during_delivery(disconnect: 
         assert saved["grant"] is None and not saved["enabled"]
     else:
         assert service.open_grant(box, saved["grant"]).access_token.get_secret_value() == "renewed"
-
-
-async def test_empty_scheduled_check_does_not_read_secrets_or_open_database(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[str, str]] = []
-
-    class Aws:
-        async def call(
-            self, service: str, operation: str, region: str, **values: Any
-        ) -> dict[str, Any]:
-            calls.append((service, operation))
-            assert (service, operation) == ("dynamodb", "query")
-            return {"Items": []}
-
-    monkeypatch.setattr(cloud, "AwsClient", Aws)
-    monkeypatch.setenv("KINU_GMAIL_TABLE", "fixture-table")
-    assert await cloud.execute({"kind": "poll"}) == {"processed": 0}
-    assert calls == [("dynamodb", "query")]

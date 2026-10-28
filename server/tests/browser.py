@@ -1,13 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
-import httpx
 from core.auth import AuthenticatedIdentity
 from core.auth.browser import BrowserAuth
-from core.auth.cognito import CognitoConfig
 from core.auth.forms import Attempt, AuthForm
 from core.auth.options import BrowserOptions
+from core.auth.password import SignInResult
 from core.auth.session import BrowserSession
 from core.errors import AuthenticationError
+from pydantic import SecretStr
 
 HEADERS = {
     "Cookie": "kinu.session=valid-token",
@@ -64,9 +64,35 @@ class MemoryForms:
         pass
 
 
-class UnusedLogin:
-    async def verify_login(self, token: str) -> tuple[AuthenticatedIdentity, datetime]:
-        raise AssertionError("login is not part of this test")
+class MemoryPasswords:
+    def __init__(self, identity: AuthenticatedIdentity | None = None) -> None:
+        self.identity = identity
+        self.calls: list[str] = []
+        self.next: str = "complete"
+
+    async def signin(self, email: str, password: SecretStr) -> SignInResult:
+        self.calls.append("signin")
+        return (
+            SignInResult("verify")
+            if self.next == "verify"
+            else SignInResult("complete", self.identity)
+        )
+
+    async def signup(self, email: str, name: str, password: SecretStr) -> bool:
+        self.calls.append("signup")
+        return False
+
+    async def verify(self, email: str, code: SecretStr) -> None:
+        self.calls.append("verify")
+
+    async def resend(self, email: str) -> None:
+        self.calls.append("resend")
+
+    async def forgot(self, email: str) -> None:
+        self.calls.append("forgot")
+
+    async def reset(self, email: str, code: SecretStr, password: SecretStr) -> None:
+        self.calls.append("reset")
 
 
 def make_browser(identity: AuthenticatedIdentity) -> BrowserAuth:
@@ -75,13 +101,9 @@ def make_browser(identity: AuthenticatedIdentity) -> BrowserAuth:
         identity, "test-csrf", datetime.now(UTC) + timedelta(hours=1)
     )
     return BrowserAuth(
-        BrowserOptions(
-            CognitoConfig("us-east-1_example", "kinuclient"),
-            "http://localhost:5173",
-        ),
+        BrowserOptions("http://localhost:5173"),
         store,
         MemoryForms(),
-        UnusedLogin(),
-        httpx.AsyncClient(),
+        MemoryPasswords(identity),
         lambda: datetime.now(UTC),
     )

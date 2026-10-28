@@ -6,7 +6,7 @@ import { resolveSession, sessionCookie } from "../session"
 import { capabilityPath, capabilityResponse } from "../capabilities"
 import { builderCallback, builderPath, builderResponse } from "../builder"
 import { callbackPath } from "../grant"
-import { withStorage } from "../storage"
+import { internalResponse } from "../internal"
 
 export default definePlugin((app) => {
   const config = loadConfig()
@@ -35,6 +35,7 @@ export default definePlugin((app) => {
     let response: Response
     try {
       const url = new URL(request.url)
+      if (url.pathname.startsWith("/_internal/")) return await internalResponse(request)
       if (url.pathname === callbackPath && request.method === "GET") {
         response = await builderCallback(request, config)
         response.headers.set("cache-control", "no-store")
@@ -62,9 +63,7 @@ export default definePlugin((app) => {
           return response
         }
       }
-      response = url.pathname === "/_agent-native/auth/session" && process.env.KINU_ENVIRONMENT === "production"
-        ? await withStorage(async () => handle(request))
-        : await handle(request)
+      response = await handle(request)
     } catch (error) {
       response = error instanceof HTTPError
         ? Response.json({ error: error.message }, { status: error.status })

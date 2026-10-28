@@ -4,8 +4,6 @@ from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime
 
-from psycopg.types.json import Jsonb
-
 from core.auth.identity import AuthenticatedIdentity
 from core.auth.session import BrowserSession
 from core.errors import AuthenticationError
@@ -14,55 +12,58 @@ from core.storage.database import Database
 
 class SessionStore:
     def __init__(self, database: Database, clock: Callable[[], datetime]) -> None:
-        self._database = database
-        self._clock = clock
+        self._database, self._clock = database, clock
 
     async def save(self, token: str, session: BrowserSession) -> None:
-        async with self._database.connection() as connection, connection.transaction():
-            await connection.execute(
-                "DELETE FROM kinu.sessions WHERE expires_at <= %s", (self._clock(),)
-            )
-            await connection.execute(
-                "INSERT INTO kinu.sessions VALUES (%s, %s, %s, %s)",
-                (
-                    _hash(token),
-                    Jsonb(asdict(session.identity)),
-                    session.csrf_token,
-                    session.expires_at,
-                ),
-            )
+        await self._database.collection("sessions").insert_one(
+            {
+                "token_hash": _hash(token),
+                "identity": asdict(session.identity),
+                "csrf_token": session.csrf_token,
+                "expires_at": session.expires_at.isoformat(),
+                "expires_on": session.expires_at,
+                "account_id": session.account_id,
+                "account_version": session.account_version,
+            }
+        )
 
     async def get(self, token: str) -> BrowserSession:
         if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
             raise AuthenticationError("session is invalid or expired")
-        async with self._database.connection() as connection:
-            cursor = await connection.execute(
-                "SELECT identity, csrf_token, expires_at FROM kinu.sessions "
-                "WHERE token_hash = %s AND expires_at > %s",
-                (_hash(token), self._clock()),
-            )
-            row = await cursor.fetchone()
+        row = await self._database.collection("sessions").find_one(
+            {"token_hash": _hash(token), "expires_on": {"$gt": self._clock()}}
+        )
         if row is None:
             raise AuthenticationError("session is invalid or expired")
+        if row.get("account_id"):
+            user = await self._database.collection("users").find_one(
+                {
+                    "id": row["account_id"],
+                    "auth_version": row["account_version"],
+                    "verified": True,
+                    "disabled": False,
+                }
+            )
+            if not user:
+                raise AuthenticationError("session is invalid or expired")
         return BrowserSession(
-            identity=AuthenticatedIdentity(**row["identity"]),
-            csrf_token=row["csrf_token"],
-            expires_at=row["expires_at"],
+            AuthenticatedIdentity(**row["identity"]),
+            row["csrf_token"],
+            datetime.fromisoformat(row["expires_at"]),
+            row.get("account_id"),
+            row.get("account_version", 0),
         )
 
     async def delete(self, token: str) -> None:
-        async with self._database.connection() as connection:
-            await connection.execute(
-                "DELETE FROM kinu.sessions WHERE token_hash = %s", (_hash(token),)
-            )
+        await self._database.collection("sessions").delete_one({"token_hash": _hash(token)})
 
     async def revoke(self, email: str, issuer: str) -> None:
-        async with self._database.connection() as sql:
-            await sql.execute(
-                "DELETE FROM kinu.sessions WHERE lower(identity->>'email')=lower(%s) "
-                "AND identity->>'issuer'=%s",
-                (email, issuer),
-            )
+        await self._database.collection("sessions").delete_many(
+            {
+                "identity.email": {"$regex": "^" + re.escape(email) + "$", "$options": "i"},
+                "identity.issuer": issuer,
+            }
+        )
 
 
 def _hash(value: str) -> str:

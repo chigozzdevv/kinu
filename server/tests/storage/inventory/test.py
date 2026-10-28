@@ -28,7 +28,6 @@ from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionCo
 from core.inventory import InventoryService
 from core.inventory.store import InventoryStore
 from core.storage.database import Database
-from psycopg.types.json import Jsonb
 from testkit import make_control_version, make_http_provider_api
 from tests.browser import HEADERS, make_browser
 
@@ -339,12 +338,10 @@ async def test_inventory_api_enforces_workspace_roles_and_csrf(
         assert (
             await http.get("/v1/organisations/org_other/inventory/graph", headers=HEADERS)
         ).status_code == 403
-        async with database.connection() as connection:
-            await connection.execute(
-                "UPDATE kinu.members SET data = jsonb_set(data, '{roles}', %s) "
-                "WHERE organisation_id = %s AND subject = %s",
-                (Jsonb(["viewer"]), inventory.org, identity.subject),
-            )
+        await database.collection("members").update_one(
+            {"organisation_id": inventory.org, "subject": identity.subject},
+            {"$set": {"data.roles": ["viewer"]}},
+        )
         assert (await http.get(f"{path}/graph", headers=HEADERS)).status_code == 200
         denied = await http.patch(
             f"{path}/connections/connection_provider",

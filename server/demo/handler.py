@@ -2,9 +2,10 @@ import asyncio
 from typing import Any
 
 from connectors.aws import AwsClient
+from mangum import Mangum
+
 from demo.admin import administer
 from demo.app import create_app
-from mangum import Mangum
 
 _loop = asyncio.new_event_loop()
 asyncio.set_event_loop(_loop)
