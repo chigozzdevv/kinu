@@ -17,7 +17,7 @@ from contracts import (
 
 from core.errors import ResourceConflictError
 from core.inventory.relations import check_references
-from core.inventory.service import InventoryResource
+from core.inventory.repository import InventoryResource
 from core.storage.database import Database
 from core.storage.records import Records
 

@@ -4,7 +4,7 @@ from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
 from contracts import Connection, ConnectionRole, ConnectionStatus
 
-from core.inventory.service import InventoryRepository
+from core.inventory.repository import InventoryRepository
 
 
 class ConnectionSecrets:
