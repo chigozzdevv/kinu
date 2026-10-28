@@ -10,13 +10,13 @@ class PrivateClient:
     def __init__(self, http: httpx.AsyncClient, origin: str, token: SecretStr) -> None:
         self.http, self.origin, self.token = http, origin.rstrip("/"), token
 
-    async def call(self, path: str, data: dict[str, Any]) -> Any:
+    async def call(self, path: str, data: dict[str, Any], *, timeout: float = 30) -> Any:
         try:
             response = await self.http.post(
                 self.origin + path,
                 json=data,
                 headers={"Authorization": "Bearer " + self.token.get_secret_value()},
-                timeout=30,
+                timeout=timeout,
                 follow_redirects=False,
             )
             if len(response.content) > 1_048_576:
