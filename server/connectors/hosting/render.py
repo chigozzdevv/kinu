@@ -96,6 +96,7 @@ class Render:
         return _deployment(data)
 
     async def restore(self, variable: Variable, identity: str) -> Deployment:
+        await self.status(variable, identity)
         return _deployment(
             await self.client.call(
                 "POST",

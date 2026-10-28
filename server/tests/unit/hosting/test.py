@@ -125,6 +125,10 @@ async def test_vercel_deploys_the_previous_source_and_checks_project_before_roll
             assert body["meta"] == {"kinuRun": "run_one"}
             assert not body.get("withLatestCommit")
             return httpx.Response(200, json={"id": "new", "readyState": "BUILDING"})
+        if path == "/v13/deployments/old":
+            return httpx.Response(
+                200, json={"id": "old", "projectId": "project", "readyState": "READY"}
+            )
         if path == "/v13/deployments/foreign":
             return httpx.Response(
                 200, json={"id": "foreign", "projectId": "other", "readyState": "READY"}
@@ -138,9 +142,11 @@ async def test_vercel_deploys_the_previous_source_and_checks_project_before_roll
         assert (await host.deploy(variable(), previous, "run_one")).state == "pending"
         with pytest.raises(ConnectorError, match="another project"):
             await host.status(variable(), "foreign")
+        with pytest.raises(ConnectorError, match="another project"):
+            await host.restore(variable(), "foreign")
         with pytest.raises(ConnectorError, match="production"):
             await host.restore(variable().model_copy(update={"environment": "preview"}), "old")
-        assert len(calls) == 4
+        assert len(calls) == 6
 
 
 async def test_render_paginates_names_without_returning_values_and_updates_only_selected_key() -> (

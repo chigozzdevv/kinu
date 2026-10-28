@@ -66,7 +66,12 @@ class Vercel:
         if not selected or selected.get("key") != variable.name:
             raise ConnectorError("host-variable", "Selected variable changed")
         targets = selected.get("target", [])
-        if targets != [variable.environment]:
+        if (
+            targets != [variable.environment]
+            or selected.get("gitBranch")
+            or selected.get("customEnvironmentIds")
+            or selected.get("type") == "system"
+        ):
             raise ConnectorError(
                 "host-shared-variable",
                 "Use a variable scoped to one environment before rotating it",
@@ -83,6 +88,7 @@ class Vercel:
         return _deployment(current)
 
     async def deploy(self, variable: Variable, previous: Deployment, request_id: str) -> Deployment:
+        await self.status(variable, previous.id)
         data = await self.client.call("GET", f"/v9/projects/{quote(variable.project_id, safe='')}")
         response = await self.client.call(
             "POST",
@@ -108,6 +114,7 @@ class Vercel:
             raise ConnectorError(
                 "host-rollback", "Automatic rollback requires a production deployment"
             )
+        await self.status(variable, identity)
         project = quote(variable.project_id, safe="")
         await self.client.call(
             "POST", f"/v1/projects/{project}/rollback/{quote(identity, safe='')}"
