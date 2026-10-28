@@ -53,7 +53,6 @@ services:
 
   migrate:
     image: kinu-api
-    build: {context: ., target: api}
     command: ["python", "-m", "core.storage.migrate"]
     environment:
       <<: *app
@@ -128,7 +127,6 @@ services:
 
   worker:
     image: kinu-executor
-    build: {context: ., target: executor}
     restart: unless-stopped
     command: ["python", "-m", "jobs.worker"]
     environment:

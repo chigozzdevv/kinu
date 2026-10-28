@@ -56,4 +56,4 @@ migrate:
 	docker compose run --rm migrate
 
 image:
-	docker compose build
+	docker compose build api executor agent web

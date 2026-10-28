@@ -47,7 +47,8 @@ jobs:
         id: docker
         run: |
           python3 -m deploy.setup
-          docker compose up -d --build --wait --wait-timeout 180
+          make image
+          docker compose up -d --no-build --wait --wait-timeout 180
           python3 -m deploy.check
           docker compose exec -T executor python < deploy/browser.py
       - name: Stop containers
