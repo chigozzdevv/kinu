@@ -2,14 +2,18 @@ from connectors.aws import Role
 from contracts import Connection, ConnectionAuthorization, ConnectionStatus
 
 from core.connection.models import AwsLink
+from core.connection.scope import managed_role, session_policy
 from core.errors import ResourceConflictError
 from core.storage.database import Database
 from core.storage.records import Records
 
 
 class ConnectionRoles:
-    def __init__(self, database: Database) -> None:
+    def __init__(
+        self, database: Database, *, managed: bool = False, read_only: bool = False
+    ) -> None:
         self._records = Records(database)
+        self._managed, self._read_only = managed, read_only
 
     async def resolve(self, connection: Connection) -> Role:
         prefix = "aws-role://"
@@ -30,10 +34,12 @@ class ConnectionRoles:
             or connection.archived_at
         ):
             raise ResourceConflictError("AWS role link is not available")
-        return link_role(link)
+        if self._managed:
+            managed_role(link)
+        return link_role(link, connection, self._read_only)
 
 
-def link_role(link: AwsLink) -> Role:
+def link_role(link: AwsLink, connection: Connection | None = None, read_only: bool = False) -> Role:
     if link.role_arn.split(":")[4] != link.account_id:
         raise ResourceConflictError("AWS role belongs to another account")
     return Role(
@@ -41,4 +47,5 @@ def link_role(link: AwsLink) -> Role:
         link.external_id,
         f"kinu-{link.id[-32:]}",
         (("kinu-org", link.organisation_id),),
+        session_policy(link, connection, read_only) if connection else None,
     )

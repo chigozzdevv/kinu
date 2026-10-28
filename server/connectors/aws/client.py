@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 from collections.abc import Callable
 from contextlib import closing
@@ -19,6 +20,7 @@ class Role:
     external_id: str
     session_name: str
     tags: tuple[tuple[str, str], ...] = ()
+    policy: dict[str, Any] | None = None
 
 
 class AwsApi(Protocol):
@@ -65,6 +67,7 @@ class AwsClient:
                         ExternalId=role.external_id,
                         RoleSessionName=role.session_name,
                         DurationSeconds=900,
+                        **({"Policy": json.dumps(role.policy)} if role.policy else {}),
                         **(
                             {"Tags": [{"Key": key, "Value": value} for key, value in role.tags]}
                             if role.tags

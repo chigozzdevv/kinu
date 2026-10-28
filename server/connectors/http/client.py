@@ -18,6 +18,7 @@ from contracts import (
 
 from connectors.base import ConnectorContext, ConnectorResponse, SecretValue
 from connectors.base.errors import AmbiguousMutationError, ConnectorError
+from connectors.http.transport import PublicTransport
 from connectors.secrets.store import SecretReader
 
 
@@ -75,12 +76,17 @@ class HttpProviderConnector:
             return await self._create(api, payload, headers)
         if tool == "provider.revokeCredential":
             key_id = _string(payload, "provider_id")
-            response = await self._call(
-                api, api.revoke_credential, headers, {"provider_id": key_id}
-            )
-            _expected(response, set(api.revoke_credential.success_statuses))
+            await self.revoke_credential(context.connection, key_id)
             return ConnectorResponse(result={"provider_id": key_id, "revoked": True})
         raise ConnectorError("unsupported-tool", f"provider does not support {tool}")
+
+    async def revoke_credential(self, connection: Connection, provider_id: str) -> None:
+        api = _api(connection)
+        headers = await self._headers(connection, api.auth)
+        response = await self._call(
+            api, api.revoke_credential, headers, {"provider_id": provider_id}
+        )
+        _expected(response, set(api.revoke_credential.success_statuses))
 
     async def test_credential(
         self,
@@ -214,7 +220,13 @@ class HttpProviderConnector:
         value = _object(response.json(), "provider create")
         key_id = _dig(value, id_field)
         secret = _dig(value, secret_field)
-        if not isinstance(key_id, str) or not isinstance(secret, str):
+        if (
+            not isinstance(key_id, str)
+            or not 1 <= len(key_id) <= 512
+            or not isinstance(secret, str)
+            or not secret
+            or key_id == secret
+        ):
             raise ConnectorError(
                 "invalid-provider-response", "provider returned no key ID or secret"
             )
@@ -265,7 +277,11 @@ class HttpProviderConnector:
             items = (
                 _dig(value, api.list_credentials.list_items) if isinstance(value, dict) else None
             )
-        if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        if (
+            not isinstance(items, list)
+            or len(items) > 1000
+            or not all(isinstance(item, dict) for item in items)
+        ):
             raise ConnectorError(
                 "invalid-provider-response", "provider returned invalid key metadata"
             )
@@ -303,16 +319,22 @@ class HttpProviderConnector:
         path = _render_path(operation.path, payload)
         url = _operation_url(api, path)
         body = _render_body(operation.body, payload) if operation.body else None
-        client = self._client or httpx.AsyncClient(timeout=30)
+        client = self._client or httpx.AsyncClient(
+            transport=PublicTransport(), timeout=30, trust_env=False, follow_redirects=False
+        )
         close = self._client is None
         try:
-            return await client.request(
-                operation.method,
-                url,
-                headers=headers,
-                params=operation.query or None,
-                json=body,
-            )
+            async with client.stream(
+                operation.method, url, headers=headers, params=operation.query or None, json=body
+            ) as response:
+                content = bytearray()
+                async for part in response.aiter_bytes():
+                    content.extend(part)
+                    if len(content) > 1_048_576:
+                        raise ConnectorError("provider-response", "provider response is too large")
+                return httpx.Response(
+                    response.status_code, headers=response.headers, content=bytes(content)
+                )
         finally:
             if close:
                 await client.aclose()

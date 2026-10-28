@@ -18,6 +18,18 @@ class PreparedResponse(AwsPrepared):
     template: dict[str, object]
 
 
+@router.get("/aws/{connection_id}")
+async def prepared(
+    organisation_id: Identifier, connection_id: Identifier, identity: Identity, request: Request
+) -> PreparedResponse:
+    configured = services(request)
+    await configured.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
+    setup = await required(configured.connections, "connections").prepared(
+        organisation_id, connection_id
+    )
+    return PreparedResponse(**setup.model_dump(), template=role_template(setup))
+
+
 @router.post("/aws", status_code=201)
 async def prepare(
     organisation_id: Identifier, body: AwsSetup, identity: Identity, request: Request

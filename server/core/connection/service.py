@@ -1,3 +1,4 @@
+import json
 import secrets
 from collections.abc import Callable
 from datetime import datetime
@@ -16,6 +17,7 @@ from pydantic import Field
 
 from core.connection.models import AwsLink
 from core.connection.roles import link_role
+from core.connection.scope import session_policy
 from core.errors import ResourceConflictError
 from core.storage.database import Database
 from core.storage.records import Records
@@ -23,18 +25,19 @@ from core.storage.records import Records
 
 class AwsSetup(Contract):
     account_id: str = Field(pattern=r"^\d{12}$")
-    role_arn: str = Field(pattern=r"^arn:aws:iam::\d{12}:role/[A-Za-z0-9_+=,.@/-]+$")
     region: str = Field(pattern=r"^[a-z]{2}(?:-[a-z]+)+-\d$")
     display_name: str = Field(min_length=1, max_length=160)
     secret_arns: tuple[str, ...] = Field(default=(), max_length=20)
     function_arns: tuple[str, ...] = Field(default=(), max_length=20)
+    kms_arns: tuple[str, ...] = Field(default=(), max_length=10)
 
 
 class AwsPrepared(Contract):
     connection: Connection
     role_arn: str
     external_id: str
-    broker_arn: str
+    principals: tuple[str, ...]
+    kms_arns: tuple[str, ...]
     organisation_id: str
 
 
@@ -47,11 +50,11 @@ class ConnectionService:
         self,
         database: Database,
         verifier: LinkVerifier,
-        broker_arn: str,
+        principals: tuple[str, ...],
         clock: Callable[[], datetime],
     ) -> None:
         self._rows = Records(database)
-        self._verifier, self._broker, self._clock = verifier, broker_arn, clock
+        self._verifier, self._principals, self._clock = verifier, principals, clock
 
     async def prepare(self, organisation_id: str, setup: AwsSetup) -> AwsPrepared:
         from connectors.aws.refs import SecretRef
@@ -71,12 +74,25 @@ class ConnectionService:
                 or not arn[len(prefix) :].replace("-", "").replace("_", "").isalnum()
             ):
                 raise ResourceConflictError("select an unqualified Lambda function ARN")
+        if not self._principals:
+            raise ResourceConflictError("AWS connection services are unavailable")
+        for arn in setup.kms_arns:
+            prefix = f"arn:aws:kms:{setup.region}:{setup.account_id}:key/"
+            if not arn.startswith(prefix) or not arn[len(prefix) :].replace("-", "").isalnum():
+                raise ResourceConflictError(
+                    "select exact KMS key ARNs in the same account and region"
+                )
+        if len(set(setup.secret_arns + setup.function_arns + setup.kms_arns)) != len(
+            setup.secret_arns + setup.function_arns + setup.kms_arns
+        ):
+            raise ResourceConflictError("AWS selections must not contain duplicates")
         now, identity = self._clock(), f"aws_{uuid4().hex}"
         link = AwsLink(
             id=identity,
             organisation_id=organisation_id,
             account_id=setup.account_id,
-            role_arn=setup.role_arn,
+            role_arn=f"arn:aws:iam::{setup.account_id}:role/kinu/{identity}",
+            kms_arns=setup.kms_arns,
             external_id=secrets.token_urlsafe(32),
             region=setup.region,
             created_at=now,
@@ -88,6 +104,8 @@ class ConnectionService:
             roles.add(ConnectionRole.SECRET_STORE)
             capabilities.update(
                 {
+                    "secretStore.listSecrets",
+                    "secretStore.listVersions",
                     "secretStore.getVersion",
                     "secretStore.addVersion",
                     "secretStore.disableVersion",
@@ -97,7 +115,15 @@ class ConnectionService:
         if setup.function_arns:
             roles.add(ConnectionRole.RUNTIME)
             capabilities.update(
-                {"runtime.getDeployment", "runtime.updateConsumer", "runtime.health"}
+                {
+                    "runtime.listServices",
+                    "runtime.getDeployment",
+                    "runtime.updateConsumer",
+                    "runtime.health",
+                    "runtime.deployCandidate",
+                    "runtime.shiftTraffic",
+                    "runtime.rollback",
+                }
             )
         connection = Connection(
             id=identity,
@@ -115,6 +141,10 @@ class ConnectionService:
             created_at=now,
             updated_at=now,
         )
+        if len(json.dumps(session_policy(link, connection, False), separators=(",", ":"))) > 2048:
+            raise ResourceConflictError(
+                "select fewer resources; the AWS session policy is too large"
+            )
         async with self._rows.write(organisation_id) as rows:
             await rows.add(link, organisation_id)
             await rows.add(connection, organisation_id)
@@ -122,7 +152,8 @@ class ConnectionService:
             connection=connection,
             role_arn=link.role_arn,
             external_id=link.external_id,
-            broker_arn=self._broker,
+            principals=self._principals,
+            kms_arns=setup.kms_arns,
             organisation_id=organisation_id,
         )
 
@@ -150,3 +181,21 @@ class ConnectionService:
             )
             await rows.replace(confirmed, revision)
         return confirmed
+
+    async def prepared(self, organisation_id: str, connection_id: str) -> AwsPrepared:
+        async with self._rows.read() as rows:
+            connection = await rows.get(Connection, organisation_id, connection_id)
+            link = await rows.get(AwsLink, organisation_id, connection_id)
+        from core.connection.scope import managed_role
+
+        managed_role(link)
+        if connection.archived_at:
+            raise ResourceConflictError("connection is archived")
+        return AwsPrepared(
+            connection=connection,
+            role_arn=link.role_arn,
+            external_id=link.external_id,
+            principals=self._principals,
+            kms_arns=link.kms_arns,
+            organisation_id=organisation_id,
+        )

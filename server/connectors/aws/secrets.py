@@ -66,6 +66,8 @@ class AwsSecrets:
         role = await self._roles.resolve(connection)
         values: list[dict[str, Any]] = []
         for resource in connection.allowed_resources:
+            if not resource.startswith("arn:aws:secretsmanager:"):
+                continue
             ref = _scope(connection, resource)
             response = await self._aws.call(
                 "secretsmanager",

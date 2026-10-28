@@ -21,6 +21,10 @@ class HttpAuth(Contract):
 
     @model_validator(mode="after")
     def validate_header(self) -> "HttpAuth":
+        if not re.fullmatch(r"[A-Za-z0-9!#$%&'*+.^_`|~-]+", self.header):
+            raise ValueError("authentication header name is invalid")
+        if self.prefix is not None and any(ord(character) < 32 for character in self.prefix):
+            raise ValueError("authentication prefix contains control characters")
         if self.scheme is HttpAuthScheme.HEADER and self.header.lower() == "authorization":
             raise ValueError("header authentication requires an explicit API header name")
         return self
@@ -73,6 +77,7 @@ class HttpProviderApi(Contract):
     revoke_credential: HttpOperation
     test_credential: HttpOperation | None = None
     credential_auth: HttpAuth | None = None
+    supports_overlap: bool = False
 
     @model_validator(mode="after")
     def validate_api(self) -> "HttpProviderApi":

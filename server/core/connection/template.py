@@ -39,6 +39,19 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                 "Resource": functions + [arn + ":*" for arn in functions],
             }
         )
+    if prepared.kms_arns:
+        statements.append(
+            {
+                "Effect": "Allow",
+                "Action": ["kms:Decrypt", "kms:GenerateDataKey"],
+                "Resource": list(prepared.kms_arns),
+                "Condition": {
+                    "StringEquals": {
+                        "kms:ViaService": f"secretsmanager.{connection.region}.amazonaws.com"
+                    }
+                },
+            }
+        )
     return {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Description": "Kinu access to selected secret and consumer resources",
@@ -47,13 +60,14 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                 "Type": "AWS::IAM::Role",
                 "Properties": {
                     "RoleName": role_path[-1],
+                    "Tags": [{"Key": "kinu-org", "Value": prepared.organisation_id}],
                     "Path": "/" + "/".join(role_path[:-1]) + ("/" if len(role_path) > 1 else ""),
                     "AssumeRolePolicyDocument": {
                         "Version": "2012-10-17",
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"AWS": prepared.broker_arn},
+                                "Principal": {"AWS": list(prepared.principals)},
                                 "Action": "sts:AssumeRole",
                                 "Condition": {
                                     "StringEquals": {
@@ -65,7 +79,7 @@ def role_template(prepared: AwsPrepared) -> dict[str, Any]:
                             },
                             {
                                 "Effect": "Allow",
-                                "Principal": {"AWS": prepared.broker_arn},
+                                "Principal": {"AWS": list(prepared.principals)},
                                 "Action": "sts:TagSession",
                                 "Condition": {
                                     "StringEquals": {

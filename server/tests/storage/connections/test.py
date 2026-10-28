@@ -34,12 +34,11 @@ async def test_role_is_unusable_until_verified_and_cannot_cross_workspace(
     org = workspace.organisation.id
     verifier = Verifier()
     broker = "arn:aws:iam::123456789012:role/kinu-broker"
-    service = ConnectionService(database, verifier, broker, lambda: NOW)
+    service = ConnectionService(database, verifier, (broker,), lambda: NOW)
     prepared = await service.prepare(
         org,
         AwsSetup(
             account_id="123456789012",
-            role_arn="arn:aws:iam::123456789012:role/customer/kinu",
             region="eu-west-2",
             display_name="AWS vault",
             secret_arns=(ARN,),
@@ -62,12 +61,19 @@ async def test_role_is_unusable_until_verified_and_cannot_cross_workspace(
         await roles.resolve(confirmed.model_copy(update={"allowed_resources": (ARN + "other",)}))
     template = role_template(prepared)
     properties = template["Resources"]["ConnectionRole"]["Properties"]
-    assert properties["RoleName"] == "kinu"
-    assert properties["Path"] == "/customer/"
+    assert properties["RoleName"] == prepared.connection.id
+    assert properties["Path"] == "/kinu/"
     statement = properties["AssumeRolePolicyDocument"]["Statement"][0]
-    assert statement["Principal"]["AWS"] == broker
+    assert statement["Principal"]["AWS"] == [broker]
     assert statement["Condition"]["StringEquals"]["sts:ExternalId"] == prepared.external_id
     tags = properties["AssumeRolePolicyDocument"]["Statement"][1]
     assert tags["Action"] == "sts:TagSession"
     assert tags["Condition"]["StringEquals"] == {"aws:RequestTag/kinu-org": org}
     assert properties["Policies"][0]["PolicyDocument"]["Statement"][0]["Resource"] == [ARN]
+    assert await service.prepared(org, confirmed.id) == prepared.model_copy(
+        update={"connection": confirmed}
+    )
+    assert role.policy and role.policy["Statement"][0]["Resource"] == [ARN]
+    readonly = await ConnectionRoles(database, managed=True, read_only=True).resolve(confirmed)
+    assert readonly.policy
+    assert "secretsmanager:PutSecretValue" not in readonly.policy["Statement"][0]["Action"]
