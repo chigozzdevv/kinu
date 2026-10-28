@@ -4,7 +4,7 @@ import pytest
 from connectors.aws import Role
 from connectors.aws.runtime import AwsRuntime
 from connectors.base.errors import ConnectorError
-from contracts import Connection
+from contracts import Connection, ConnectionRole
 
 
 @pytest.fixture
@@ -56,3 +56,31 @@ async def test_candidate_rejects_unpublished_changes_before_mutation(
         await AwsRuntime(Aws(), Roles()).candidate(
             connection, function, candidate, "run_one", "PROVIDER_REF", old
         )
+
+
+@pytest.mark.anyio
+async def test_runtime_rejects_weighted_aliases(connection: Connection) -> None:
+    function = "arn:aws:lambda:eu-west-2:123456789012:function:consumer"
+    connection = connection.model_copy(
+        update={"roles": frozenset({ConnectionRole.RUNTIME}), "allowed_resources": (function,)}
+    )
+
+    class Aws:
+        async def call(
+            self,
+            service: str,
+            operation: str,
+            region: str,
+            *,
+            role: Role | None = None,
+            **parameters: Any,
+        ) -> dict[str, Any]:
+            assert operation == "get_alias"
+            return {
+                "FunctionVersion": "1",
+                "RevisionId": "alias-one",
+                "RoutingConfig": {"AdditionalVersionWeights": {"2": 0.1}},
+            }
+
+    with pytest.raises(ConnectorError, match="all traffic"):
+        await AwsRuntime(Aws(), Roles()).current(connection, function)

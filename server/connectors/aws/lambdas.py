@@ -15,6 +15,10 @@ class LambdaRuntime:
 
     async def current(self, connection: Connection, function: str) -> dict[str, str]:
         result = await self._call(connection, function, "get_alias", Name="live")
+        if result.get("RoutingConfig", {}).get("AdditionalVersionWeights"):
+            raise ConnectorError(
+                "runtime-routing", "live alias must route all traffic to one published version"
+            )
         return {"version": str(result["FunctionVersion"]), "revision": str(result["RevisionId"])}
 
     async def promote(

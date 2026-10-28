@@ -68,7 +68,7 @@ and playbook generation remain disabled until their adapters are configured.
 3. Add a credential and select its current secret version, provider identity and Lambda binding.
    Kinu checks those relationships before saving the mapping.
 
-The Lambda must have a published `live` alias and an environment variable containing the full
+The Lambda must have an unweighted, published `live` alias and an environment variable containing the full
 immutable reference `arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME-SUFFIX/versions/VERSION`.
 Kinu updates only that binding, preserves other environment variables and checks alias revisions.
 Route production invocations through `live`; other aliases and unqualified invocations are not managed.
