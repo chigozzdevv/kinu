@@ -2,7 +2,6 @@ from typing import Any
 
 from contracts import Contract, Identifier
 from core.auth import Permission
-from core.config import Settings
 from core.errors import AuthorizationError
 from core.ids import new_id
 from fastapi import APIRouter, Request
@@ -24,13 +23,7 @@ async def list_integrations(
 ) -> dict[str, Any]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.PROFILE_READ)
-    config: Settings = request.app.state.config
-    editable = bool(
-        config.admin_email
-        and identity.email_verified
-        and identity.email
-        and config.admin_email.casefold() == identity.email.casefold()
-    )
+    editable = await required(api.installation, "installation setup").is_admin(identity)
     private = required(api.private, "private execution")
     return {
         "editable": editable,
@@ -48,14 +41,7 @@ async def configure(
 ) -> dict[str, bool]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.TEAM_WRITE)
-    config: Settings = request.app.state.config
-    if not (
-        config.admin_email
-        and identity.email_verified
-        and identity.email
-        and config.admin_email.casefold() == identity.email.casefold()
-    ):
-        raise AuthorizationError("An installation administrator must configure integrations")
+    await required(api.installation, "installation setup").require_admin(identity)
     definition = integration(integration_id)
     if not body.values.keys() <= set(definition.fields):
         raise AuthorizationError("Unknown integration setting")

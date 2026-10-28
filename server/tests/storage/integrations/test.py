@@ -5,9 +5,9 @@ import pytest
 from api.app import create_app
 from api.deps import ApiServices
 from core.account import AccountService
+from core.account.installation import Installation
 from core.account.store import AccountStore
 from core.auth import AccessControl, AuthenticatedIdentity
-from core.config import Settings
 from core.private import PrivateClient
 from core.storage.database import Database
 from executor.app import app as executor
@@ -30,6 +30,8 @@ async def test_integration_settings_require_installation_owner_and_keep_secrets_
         identity, "Integrations"
     )
     org = membership.organisation.id
+    installation = Installation(database)
+    await installation.claim(identity, SecretStr("setup-token"), SecretStr("setup-token"))
     key = SecretStr("vault-test-encryption-material-at-least-32")
     vault = Vault(database, key)
     await vault.initialize()
@@ -45,9 +47,8 @@ async def test_integration_settings_require_installation_owner_and_keep_secrets_
         executor.state.service = Runtime(config, database, vault, private_http, queue)
         private = PrivateClient(private_http, "http://executor", SecretStr("executor-private"))
         app = create_app(
-            ApiServices(access=AccessControl(accounts), private=private),
+            ApiServices(access=AccessControl(accounts), private=private, installation=installation),
             browser=make_browser(identity),
-            settings=Settings(admin_email=identity.email),
         )
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -70,7 +71,9 @@ async def test_integration_settings_require_installation_owner_and_keep_secrets_
             assert "secret-fixture" not in status.text
             stored = await database.collection("integrations").find_one({"id": "gmail"})
             assert stored and "secret-fixture" not in str(stored)
-            app.state.config = Settings(admin_email="other@example.com")
+            await database.collection("installation").update_one(
+                {"_id": "main"}, {"$set": {"administrators": []}}
+            )
             assert (await http.put(root + "/gmail", headers=HEADERS, json=body)).status_code == 403
             assert (
                 await http.get("/v1/organisations/org_other/integrations", headers=HEADERS)

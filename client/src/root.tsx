@@ -7,6 +7,7 @@ import { api } from "./lib/api"
 import type { AccountSession, OrganisationMembership } from "./types"
 import { Button } from "./components/ui/button"
 import { OrganisationSetupPage } from "./pages/organisation"
+import { claimInstallation, setupKey } from "./lib/setup"
 import { SignInPage } from "./pages/signin"
 import { connectionCallbackIntegration, dashboardLocation } from "./lib/callback"
 
@@ -58,7 +59,7 @@ export function AuthenticationBoundary() {
     }
     let current = true
     setSessionError("")
-    void api.getSession().then((value) => {
+    void claimInstallation().then(() => api.getSession()).then((value) => {
       if (!current) return
       sessionStorage.removeItem(dashboardReturnKey)
       const callbackWorkspace = new URLSearchParams(window.location.search).get("workspace")
@@ -91,7 +92,7 @@ export function AuthenticationBoundary() {
     redirectToSignIn(false)
     return <LoadingScreen />
   }
-  if (sessionError) return <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6"><div className="text-center"><p className="text-[12px] text-[var(--red)]">{sessionError}</p><Button className="mt-4" onClick={() => window.location.reload()}>Try again</Button></div></main>
+  if (sessionError) return <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6"><div className="text-center"><p className="text-[12px] text-[var(--red)]">{sessionError}</p>{sessionStorage.getItem(setupKey) && <Button className="mt-4 mr-2" variant="secondary" onClick={() => { sessionStorage.removeItem(setupKey); window.location.reload() }}>Cancel setup</Button>}<Button className="mt-4" onClick={() => window.location.reload()}>Try again</Button></div></main>
   if (!session) return <LoadingScreen />
   if (!active) return <OrganisationSetupPage onCreated={(membership) => {
     activateOrganisation(membership)

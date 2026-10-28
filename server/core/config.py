@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     auth_secret: SecretStr | None = None
     session_hours: int = 12
     resend_key: SecretStr | None = None
-    admin_email: str | None = None
+    setup_token: SecretStr | None = None
+    setup_token_file: Path | None = None
     email_sender: str = "Kinu <noreply@example.com>"
     aws_region: str = "eu-west-2"
     executor_url: str = "http://executor:8002"
@@ -30,7 +31,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
-        for key in ("auth_secret", "executor_token"):
+        for key in ("auth_secret", "executor_token", "setup_token"):
             path = getattr(self, key + "_file")
             if path:
                 setattr(self, key, SecretStr(path.read_text().strip()))

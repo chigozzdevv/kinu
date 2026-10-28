@@ -9,6 +9,7 @@ from agents.storage import AgentRepository
 from browser.access import BrowserAccessService
 from browser.setup import BrowserSetupApi
 from core.account import AccountService
+from core.account.installation import Installation
 from core.approval import ApprovalService
 from core.audit import AuditWriter
 from core.auth import AccessControl, AuthenticatedIdentity
@@ -63,6 +64,7 @@ class ApiServices:
     demo: Source | None = None
     gmail: GmailBridge | None = None
     private: PrivateClient | None = None
+    installation: Installation | None = None
 
 
 def services(request: Request) -> ApiServices:

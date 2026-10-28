@@ -6,6 +6,7 @@ import httpx
 from agents.memory import AgentMemoryService
 from agents.store import AgentStore
 from core.account import AccountService
+from core.account.installation import Installation
 from core.account.store import AccountStore
 from core.approval import ApprovalService
 from core.approval.store import ApprovalStore
@@ -58,6 +59,7 @@ async def runtime(
             database = application_database(config)
             stack.push_async_callback(database.close)
             await database.open()
+            app.state.database = database
             accounts = AccountStore(database, _now)
             if services is None:
                 inventory = InventoryStore(database)
@@ -106,6 +108,7 @@ async def runtime(
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
                     private=private,
+                    installation=Installation(database),
                     audit=audit,
                     incidents=IncidentService(
                         IncidentStore(database),
@@ -133,6 +136,7 @@ async def runtime(
         try:
             yield
         finally:
+            app.state.database = None
             app.state.browser = browser
             app.state.services = services
 

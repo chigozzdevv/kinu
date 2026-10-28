@@ -4,6 +4,8 @@ import { Button } from "../components/ui/button"
 import { formControl } from "../components/workspace"
 import { clearSession, submitAuth } from "../lib/auth"
 
+import { setupKey } from "../lib/setup"
+
 type Mode = "signin" | "signup" | "verify" | "forgot" | "reset"
 const titles: Record<Mode, string> = {
   signin: "Sign in", signup: "Sign up", verify: "Verify email",
@@ -22,7 +24,7 @@ const labelClass = "mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)
 const linkClass = "focus-ring rounded-md font-semibold text-[var(--ink)] disabled:opacity-50"
 
 export function SignInPage({ configured, returnTo }: { configured: boolean; returnTo: string }) {
-  const [mode, setMode] = useState<Mode>("signin")
+  const [mode, setMode] = useState<Mode>(() => sessionStorage.getItem(setupKey) ? "signup" : "signin")
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")

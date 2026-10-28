@@ -5,7 +5,7 @@ export interface Config {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  if (env.KINU_MONGO_URL || env.KINU_VAULT_URL || env.KINU_VAULT_KEY || env.KINU_RESEND_KEY) {
+  if (env.KINU_MONGO_URL || env.KINU_VAULT_URL || env.KINU_VAULT_KEY || env.KINU_RESEND_KEY || env.KINU_SETUP_TOKEN || env.KINU_SETUP_TOKEN_FILE) {
     throw new Error("Private API storage credentials cannot enter the agent service")
   }
   if (env.KINU_GMAIL_SECRET_ARN || env.KINU_GMAIL_TABLE) {
