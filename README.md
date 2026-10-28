@@ -77,6 +77,12 @@ identify an existing key from its token, so Kinu only manages keys whose creatio
 Creation receipts bind the issuer ID, scope and token fingerprint privately; unknown keys cannot
 be imported or retired through this connection.
 
+For Resend browser execution, open the provider connection and choose **Use browser**, then sign
+in through its private browser. Edit an existing credential and select that browser connection.
+Kinu preserves its generation, vault value and consumer bindings; an active rotation blocks the
+switch. The linked API connection verifies receipts and issuer metadata. Creation and retirement
+run through the dashboard with checked names, permissions, domain and key IDs.
+
 For hosting, choose Vercel, Railway or Render, select allowed projects, then open the connection's
 **Credentials** tab. Choose key variables and their issuer identities. Kinu creates inventory and
 consumer bindings automatically and reuses the existing connections across keys. Render uses an
@@ -126,7 +132,8 @@ verification evidence. An interrupted mutation is held for evidence review rathe
 blindly. The Chromium smoke test verifies capture barriers, private transfer and context disposal.
 Browser providers use a published playbook imported under **Playbooks → Add playbook**.
 Definitions declare exact public hostnames, checked page controls, private capture fields and a
-fixed read-only issuer identity probe. Sign in through the connection's private browser once.
+fixed read-only issuer identity probe or a supported private receipt verifier. Sign in through the
+connection's private browser once.
 Stagehand routes sanitized control choices through the workspace's Builder account; Playwright
 executes approved actions privately. The model never observes the provider page, screenshots or
 login state. Creation closes that browser context after encrypted capture. Each protected step

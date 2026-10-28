@@ -126,6 +126,7 @@ export interface Connection {
   rpc?: { function_arn: string, operations: Record<string, "metadata" | "create" | "revoke"> } | null
   playbook_id: Identifier | null
   playbook_version_id: Identifier | null
+  verification_connection_id?: Identifier | null
   status: ConnectionStatus
   authenticated_at: string | null
   authorization_expires_at: string | null

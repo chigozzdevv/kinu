@@ -129,6 +129,16 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     },
   })
   const open = useMutation({ mutationFn: async (id: string) => waitForBrowserSetup(await api.beginBrowserSetup(id)) })
+  const useBrowser = useMutation({
+    mutationFn: (id: string) => api.prepareProviderBrowser(id),
+    onSuccess: async (connection) => {
+      await queryClient.invalidateQueries({ queryKey: ["connections"] })
+      await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
+      setSelected(connection)
+      setTab("access")
+      onSelectConnection(connection.id)
+    },
+  })
   const updateConnection = useMutation({
     mutationFn: () => api.updateConnection(currentSelected!.id, { expected_revision: currentSelected!.revision, display_name: editName.trim() }),
     onSuccess: async (connection) => {
@@ -204,14 +214,14 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   if (currentSelected) return <div className="page">
     {playbookNotice}
-    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.platform === "resend" && currentSelected.interface === "api" && currentSelected.status === "ready" && <Button variant="secondary" onClick={() => useBrowser.mutate(currentSelected.id)} disabled={useBrowser.isPending}>{useBrowser.isPending ? "Preparing…" : "Use browser"}</Button>}{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, ...(["vercel", "railway", "render"].includes(currentSelected.platform) ? [{ id: "credentials" as const, label: "Credentials" }] : []), { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
       {tab === "credentials" && <HostKeys connection={currentSelected} connections={connections.data!} />}
       {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook version">{currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3"><ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{browserPlaybooks.map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList><Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
     </DetailCard>
-    {(attach.error || open.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error)?.message}</div>}
+    {(attach.error || open.error || useBrowser.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error ?? useBrowser.error)?.message}</div>}
     <ManageResourceModal isOpen={editing} onClose={() => setEditing(false)} title="Edit connection" resourceLabel="connection" onSave={() => updateConnection.mutate()} onDelete={() => archiveConnection.mutate()} deleteTitle="Disconnect connection?" deleteDescription={disconnectImpact(currentSelected)} deleteTriggerLabel="Disconnect" deleteActionLabel="Disconnect" deletingActionLabel="Disconnecting…" dependencies={[
       { label: "Credentials", items: graph.data!.credentials.filter((credential) => currentSelected.id === credential.connection_id || currentSelected.id === credential.secret_store_connection_id).map((credential) => credential.display_name) },
       { label: "Services", items: graph.data!.services.filter((service) => currentSelected.id === service.runtime_connection_id || service.telemetry_connection_ids.includes(currentSelected.id)).map((service) => service.display_name) },
@@ -359,25 +369,29 @@ function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Omit<Connecti
   </SetupPage>
 }
 
-function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: ConnectionSetupProps & { onBack: () => void }) {
+function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks, connections }: ConnectionSetupProps & { onBack: () => void }) {
   const queryClient = useQueryClient()
   const [step, setStep] = useState(0)
   const [playbookVersion, setPlaybookVersion] = useState(playbooks.find((item) => item.active_version_id)?.active_version_id ?? "")
   const [created, setCreated] = useState<Connection | null>(null)
   const [creatingPlaybook, setCreatingPlaybook] = useState(false)
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
+  const [verification, setVerification] = useState("")
   const chosenPlaybook = playbooks.find((item) => item.active_version_id === playbookVersion)
   const playbookDetail = useQuery({ queryKey: ["playbooks", chosenPlaybook?.id], queryFn: () => api.getPlaybook(chosenPlaybook!.id), enabled: Boolean(chosenPlaybook) })
   const create = useMutation({ mutationFn: (input: CreateConnectionInput) => api.createConnection(input) })
   const open = useMutation({ mutationFn: async (id: string) => waitForBrowserSetup(await api.beginBrowserSetup(id)) })
   const definition = playbookDetail.data?.active_version?.definition
+  const needsReceipt = definition?.verifier?.mode === "resend-receipt"
+  const verifiers = connections.filter((item) => item.platform === "resend" && item.interface === "api" && item.status === "ready")
 
   async function submit() {
-    if (!chosenPlaybook || !definition) return
+    if (!chosenPlaybook || !definition || (needsReceipt && !verification)) return
     const timestamp = new Date().toISOString()
     const result = await create.mutateAsync({ connection: {
       id: identifier("conn"), organisation_id: activeOrganisationId(), platform: chosenPlaybook.platform, display_name: chosenPlaybook.name, roles: ["provider"], interface: "browser", authorization: "browser-session", authorization_reference: null,
       capabilities: ["browser.authenticate", "browser.execute", "browser.secureCapture", "provider.listCredentialMetadata", "provider.createCredential", "provider.revokeCredential", "provider.testCredential"], allowed_resources: definition.allowed_domains, http: null, playbook_id: null, playbook_version_id: null, status: "setup-required", authenticated_at: null, authorization_expires_at: null, last_validated_at: null,
+      verification_connection_id: needsReceipt ? verification : null,
       region: "global", created_at: timestamp, updated_at: timestamp, revision: 0,
     }, playbook_id: chosenPlaybook.id, playbook_version_id: playbookVersion })
     await onChanged()
@@ -413,9 +427,9 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: 
     }} />}
   </>
 
-  const canContinue = Boolean(playbookVersion && definition?.allowed_domains.length)
+  const canContinue = Boolean(playbookVersion && definition?.allowed_domains.length && (!needsReceipt || verification))
   return <SetupPage eyebrow="Inventory / Connections" title="Computer Use" steps={["Setup", "Review"]} current={step} onBack={() => setStep((value) => value - 1)} onExit={onBack} onCancel={onClose} error={create.error?.message || playbookDetail.error?.message} primary={step === 0 ? <Button onClick={() => setStep(1)} disabled={!canContinue}>Continue</Button> : <Button onClick={submit} disabled={create.isPending}>{create.isPending ? "Creating…" : "Create connection"}</Button>}>
-    {step === 0 && <div className="space-y-5"><p className="text-[10px] leading-5 text-[var(--ink-muted)]">Computer Use follows a playbook to rotate credentials in the vendor dashboard.</p><ResourceSelect label="Playbook" value={playbookVersion} onChange={setPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{playbooks.filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect></div>}
+    {step === 0 && <div className="space-y-5"><p className="text-[10px] leading-5 text-[var(--ink-muted)]">Rotate keys through the provider dashboard.</p><ResourceSelect label="Playbook" value={playbookVersion} onChange={setPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{playbooks.filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect>{needsReceipt && <Field label="Verify with"><select className={formControl} value={verification} onChange={(event) => setVerification(event.target.value)}><option value="">Select Resend connection</option>{verifiers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></Field>}</div>}
     {step === 1 && <Section title="Computer Use" onEdit={() => setStep(0)}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Platform"><Provider value={chosenPlaybook?.platform ?? ""} /></Detail><Detail label="Access">Secure browser</Detail></DetailList></Section>}
   </SetupPage>
 }

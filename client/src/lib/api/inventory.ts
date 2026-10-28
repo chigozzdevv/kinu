@@ -3,6 +3,11 @@ import type { ImportCredentialInput, ControlPreferences, ControlVersion, Credent
 import { request, archive, workspacePath } from "./http"
 
 export const inventory = {
+  async selectCredentialBrowser(credentialId: Identifier, connectionId: Identifier, expectedRevision: number): Promise<ManagedCredential> {
+    return request(`${workspacePath()}/connections/provider/credentials/${credentialId}/browser`, {
+      method: "POST", body: JSON.stringify({ connection_id: connectionId, expected_revision: expectedRevision }),
+    })
+  },
   async getGraph(): Promise<InventoryGraph> {
     return request(`${workspacePath()}/inventory/graph`)
   },

@@ -55,6 +55,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [addingControlConnection, setAddingControlConnection] = useState(false)
   const [editName, setEditName] = useState("")
+  const [editConnection, setEditConnection] = useState("")
   const [editControls, setEditControls] = useState<ControlValues>(defaultControls)
   const [tab, setTab] = useState("overview")
   const [viewControlVersionId, setViewControlVersionId] = useState<string | null>(initialControlVersionId ?? null)
@@ -110,6 +111,9 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
         })
         credential = changed.credential
         queryClient.setQueryData(["controls", credential.id, changed.controls.id], changed.controls)
+      }
+      if (editConnection !== credential.connection_id) {
+        credential = await api.selectCredentialBrowser(credential.id, editConnection, credential.revision)
       }
       return credential
     },
@@ -194,6 +198,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const selectedAction = currentSelected ? actionFor(currentSelected) : undefined
   const editChanged = Boolean(currentSelected && currentControlVersion.data) && (
     editName.trim() !== currentSelected!.display_name
+    || editConnection !== currentSelected!.connection_id
     || !sameControls(editControls, controlsFromDefinition(currentControlVersion.data!.definition))
   )
 
@@ -218,7 +223,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     <div className="page">
       {activityNotice}
       {playbookNotice}
-      <PageHeader eyebrow="Inventory / Credentials" title={currentSelected.display_name} titlePrefix={<Provider value={currentSelected.provider} label={false} />} onBack={() => { setSelected(null); setViewControlVersionId(null); onSelectCredential("") }} actions={<>{(selectedAction?.target || selectedAction?.runId) && <Button onClick={() => performAction(currentSelected)}>{selectedAction.label}<ArrowUpRight className="size-3.5" /></Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); setEditControls(controlsFromDefinition(currentControlVersion.data?.definition)); saveCredential.reset(); setEditing(true) }} disabled={!currentControlVersion.data}>Edit</Button><Button variant="ghost" onClick={() => { deleteCredential.reset(); setConfirmingDelete(true) }}>Delete</Button></>} />
+      <PageHeader eyebrow="Inventory / Credentials" title={currentSelected.display_name} titlePrefix={<Provider value={currentSelected.provider} label={false} />} onBack={() => { setSelected(null); setViewControlVersionId(null); onSelectCredential("") }} actions={<>{(selectedAction?.target || selectedAction?.runId) && <Button onClick={() => performAction(currentSelected)}>{selectedAction.label}<ArrowUpRight className="size-3.5" /></Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); setEditConnection(currentSelected.connection_id); setEditControls(controlsFromDefinition(currentControlVersion.data?.definition)); saveCredential.reset(); setEditing(true) }} disabled={!currentControlVersion.data}>Edit</Button><Button variant="ghost" onClick={() => { deleteCredential.reset(); setConfirmingDelete(true) }}>Delete</Button></>} />
       <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "consumers", label: "Consumers" }, { id: "controls", label: "Controls" }]} value={tab} onChange={(nextTab) => { setTab(nextTab); onSelectCredential(currentSelected.id, nextTab, nextTab === "controls" ? viewControlVersionId ?? undefined : undefined) }} />
       <DetailCard>
         {tab === "overview" && <DetailList><Detail label="Type">{titleCase(currentSelected.kind)}</Detail><Detail label="Scopes">{currentSelected.scopes.join(", ") || "None"}</Detail><Detail label="Provider ID">{currentSelected.provider_id ?? "Not recorded"}</Detail><Detail label="Consumers">{currentSelected.consumer_ids.length}</Detail><Detail label="Secret reference"><span className="mono-code break-all">{currentSelected.secret_reference}</span></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
@@ -240,6 +245,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
       >
         <div className="space-y-6">
           <Field label="Credential name"><input className={formControl} value={editName} onChange={(event) => setEditName(event.target.value)} /></Field>
+          {connections.data!.some((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready") && <Field label="Provider connection"><select className={formControl} value={editConnection} onChange={(event) => setEditConnection(event.target.value)}><option value={currentSelected.connection_id}>{selectedConnection?.display_name}</option>{connections.data!.filter((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready").map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></Field>}
           <ControlsFields value={editControls} connections={connections.data!} onAddConnection={() => setAddingControlConnection(true)} onChange={setEditControls} />
         </div>
       </ManageResourceModal>

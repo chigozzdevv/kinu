@@ -19,6 +19,9 @@ export interface AwsPrepared {
 }
 
 export const connections = {
+  async prepareProviderBrowser(connectionId: Identifier): Promise<Connection> {
+    return request(`${workspacePath()}/connections/provider/${connectionId}/browser`, { method: "POST" })
+  },
   async connectProvider(input: { display_name: string; platform: string; http?: HttpProviderApi; token: string; domain_id?: string }): Promise<Connection> {
     return request(`${workspacePath()}/connections/provider`, { method: "POST", body: JSON.stringify(input) })
   },
