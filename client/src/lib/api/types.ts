@@ -24,6 +24,7 @@ export interface CreateConnectionInput {
 }
 
 export interface PlaybookDefinition {
+  verifier?: Record<string, unknown> | null
   name: string
   platform: string
   allowed_domains: string[]

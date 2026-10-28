@@ -7,7 +7,7 @@ import { PageHeader } from "../components/header"
 import { ManageResourceModal } from "../components/manage"
 import { Marker } from "../components/marker"
 import { Provider } from "../components/provider"
-import { Failure, Loading, Notice } from "../components/state"
+import { Failure, Loading } from "../components/state"
 import { Toolbar } from "../components/toolbar"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Field, FormGrid, SelectControl, SetupPage, formControl } from "../components/workspace"
 import type { Playbook } from "../types"
 import { api, type PlaybookDetail, type PreparedPlaybook } from "../lib/api"
+import { BookImport } from "./book-import"
 import { formatDate, providerName } from "../lib/format"
 
 const steps = ["Source", "Review"]
@@ -32,7 +33,6 @@ function playbookStatus(playbook: Playbook) {
 }
 
 export function PlaybooksPage() {
-  const features = useFeatures()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [platform, setPlatform] = useState("all")
@@ -92,7 +92,7 @@ export function PlaybooksPage() {
   if (creating || (versioning && detail.data)) return <PlaybookSetup existing={versioning ? detail.data : undefined} onClose={() => { setCreating(false); setVersioning(false) }} onCreated={async (playbook) => { await Promise.all([queryClient.invalidateQueries({ queryKey: ["playbooks"] }), queryClient.invalidateQueries({ queryKey: ["playbooks", playbook.id] })]); setSelected(playbook); setTab("procedure"); setCreating(false); setVersioning(false) }} />
 
   if (currentSelected) return <div className="page">
-    <PageHeader eyebrow="Inventory / Playbooks" title={currentSelected.name} onBack={() => setSelected(null)} actions={<>{latestVersion?.state === "draft" ? <Button onClick={() => publishPlaybook.mutate()} disabled={publishPlaybook.isPending}>{publishPlaybook.isPending ? "Publishing…" : "Publish"}</Button> : <Button disabled={!features.data?.playbook_generation} onClick={() => setVersioning(true)}>New version</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.name); renamePlaybook.reset(); archivePlaybook.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Playbooks" title={currentSelected.name} onBack={() => setSelected(null)} actions={<>{latestVersion?.state === "draft" ? <Button onClick={() => publishPlaybook.mutate()} disabled={publishPlaybook.isPending}>{publishPlaybook.isPending ? "Publishing…" : "Publish"}</Button> : <Button onClick={() => setVersioning(true)}>New version</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.name); renamePlaybook.reset(); archivePlaybook.reset(); setEditing(true) }}>Edit</Button></>} />
     {publishPlaybook.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{publishPlaybook.error.message}</div>}
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "procedure", label: "Procedure" }, { id: "connections", label: "Connections" }]} value={tab} onChange={setTab} />
     <DetailCard>
@@ -108,8 +108,8 @@ export function PlaybooksPage() {
   </div>
 
   return <div className="page">
-    <PageHeader eyebrow="Inventory" title="Playbooks" actions={<Button disabled={!features.data?.playbook_generation} onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add playbook</Button>} />
-    {features.data && !features.data.playbook_generation && <Notice>Playbook generation is not available yet.</Notice>}
+    <PageHeader eyebrow="Inventory" title="Playbooks" actions={<Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add playbook</Button>} />
+
     <Toolbar value={search} onChange={setSearch} placeholder="Search playbooks or platforms" onClear={() => { setSearch(""); setPlatform("all"); setStatus("all") }} filters={[{ label: "Platform", value: platform, defaultValue: "all", onChange: (event) => setPlatform(event.target.value), children: <><option value="all">All platforms</option>{[...new Set(playbooks.data!.map((item) => item.platform))].map((item) => <option key={item} value={item}>{providerName(item)}</option>)}</> }, { label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></> }]} />
     <Table><TableHeader><TableRow><TableHead>Playbook</TableHead><TableHead>Platform</TableHead><TableHead>Connections</TableHead><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody>{rows.map((playbook) => {
       const open = () => { setSelected(playbook); setTab("overview") }
@@ -157,7 +157,7 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
   }
 
   const sourceName = videoMode === "file" ? videoFile?.name : source
-  if (!features.data?.playbook_generation) return <div className="page"><PageHeader title="Playbooks" onBack={onClose} /><Notice>Playbook generation is not available yet.</Notice></div>
+  if (!features.data?.playbook_generation) return <BookImport onClose={onClose} onCreated={onCreated} existing={existing} />
 
   return <SetupPage eyebrow="Inventory / Playbooks" title={existing ? "New playbook version" : "Add playbook"} steps={steps} current={step} onBack={() => { setStep(0); save.reset() }} onCancel={onClose} error={(prepare.error ?? save.error)?.message} primary={step === 0 ? <Button onClick={review} disabled={!sourceReady || prepare.isPending}>{prepare.isPending ? "Processing…" : "Continue"}</Button> : <Button onClick={submit} disabled={!prepared || save.isPending}>{save.isPending ? "Adding…" : existing ? "Add version" : "Add playbook"}</Button>}>
     {step === 0 && <FormGrid>

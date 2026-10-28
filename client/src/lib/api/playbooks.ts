@@ -3,6 +3,9 @@ import type { PlaybookDefinition, PreparePlaybookInput, PreparedPlaybook, Walkth
 import { request, archive, workspacePath, ApiError } from "./http"
 
 export const playbooks = {
+  async importPlaybook(playbookId: Identifier, definition: PlaybookDefinition): Promise<{ playbook: Playbook; version: PlaybookVersion }> {
+    return request(`${workspacePath()}/playbooks/${playbookId}/versions`, { method: "POST", body: JSON.stringify({ version_id: `version_${crypto.randomUUID().replaceAll("-", "")}`, definition, source_ids: [] }) })
+  },
   async preparePlaybook(input: PreparePlaybookInput): Promise<PreparedPlaybook> {
     let source: WalkthroughSource
     if (input.source.kind === "text") {

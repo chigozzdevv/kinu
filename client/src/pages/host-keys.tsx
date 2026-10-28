@@ -18,7 +18,7 @@ export function HostKeys({ connection, connections }: { connection: Connection; 
   const variables = useQuery({ queryKey: ["host-variables", connection.id, project], queryFn: () => api.getHostVariables(connection.id, project), enabled: Boolean(project) })
   const mapped = useQuery({ queryKey: ["host-mapped", connection.id], queryFn: () => api.getHostMappings(connection.id) })
   const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(provider) })
-  const providers = connections.filter((item) => item.roles.includes("provider") && item.interface === "api" && item.http && item.status === "ready")
+  const providers = connections.filter((item) => item.roles.includes("provider") && (item.interface === "api" && item.http || item.interface === "browser") && item.status === "ready")
   const updateHealth = useMutation({
     mutationFn: ({ mapping, endpoint }: { mapping: HostMapping; endpoint: string }) => api.saveHostHealth(mapping.service, endpoint),
     onSuccess: async () => { setHealth({}); await Promise.all([query.invalidateQueries({ queryKey: ["host-mapped", connection.id] }), query.invalidateQueries({ queryKey: ["graph"] })]) },

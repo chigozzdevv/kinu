@@ -373,7 +373,7 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: 
     const timestamp = new Date().toISOString()
     const result = await create.mutateAsync({ connection: {
       id: identifier("conn"), organisation_id: activeOrganisationId(), platform: chosenPlaybook.platform, display_name: chosenPlaybook.name, roles: ["provider"], interface: "browser", authorization: "browser-session", authorization_reference: null,
-      capabilities: ["browser.authenticate", "browser.execute", "browser.secureCapture"], allowed_resources: definition.allowed_domains, http: null, playbook_id: null, playbook_version_id: null, status: "setup-required", authenticated_at: null, authorization_expires_at: null, last_validated_at: null,
+      capabilities: ["browser.authenticate", "browser.execute", "browser.secureCapture", "provider.listCredentialMetadata", "provider.createCredential", "provider.revokeCredential", "provider.testCredential"], allowed_resources: definition.allowed_domains, http: null, playbook_id: null, playbook_version_id: null, status: "setup-required", authenticated_at: null, authorization_expires_at: null, last_validated_at: null,
       region: "global", created_at: timestamp, updated_at: timestamp, revision: 0,
     }, playbook_id: chosenPlaybook.id, playbook_version_id: playbookVersion })
     await onChanged()
@@ -398,7 +398,7 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks }: 
 
   if (creatingPlaybook) return <PlaybookSetup onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => { await queryClient.invalidateQueries({ queryKey: ["playbooks"] }); setPlaybookVersion(playbook.active_version_id ?? ""); setCreatingPlaybook(false) }} />
   if (created) return <>
-    <SuccessPage eyebrow="Inventory / Connections" title="Computer Use ready" onBack={finish} actions={<><Button variant="secondary" onClick={finish}>Finish later</Button><Button onClick={openBrowser} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button></>}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Status">Authentication required</Detail></DetailList>{open.error && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{open.error.message}</div>}</SuccessPage>
+    <SuccessPage eyebrow="Inventory / Connections" title="Finish provider sign-in" onBack={finish} actions={<><Button variant="secondary" onClick={finish}>Finish later</Button><Button onClick={openBrowser} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button></>}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Status">Authentication required</Detail></DetailList>{open.error && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{open.error.message}</div>}</SuccessPage>
     {browserSetup && <BrowserSetupModal connection={created} setup={browserSetup} onClose={() => {
 
       setBrowserSetup(null)
