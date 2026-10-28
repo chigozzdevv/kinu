@@ -1,71 +1,15 @@
 import asyncio
 import hashlib
-import json
 import os
 import shutil
 import subprocess
 import zipfile
 from pathlib import Path
 
-from assessment import bundle
 from connectors.aws import AwsClient
-from core.storage.dataapi import DataApi
-from core.storage.database import Database
 
-
-async def outputs(aws: AwsClient, region: str, name: str) -> dict[str, str]:
-    result = await aws.call("cloudformation", "describe_stacks", region, StackName=name)
-    return {item["OutputKey"]: item["OutputValue"] for item in result["Stacks"][0]["Outputs"]}
-
-
-async def bootstrap(
-    aws: AwsClient, region: str, store: dict[str, str], native: dict[str, str]
-) -> None:
-    secret = await aws.call(
-        "secretsmanager", "get_secret_value", region, SecretId=native["DatabaseSecretArn"]
-    )
-    password = json.loads(secret["SecretString"])["password"]
-    admin = Database(
-        data_api=DataApi(
-            aws, region, store["ClusterArn"], store["AdminSecretArn"], store["Database"]
-        )
-    )
-    async with admin.connection() as sql:
-        await sql.execute(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='kinu_native') "
-            "THEN CREATE ROLE kinu_native LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE; "
-            "END IF; END $$"
-        )
-        async with sql.transaction():
-            await sql.execute("SELECT set_config('kinu.new_password', %s, true)", (password,))
-            await sql.execute(
-                "DO $$ BEGIN EXECUTE format('ALTER ROLE kinu_native PASSWORD %L', "
-                "current_setting('kinu.new_password')); END $$"
-            )
-        existing = await (
-            await sql.execute("SELECT datname FROM pg_database WHERE datname='kinu_native'")
-        ).fetchone()
-        if not existing:
-            await sql.execute("CREATE DATABASE kinu_native")
-        await sql.execute("GRANT CONNECT ON DATABASE kinu TO kinu_app")
-        await sql.execute("GRANT CONNECT ON DATABASE kinu_native TO kinu_native")
-        await sql.execute("REVOKE CONNECT ON DATABASE kinu FROM PUBLIC")
-        await sql.execute("REVOKE CONNECT ON DATABASE kinu_native FROM PUBLIC")
-    password = ""
-    native_admin = Database(
-        data_api=DataApi(aws, region, store["ClusterArn"], store["AdminSecretArn"], "kinu_native")
-    )
-    import sqlparse
-
-    async with native_admin.connection() as sql:
-        for statement in sqlparse.split(Path("infra/native.sql").read_text()):
-            await sql.execute(statement)
-        await sql.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
-        await sql.execute("GRANT USAGE ON SCHEMA public TO kinu_native")
-        await sql.execute(
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kinu_native"
-        )
-    print("Native credential database provisioned separately from application data")
+from infra.assessment import bundle
+from infra.stack import outputs
 
 
 def package() -> Path:
@@ -124,11 +68,6 @@ async def main() -> None:
         ],
         check=True,
     )
-    native = await outputs(aws, region, "kinu-native")
-    await bootstrap(aws, region, store, native)
-    output = Path("/private/tmp/kinu-aws/native.json")
-    output.write_text(json.dumps(native))
-    output.chmod(0o600)
     print("Kinu Agent-Native service deployed")
 
 

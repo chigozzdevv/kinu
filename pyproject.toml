@@ -32,6 +32,7 @@ members = [
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers"]
 python_files = ["test.py"]
 pythonpath = [
+    ".",
     "server",
     "packages/contracts/src",
     "packages/policy/src",

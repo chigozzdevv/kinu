@@ -1,15 +1,13 @@
 import asyncio
 import hashlib
-import json
 import os
 import secrets
 import subprocess
 from pathlib import Path
 
-from bootstrap import main as bootstrap
 from connectors.aws import AwsClient
-from consumer import initialize
 from contracts import ManagedCredential
+from core.connection.models import AwsLink
 from core.errors import ResourceNotFoundError
 from core.storage.dataapi import DataApi
 from core.storage.database import Database
@@ -17,13 +15,14 @@ from core.storage.records import Records
 from demo.config import DemoConfig
 from demo.rpc import invoke
 from demo.seed import activate, seed
-from native import outputs
-from workspace import demo_workspace
+
+from infra.consumer import initialize
+from infra.stack import existing, outputs
+from infra.workspace import demo_workspace
 
 
 async def main() -> None:
     region, aws = os.environ.get("AWS_REGION", "eu-west-2"), AwsClient()
-    await bootstrap()
     store, app = await outputs(aws, region, "kinu-store"), await outputs(aws, region, "kinu-app")
     native, auth = (
         await outputs(aws, region, "kinu-native"),
@@ -33,9 +32,14 @@ async def main() -> None:
     database = Database(
         data_api=DataApi(aws, region, store["ClusterArn"], store["AppSecretArn"], store["Database"])
     )
-    target = Path("/private/tmp/kinu-aws/demo.json")
-    previous = json.loads(target.read_text()) if target.exists() else {}
-    organisation = previous.get("Organisation") or os.environ.get("KINU_DEMO_ORGANISATION")
+    deployed = await existing(aws, region, "kinu-demo")
+    previous = (
+        {item["OutputKey"]: item["OutputValue"] for item in deployed["Outputs"]} if deployed else {}
+    )
+    requested = os.environ.get("KINU_DEMO_ORGANISATION")
+    if previous and requested and requested != previous["Organisation"]:
+        raise RuntimeError("The existing demo belongs to another workspace")
+    organisation = requested or previous.get("Organisation")
     if not organisation:
         async with database.connection() as sql:
             members = await (
@@ -49,7 +53,12 @@ async def main() -> None:
             if len(members) == 1
             else await demo_workspace(aws, region, database, auth["PoolId"])
         )
-    external = previous.get("ExternalId") or secrets.token_urlsafe(32)
+    if deployed:
+        async with Records(database).read() as rows:
+            link = await rows.get(AwsLink, organisation, "aws_demo")
+        external = link.external_id
+    else:
+        external = secrets.token_urlsafe(32)
     blob = Path(".build/server.zip").read_bytes()
     key = f"server/{hashlib.sha256(blob).hexdigest()}.zip"
     await aws.call(
@@ -91,8 +100,6 @@ async def main() -> None:
         check=True,
     )
     values = await outputs(aws, region, "kinu-demo")
-    target.write_text(json.dumps(values | {"ExternalId": external}))
-    target.chmod(0o600)
     config = DemoConfig(
         organisation_id=organisation,
         provider_function=values["ProviderArn"],

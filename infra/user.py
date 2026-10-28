@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import os
@@ -9,15 +10,35 @@ from connectors.aws.client import AwsError
 
 
 async def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output", type=Path, required=True, help="Private file for synthetic login credentials"
+    )
+    options = parser.parse_args()
     aws, region = AwsClient(), os.environ.get("AWS_REGION", "eu-west-2")
     stack = await aws.call("cloudformation", "describe_stacks", region, StackName="kinu-auth")
     outputs = {item["OutputKey"]: item["OutputValue"] for item in stack["Stacks"][0]["Outputs"]}
-    target = Path("/private/tmp/kinu-aws/demo-user.json")
+    target = options.output.resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
     email = "demo@kinu.invalid"
     saved = json.loads(target.read_text()) if target.exists() else None
     if saved and saved.get("ready"):
         print("Kinu synthetic sign-in account already exists")
         return
+    if saved is None:
+        try:
+            await aws.call(
+                "cognito-idp",
+                "admin_get_user",
+                region,
+                UserPoolId=outputs["PoolId"],
+                Username=email,
+            )
+        except AwsError as error:
+            if error.code != "UserNotFoundException":
+                raise
+        else:
+            raise RuntimeError("The demo account already exists; use its original credential file")
     password = saved["password"] if saved else "Aa9!" + secrets.token_urlsafe(36)
     if saved is None:
         with open(target, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:

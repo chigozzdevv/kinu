@@ -1,15 +1,18 @@
-import json
+import asyncio
 import os
 import subprocess
 import sys
-from pathlib import Path
+
+from connectors.aws import AwsClient
+
+from infra.stack import outputs
 
 
-def main() -> None:
-    outputs = json.loads(Path("/private/tmp/kinu-aws/store.json").read_text())
+async def main() -> None:
+    store = await outputs(AwsClient(), os.environ.get("AWS_REGION", "eu-west-2"), "kinu-store")
     environment = os.environ | {
-        "KINU_TEST_DATA_API_CLUSTER_ARN": outputs["ClusterArn"],
-        "KINU_TEST_DATA_API_SECRET_ARN": outputs["AppSecretArn"],
+        "KINU_TEST_DATA_API_CLUSTER_ARN": store["ClusterArn"],
+        "KINU_TEST_DATA_API_SECRET_ARN": store["AppSecretArn"],
     }
     paths = sys.argv[1:] or ["server/tests/storage"]
     result = subprocess.run(
@@ -19,4 +22,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

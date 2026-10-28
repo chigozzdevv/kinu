@@ -78,6 +78,34 @@ advisory; review it before enabling any generic chat route.
 Infrastructure templates and deployment utilities are in `infra/`. Invitation delivery and
 arbitrary production provider connections are not implemented.
 
+## Deployment
+
+Run infrastructure commands from the repository root with an authorized temporary AWS session,
+`AWS_REGION` and `PYTHONPATH=server:packages/contracts/src:packages/policy/src:packages/telemetry/src`.
+Create the auth, store and artifact stacks from their matching templates before initialization.
+
+```sh
+python -m infra.bootstrap
+python -m infra.package --api
+python -m infra.deploy
+python -m infra.native
+python -m infra.bootstrap --native
+python -m infra.launch
+python -m infra.deploy
+```
+
+Database initialization is explicit. Routine app, native and demo deployments do not initialize
+roles or schemas. Deployment tools discover stack outputs from AWS; they do not depend on local
+JSON state. Build the frontend and upload `client/dist` to the app stack's private frontend bucket.
+Retain older hashed assets for open tabs. Packaging installs locked Linux Python dependencies into
+a fresh staging directory. Omit `--api` to include the remote Playwright driver.
+
+`infra/check.py` runs storage tests against the deployed database. For a synthetic test login,
+run `python -m infra.user --output /path/to/private/demo-user.json`; this command never resets
+an existing demo account when its original credential file is missing. Demo launch uses an
+explicit `KINU_DEMO_ORGANISATION`, an existing deployment, or the synthetic Cognito workspace.
+Existing demo role bindings are recovered from PostgreSQL.
+
 ## Layout
 
 | Path | Purpose |

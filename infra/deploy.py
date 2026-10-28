@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -74,9 +73,6 @@ async def main() -> None:
         raise SystemExit(result.returncode)
     deployed = await aws.call("cloudformation", "describe_stacks", region, StackName="kinu-app")
     values = {item["OutputKey"]: item["OutputValue"] for item in deployed["Stacks"][0]["Outputs"]}
-    target = Path(os.environ.get("KINU_DEPLOY_OUTPUT", "/private/tmp/kinu-aws/app.json"))
-    target.write_text(json.dumps(values))
-    target.chmod(0o600)
     print(f"Kinu application deployed: {values['PublicUrl']}")
 
 

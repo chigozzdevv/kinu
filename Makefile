@@ -34,7 +34,7 @@ native:
 	npm --prefix agent run check
 	npm --prefix agent test
 	npm --prefix agent run build
-	$(UV_ENV) uv run python infra/assessment.py
+	$(UV_ENV) uv run python -m infra.assessment
 
 storage:
 	npm --prefix agent run test:storage
