@@ -70,14 +70,10 @@ test("Builder scope stays limited to AI invocation and refresh", () => {
 
 test("Agent-Native sends Mongo-backed OAuth to Builder without SQL or key credentials", async () => {
   const events = [
-    ["message_start", { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant",
-      model: "gpt-6-luna", content: [], usage: { input_tokens: 2, output_tokens: 0 } } }],
-    ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }],
-    ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello" } }],
-    ["content_block_stop", { type: "content_block_stop", index: 0 }],
-    ["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }],
-    ["message_stop", { type: "message_stop" }],
-  ].map(([name, body]) => `event: ${name}\ndata: ${JSON.stringify(body)}\n\n`).join("")
+    { type: "text-delta", text: "hello" },
+    { type: "usage", inputTokens: 2, outputTokens: 1, creditsUsed: 0.01 },
+    { type: "stop", reason: "end_turn" },
+  ].map((body) => JSON.stringify(body) + "\n").join("")
   let calls = 0
   const request: typeof fetch = async (input) => {
     calls++
@@ -85,9 +81,12 @@ test("Agent-Native sends Mongo-backed OAuth to Builder without SQL or key creden
     assert.equal(call.url, "https://api.builder.io/agent-native/gateway/v1/messages")
     assert.equal(call.headers.get("authorization"), "Bearer oauth-private")
     assert.equal(call.headers.get("x-api-key"), null)
-    const body = await call.json() as { model: string }
+    assert.equal(call.redirect, "error")
+    const body = await call.json() as { model: string, max_tokens: number, stream?: boolean }
     assert.equal(body.model, "gpt-6-luna")
-    return new Response(events, { headers: { "content-type": "text/event-stream" } })
+    assert.equal(body.max_tokens, 256)
+    assert.equal(body.stream, undefined)
+    return new Response(events, { headers: { "content-type": "application/x-ndjson" } })
   }
   const result = []
   for await (const event of builderEngine("oauth-private", request).stream({
