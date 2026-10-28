@@ -129,6 +129,7 @@ async def test_default_runtime_serves_data_and_reports_unavailable_integrations(
         assert (await client.get(f"{root}/features", headers=HEADERS)).json() == {
             "aws_connections": False,
             "github": False,
+            "gmail": False,
             "provider_api": False,
             "browser_setup": False,
             "browser_execution": False,

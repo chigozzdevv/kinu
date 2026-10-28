@@ -73,3 +73,7 @@ search-path = [
     "packages/telemetry/src",
     "packages/testkit/src",
 ]
+
+[[tool.mypy.overrides]]
+module = ["dkim", "dkim.*"]
+ignore_missing_imports = true

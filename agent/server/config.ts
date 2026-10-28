@@ -8,6 +8,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.KINU_DATABASE_URL || env.KINU_DATA_API_CLUSTER_ARN || env.KINU_DATA_API_SECRET_ARN) {
     throw new Error("Private API storage credentials cannot enter the agent service")
   }
+  if (env.KINU_GMAIL_SECRET_ARN || env.KINU_GMAIL_TABLE) {
+    throw new Error("Private mailbox storage cannot enter the agent service")
+  }
   if (["1", "true"].includes(env.AUTH_DISABLED?.toLowerCase() ?? "") ||
       env.AUTH_MODE === "local" || env.ACCESS_TOKEN || env.ACCESS_TOKENS) {
     throw new Error("Kinu requires its own authenticated session")

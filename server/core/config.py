@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     connector_function: str | None = None
     connection_principals: str | None = None
     rotation_queue_url: str | None = None
+    gmail_function: str | None = None
     public_url: str = "http://localhost:5173"
 
     @model_validator(mode="after")

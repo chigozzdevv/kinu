@@ -7,6 +7,7 @@ from contracts import (
     SecretVersionMetadata,
 )
 from core.auth import Permission
+from core.errors import ResourceConflictError
 from fastapi import APIRouter, Query, Request, status
 
 from api.deps import Identity, required, services
@@ -152,7 +153,17 @@ async def update_connection(
 ) -> Connection:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
-    changed = await required(api.inventory, "inventory").update_connection(
+    inventory = required(api.inventory, "inventory")
+    current = await inventory.get_connection(organisation_id, connection_id)
+    if (
+        current.platform == "gmail"
+        and current.authorization_reference == f"gmail://{current.id}"
+        and any(
+            value is not None for value in (body.capabilities, body.allowed_resources, body.region)
+        )
+    ):
+        raise ResourceConflictError("Manage Gmail senders in its connection settings")
+    changed = await inventory.update_connection(
         organisation_id,
         connection_id,
         body.expected_revision,
@@ -182,9 +193,19 @@ async def archive_connection(
 ) -> Connection:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
-    changed = await required(api.inventory, "inventory").archive_connection(
-        organisation_id, connection_id, body.expected_revision, body.cascade
-    )
+    inventory = required(api.inventory, "inventory")
+    current = await inventory.get_connection(organisation_id, connection_id)
+    if current.platform == "gmail" and current.authorization_reference == f"gmail://{current.id}":
+        if current.revision != body.expected_revision:
+            raise ResourceConflictError("connection changed; refresh first")
+        gmail = required(api.gmail, "gmail")
+        mailbox = await gmail.get(organisation_id, connection_id)
+        await gmail.disconnect(organisation_id, connection_id, mailbox.revision)
+        changed = await inventory.get_connection(organisation_id, connection_id)
+    else:
+        changed = await inventory.archive_connection(
+            organisation_id, connection_id, body.expected_revision, body.cascade
+        )
     await _audit_change(
         api,
         organisation_id,

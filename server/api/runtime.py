@@ -39,6 +39,7 @@ from core.workflow import RunWorkflow
 from demo.mail import Source
 from demo.queue import Queue
 from fastapi import FastAPI
+from mail.bridge import Bridge as GmailBridge
 from rotation.queue import Dispatcher
 
 from api.deps import ApiServices
@@ -112,6 +113,9 @@ async def runtime(
                         database, AwsClient(), config.aws_region, config.rotation_queue_url, queue
                     ),
                     demo=Source(database, queue) if queue else None,
+                    gmail=GmailBridge(AwsClient(), config.aws_region, config.gmail_function)
+                    if config.gmail_function
+                    else None,
                     audit=audit,
                     incidents=IncidentService(
                         IncidentStore(database),

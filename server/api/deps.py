@@ -33,6 +33,7 @@ from core.workflow import RunWorkflow
 from core.workflow.dispatch import RunDispatcher
 from demo.mail import Source
 from fastapi import Depends, Header, Request
+from mail.bridge import Bridge as GmailBridge
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,7 @@ class ApiServices:
     connections: ConnectionService | None = None
     dispatcher: RunDispatcher | None = None
     demo: Source | None = None
+    gmail: GmailBridge | None = None
 
 
 def services(request: Request) -> ApiServices:
@@ -119,6 +121,7 @@ def command_id(identity: AuthenticatedIdentity, organisation_id: str, key: str) 
 def required[T](value: T | None, name: str) -> T:
     if value is None:
         unavailable = {
+            "gmail": "Gmail setup is not complete.",
             "browsers": "Browser execution is not enabled for this deployment.",
             "browser setup": "Browser sign-in is not enabled for this deployment.",
             "connections": "AWS account onboarding is not enabled for this deployment.",
