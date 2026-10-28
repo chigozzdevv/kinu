@@ -138,6 +138,7 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
             await service.mail_store.initialize()
             await service.hosts.grants.initialize()
             await service.versions.initialize()
+            await service.providers.receipts.initialize()
 
             async def reap() -> None:
                 while True:

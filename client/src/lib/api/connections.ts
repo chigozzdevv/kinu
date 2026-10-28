@@ -19,8 +19,11 @@ export interface AwsPrepared {
 }
 
 export const connections = {
-  async connectProvider(input: { display_name: string; platform: string; http: HttpProviderApi; token: string }): Promise<Connection> {
+  async connectProvider(input: { display_name: string; platform: string; http?: HttpProviderApi; token: string; domain_id?: string }): Promise<Connection> {
     return request(`${workspacePath()}/connections/provider`, { method: "POST", body: JSON.stringify(input) })
+  },
+  async getResendDomains(token: string): Promise<Array<{ id: string; name: string }>> {
+    return request(`${workspacePath()}/connections/resend/domains`, { method: "POST", body: JSON.stringify({ token }) })
   },
   async prepareAws(input: AwsSetup): Promise<AwsPrepared> {
     return request(`${workspacePath()}/connections/aws`, { method: "POST", body: JSON.stringify(input) })

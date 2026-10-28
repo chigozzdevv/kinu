@@ -9,6 +9,7 @@ from browser.worker import Worker
 from connectors.base import ConnectorContext, ConnectorResponse, SecretValue
 from connectors.base.errors import ConnectorError
 from connectors.http import HttpProviderConnector
+from connectors.resend.client import Resend
 from connectors.secrets.store import SecretReader
 from contracts import (
     Connection,
@@ -22,6 +23,7 @@ from core.errors import ResourceConflictError
 from core.storage.records import Records
 from core.storage.runs import RunStore
 
+from executor.receipts import Receipts
 from executor.versions import Versions
 
 
@@ -36,6 +38,8 @@ class Providers(HttpProviderConnector):
         super().__init__(authorizations)
         self.browser, self.versions, self.probe = browser, versions, probe or Probe()
         self.catalog: Catalog = browser.catalog
+        self.receipts = Receipts(self.catalog.vault)
+        self.resend = Resend(authorizations, self.receipts)
         self.proofs = self.catalog.vault.database.collection("browser_keys")
 
     async def preflight(self, connection: Connection, run: RotationRun) -> None:
@@ -43,6 +47,8 @@ class Providers(HttpProviderConnector):
             await self.browser.lock(connection, run)
 
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return await self.resend.metadata(connection)
         if connection.interface is not ConnectionInterface.BROWSER:
             return await super().metadata(connection)
         version = await self.catalog.definition(connection)
@@ -69,6 +75,8 @@ class Providers(HttpProviderConnector):
         return tuple(result)
 
     async def identify(self, connection: Connection, value: SecretValue) -> str:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return await self.resend.identify(connection, value)
         if connection.interface is not ConnectionInterface.BROWSER:
             return await super().identify(connection, value)
         version = await self.catalog.definition(connection)
@@ -91,6 +99,8 @@ class Providers(HttpProviderConnector):
         return identity
 
     async def test_credential(self, connection: Connection, value: SecretValue) -> int:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return await self.resend.test_credential(connection, value)
         if connection.interface is not ConnectionInterface.BROWSER:
             return await super().test_credential(connection, value)
         config = (await self.catalog.definition(connection)).definition.verifier
@@ -108,6 +118,11 @@ class Providers(HttpProviderConnector):
     async def execute(
         self, tool: str, payload: dict[str, Any], context: ConnectorContext
     ) -> ConnectorResponse:
+        if (
+            context.connection.platform == "resend"
+            and context.connection.interface is ConnectionInterface.API
+        ):
+            return await self.resend.execute(tool, payload, context)
         if context.connection.interface is not ConnectionInterface.BROWSER:
             return await super().execute(tool, payload, context)
         if tool != "provider.createCredential" or context.run is None:
@@ -138,6 +153,8 @@ class Providers(HttpProviderConnector):
         return ConnectorResponse(result={"provider_id": capture.provider_id}, secret=value)
 
     async def revoke_credential(self, connection: Connection, provider_id: str) -> None:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return await self.resend.revoke_credential(connection, provider_id)
         if connection.interface is not ConnectionInterface.BROWSER:
             return await super().revoke_credential(connection, provider_id)
         matches = []

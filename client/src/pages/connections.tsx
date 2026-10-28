@@ -28,6 +28,7 @@ import { HostKeys } from "./host-keys"
 import { HostingSetup } from "./hosting"
 import type { HostingPlatform } from "../lib/api/hosting"
 import { GmailSetup } from "./gmail"
+import { ResendSetup } from "./resend"
 
 function identifier(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`
@@ -261,6 +262,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
     vercel: features.data?.hosting === true && configured("vercel"),
     railway: features.data?.hosting === true && configured("railway"),
     render: features.data?.hosting === true,
+    resend: features.data?.provider_api === true,
     github: features.data?.github === true,
     gmail: features.data?.gmail === true,
     aws: features.data?.aws_connections === true,
@@ -273,11 +275,12 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const visible: IntegrationKind[] = requestedIncident
     ? ["gmail", "github"]
     : requestedProvider
-    ? ["custom-api", "computer-use"]
+    ? ["resend", "custom-api", "computer-use"]
     : requestedCloud
       ? category === "runtime" ? ["vercel", "railway", "render", "aws"] : ["aws"]
       : []
   const connected = {
+    resend: connections.some((item) => item.platform === "resend" && item.status === "ready"),
     gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
     aws: connections.some((item) => item.platform === "aws" && item.status === "ready"),
@@ -295,6 +298,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
 
   if (integration === "vercel" || integration === "railway" || integration === "render") return <HostingSetup platform={integration} {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
+  if (integration === "resend") return <ResendSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
