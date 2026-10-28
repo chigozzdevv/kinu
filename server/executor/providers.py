@@ -9,13 +9,17 @@ from contracts import (
     ConnectionInterface,
     ConnectionRole,
     ConnectionStatus,
+    Contract,
     Identifier,
+    ManagedCredential,
 )
 from core.connection.provider import ProviderInput, ResendAccess
 from core.errors import ResourceConflictError
 from core.ids import new_id
 from core.inventory.store import InventoryStore
 from fastapi import APIRouter, Depends
+from hosting.browser import Browsers
+from pydantic import Field
 
 from executor.deps import authenticated
 from executor.runtime import Runtime
@@ -29,6 +33,30 @@ class ProviderRequest(ProviderInput):
 
 class DomainRequest(ResendAccess):
     organisation_id: Identifier
+
+
+class BrowserRequest(Contract):
+    organisation_id: Identifier
+    connection_id: Identifier
+    actor_id: Identifier
+    credential_id: Identifier | None = None
+    expected_revision: int = Field(default=0, ge=0)
+
+
+@router.post("/providers/browser")
+async def prepare_browser(
+    body: BrowserRequest, service: Annotated[Runtime, Depends(authenticated)]
+) -> Connection | ManagedCredential:
+    browsers = Browsers(service.mappings, service.providers)
+    if body.credential_id:
+        return await browsers.select(
+            body.organisation_id,
+            body.credential_id,
+            body.connection_id,
+            body.expected_revision,
+            body.actor_id,
+        )
+    return await browsers.prepare(body.organisation_id, body.connection_id, body.actor_id)
 
 
 @router.post("/providers/resend/domains")

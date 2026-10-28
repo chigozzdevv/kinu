@@ -294,7 +294,7 @@ class Worker:
                                 org,
                                 session.id,
                                 step.secure_field,
-                                step.checkpoint,
+                                step.result_checkpoint or step.checkpoint,
                                 state.store.id,
                                 credential.secret_resource,
                             )
@@ -328,7 +328,9 @@ class Worker:
                     if capture:
                         return capture
                     if step.checkpoint:
-                        await tab.driver.validate_checkpoint(step.checkpoint)
+                        await tab.driver.validate_checkpoint(
+                            step.result_checkpoint or step.checkpoint
+                        )
                 return None
         finally:
             if session.status is not BrowserStatus.TERMINATED:

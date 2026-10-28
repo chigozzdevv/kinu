@@ -254,6 +254,11 @@ def validate_definition(definition: PlaybookDraft) -> None:
         definition.login_url_pattern,
         *(step.checkpoint.url_pattern for step in definition.steps if step.checkpoint is not None),
         *(
+            step.result_checkpoint.url_pattern
+            for step in definition.steps
+            if step.result_checkpoint is not None
+        ),
+        *(
             url
             for step in definition.steps
             if step.tool == "browser.navigate"

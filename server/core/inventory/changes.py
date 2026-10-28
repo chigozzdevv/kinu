@@ -195,6 +195,11 @@ class InventoryChanges:
         cascade: bool = False,
     ) -> Connection:
         current = await self.catalog.get_connection(organisation_id, resource_id)
+        if any(
+            item.verification_connection_id == resource_id and item.archived_at is None
+            for item in await self.catalog.repository.connections(organisation_id)
+        ):
+            raise ResourceConflictError("Disconnect dependent browser accounts first")
         credentials = _active(await self.catalog.repository.credentials(organisation_id))
         services = _active(await self.catalog.repository.services(organisation_id))
         dependent_services = tuple(

@@ -51,6 +51,7 @@ class Connection(Contract):
     rpc: LambdaProviderApi | None = None
     playbook_id: Identifier | None = None
     playbook_version_id: Identifier | None = None
+    verification_connection_id: Identifier | None = None
     status: ConnectionStatus
     authenticated_at: AwareDatetime | None = None
     authorization_expires_at: AwareDatetime | None = None
@@ -92,6 +93,10 @@ class Connection(Contract):
             raise ValueError("a ready connection requires an authorization reference")
         browser = self.interface is ConnectionInterface.BROWSER
         browser_session = self.authorization is ConnectionAuthorization.BROWSER_SESSION
+        if self.verification_connection_id and (
+            not browser or self.platform != "resend" or self.verification_connection_id == self.id
+        ):
+            raise ValueError("receipt verification requires a separate Resend API connection")
         playbook_attached = self.playbook_id is not None and self.playbook_version_id is not None
         if (self.playbook_id is None) != (self.playbook_version_id is None):
             raise ValueError("connection playbook identity and version must be set together")

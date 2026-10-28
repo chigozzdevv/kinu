@@ -19,7 +19,13 @@ from core.storage.records import RecordTransaction
 
 async def check_references(rows: RecordTransaction, value: Contract) -> None:
     references: list[tuple[type[Contract], str]] = []
-    if isinstance(value, Environment):
+    if isinstance(value, Connection) and value.verification_connection_id:
+        references.append((Connection, value.verification_connection_id))
+        source = await rows.get(Connection, value.organisation_id, value.verification_connection_id)
+        from connectors.resend.client import Resend
+
+        Resend.validate(source)
+    elif isinstance(value, Environment):
         references.append((Application, value.application_id))
     elif isinstance(value, ConsumerService):
         references = [

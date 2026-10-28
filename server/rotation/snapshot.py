@@ -55,7 +55,7 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         current = await rows.get(CredentialGeneration, org, credential.active_generation_id)
         store = await rows.get(Connection, org, credential.secret_store_connection_id)
         provider = await rows.get(Connection, org, credential.connection_id)
-        playbook = None
+        playbook, verification = None, None
         if provider.interface is ConnectionInterface.BROWSER:
             if not provider.playbook_version_id or store.platform != "kinu":
                 raise ResourceConflictError(
@@ -63,6 +63,15 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
                 )
             playbook = await rows.get(PlaybookVersion, org, provider.playbook_version_id)
             verifier = playbook.definition.verifier
+            if verifier and verifier.mode == "resend-receipt":
+                if provider.platform != "resend" or not provider.verification_connection_id:
+                    raise ResourceConflictError("Select a Resend verification account")
+                verification = await rows.get(Connection, org, provider.verification_connection_id)
+                from connectors.resend.client import Resend
+
+                Resend.validate(verification)
+                if verification.archived_at or verification.status is not ConnectionStatus.READY:
+                    raise ResourceConflictError("Reconnect the Resend verification account")
             if (
                 playbook.playbook_id != provider.playbook_id
                 or playbook.state is not PlaybookState.PUBLISHED
@@ -169,4 +178,6 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         roles = ConnectionRoles(database, managed=True, read_only=True)
         await roles.resolve(store)
         await roles.resolve(targets[0].runtime)
-    return Snapshot(credential, tuple(targets), current, control, store, provider, playbook)
+    return Snapshot(
+        credential, tuple(targets), current, control, store, provider, playbook, verification
+    )

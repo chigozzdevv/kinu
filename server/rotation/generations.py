@@ -23,6 +23,7 @@ async def record(
                     organisation_id=org,
                     credential_id=state.credential.id,
                     provider_id=created["provider_id"],
+                    provider_display_name=created.get("provider_display_name"),
                     scopes=state.credential.scopes,
                     state=GenerationState.CREATING,
                     attempt_id=run_id,

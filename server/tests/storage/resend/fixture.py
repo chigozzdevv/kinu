@@ -33,6 +33,16 @@ class Platform:
                     },
                 )
             assert request.headers["authorization"] == "Bearer management-fixture"
+            if path == "/domains" and request.method == "GET":
+                return httpx.Response(
+                    200,
+                    json={
+                        "has_more": False,
+                        "data": [
+                            {"id": DOMAIN, "name": "issuer.example", "status": "verified"},
+                        ],
+                    },
+                )
             if path == "/api-keys" and request.method == "POST":
                 body = json.loads(request.content)
                 assert body["permission"] == "sending_access" and body["domain_id"] == DOMAIN

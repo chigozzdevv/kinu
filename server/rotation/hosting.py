@@ -165,6 +165,7 @@ class Effects:
             )
             return {
                 "provider_id": response.result["provider_id"],
+                "provider_display_name": response.result.get("name"),
                 "secret_reference": reference,
                 "fingerprint": fingerprint(value.bytes()),
                 "run_id": run_id,

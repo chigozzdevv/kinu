@@ -30,6 +30,7 @@ class Snapshot:
     store: Connection
     provider: Connection
     playbook: PlaybookVersion | None = None
+    verification: Connection | None = None
 
     @property
     def single(self) -> Target:

@@ -125,6 +125,19 @@ class Resend(HttpProviderConnector):
         if connection.http != definition(domain):
             raise ConnectorError("resend-config", "Use Kinu's Resend connection configuration")
 
+    async def selected_domain(self, connection: Connection) -> dict[str, str]:
+        self.validate(connection)
+        assert connection.http and connection.authorization_reference
+        with await self._secrets.access_for(
+            connection, connection.authorization_reference
+        ) as token:
+            domains = await self.domains(token)
+        domain = connection.http.create_credential.body["domain_id"]
+        selected = next((item for item in domains if item["id"] == domain), None)
+        if selected is None:
+            raise ConnectorError("resend-domain", "Reconnect a verified Resend domain")
+        return selected
+
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         self.validate(connection)
         result = []

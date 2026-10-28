@@ -228,6 +228,41 @@ class InventoryStore:
             await rows.replace(credential, expected_revision)
         return credential, controls
 
+    async def replace_provider(
+        self,
+        credential: ManagedCredential,
+        revision: int,
+        controls: ControlVersion,
+        probes: tuple[ProbeVersion, ...],
+        source: Connection,
+        target: Connection,
+    ) -> ManagedCredential:
+        org = credential.organisation_id
+        async with self._records.write(org) as rows:
+            current = await rows.get(ManagedCredential, org, credential.id)
+            previous = await rows.get(ControlVersion, org, current.control_version)
+            if (
+                current.connection_id != source.id
+                or credential.connection_id != target.id
+                or await rows.get(Connection, org, source.id) != source
+                or await rows.get(Connection, org, target.id) != target
+                or target.verification_connection_id != source.id
+                or controls.credential_id != credential.id
+                or controls.number != previous.number + 1
+                or credential.control_version != controls.id
+            ):
+                raise ResourceConflictError("Provider selection changed")
+            if await rows.database.collection("run_locks").find_one(
+                {"organisation_id": org, "credential_id": credential.id}, session=rows.session
+            ):
+                raise ResourceConflictError("Wait for the active rotation to finish")
+            for item in (*probes, controls):
+                await rows.add(item, org)
+                await check_references(rows, item)
+            await check_references(rows, credential)
+            await rows.replace(credential, revision)
+        return credential
+
     async def archive_inventory(
         self, resources: tuple[InventoryResource, ...], bindings: tuple[ConsumerBinding, ...]
     ) -> None:
@@ -254,7 +289,13 @@ class InventoryStore:
                 await rows.database.collection("host_bindings").delete_one(
                     {"organisation_id": org, "binding_id": binding.id}, session=rows.session
                 )
-            for model in (Environment, ConsumerService, ManagedCredential, ConsumerBinding):
+            for model in (
+                Connection,
+                Environment,
+                ConsumerService,
+                ManagedCredential,
+                ConsumerBinding,
+            ):
                 for active in await rows.list(model, org):
                     if getattr(active, "archived_at", None) is None:
                         await check_references(rows, active)
@@ -295,7 +336,7 @@ class InventoryStore:
             await check_references(rows, value)
             await rows.replace(value, revision)
             if isinstance(value, (Connection, ConsumerService)):
-                for model in (ConsumerService, ManagedCredential, ConsumerBinding):
+                for model in (Connection, ConsumerService, ManagedCredential, ConsumerBinding):
                     for dependent in await rows.list(model, value.organisation_id):
                         if getattr(dependent, "archived_at", None) is None:
                             await check_references(rows, dependent)

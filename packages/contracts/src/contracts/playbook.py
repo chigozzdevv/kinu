@@ -127,6 +127,7 @@ class PlaybookStep(OperationStep):
     effect: PlaybookEffect = PlaybookEffect.NONE
     selectors: tuple[Selector, ...] = ()
     checkpoint: PageCheckpoint | None = None
+    result_checkpoint: PageCheckpoint | None = None
     conditions: tuple[PageCondition, ...] = Field(default=(), max_length=8)
     secure_field: SecureField | None = None
     outputs: tuple[StepOutput, ...] = ()
