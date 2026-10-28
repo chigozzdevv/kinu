@@ -64,7 +64,7 @@ class HttpProviderConnector:
             key_id = _string(payload, "provider_id")
             keys = await self._list(api, headers)
             field = api.list_credentials.provider_id_field
-            match = next((key for key in keys if field and key.get(field) == key_id), None)
+            match = next((key for key in keys if field and _dig(key, field) == key_id), None)
             return ConnectorResponse(
                 result={
                     "exists": match is not None,
@@ -147,7 +147,7 @@ class HttpProviderConnector:
             sorted(
                 key_id
                 for key in await self._list(api, headers)
-                if field and isinstance(key_id := key.get(field), str)
+                if field and isinstance(key_id := _dig(key, field), str)
             )
         )
         return {
@@ -170,29 +170,7 @@ class HttpProviderConnector:
         if state.get("name") != name or not isinstance(before, tuple):
             raise AmbiguousMutationError("provider reconciliation checkpoint is invalid")
         headers = await self._headers(context.connection, api.auth)
-        after = await self._list(api, headers)
-        id_field = api.list_credentials.provider_id_field
-        name_field = api.list_credentials.name_field or api.create_credential.name_field
-        candidates = [
-            key
-            for key in after
-            if name_field
-            and id_field
-            and key.get(name_field) == name
-            and isinstance(key.get(id_field), str)
-            and key.get(id_field) not in before
-        ]
-        if len(candidates) > 1:
-            raise AmbiguousMutationError(
-                "stale provider create has multiple attributable cleanup candidates"
-            )
-        if candidates and id_field:
-            key_id = candidates[0][id_field]
-            assert isinstance(key_id, str)
-            response = await self._call(
-                api, api.revoke_credential, headers, {"provider_id": key_id}
-            )
-            _expected(response, set(api.revoke_credential.success_statuses) | {404})
+        await self._reconcile_ambiguous(api, name, set(before), headers)
         return None
 
     async def _create(
@@ -207,16 +185,12 @@ class HttpProviderConnector:
         list_id = api.list_credentials.provider_id_field
         if id_field is None or secret_field is None or list_id is None:
             raise ConnectorError("invalid-provider-api", "create declaration is incomplete")
-        before = {
-            key_id
-            for key in await self._list(api, headers)
-            if isinstance(key_id := key.get(list_id), str)
-        }
         try:
             response = await self._call(api, api.create_credential, headers, payload)
         except httpx.TimeoutException as error:
-            await self._reconcile_ambiguous(api, name, before, headers)
-            raise AmbiguousMutationError("provider create timed out and was reconciled") from error
+            raise AmbiguousMutationError(
+                "provider create timed out; reconcile the recorded request"
+            ) from error
         _expected(response, set(api.create_credential.success_statuses))
         value = _object(response.json(), "provider create")
         key_id = _dig(value, id_field)
@@ -256,14 +230,14 @@ class HttpProviderConnector:
             for key in after
             if name_field
             and id_field
-            and key.get(name_field) == name
-            and str(key.get(id_field)) not in before
+            and _dig(key, name_field) == name
+            and _dig(key, id_field) not in before
         ]
         if len(candidates) != 1 or not id_field:
             raise AmbiguousMutationError(
                 "provider create outcome could not be attributed to exactly one orphan"
             )
-        key_id = candidates[0].get(id_field)
+        key_id = _dig(candidates[0], id_field)
         if not isinstance(key_id, str):
             raise AmbiguousMutationError("provider orphan has no provider ID")
         response = await self._call(api, api.revoke_credential, headers, {"provider_id": key_id})
