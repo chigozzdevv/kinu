@@ -97,6 +97,7 @@ try {
   assert.equal((await fetch(capabilityUrl, { method: "POST", headers, body: JSON.stringify({ resource: "inventory" }) })).status, 403)
   const forged = await fetch(capabilityUrl, { method: "POST", headers: { ...nativeHeaders, "x-csrf-token": "forged" }, body: JSON.stringify({ resource: "inventory" }) })
   assert.equal(forged.status, 403)
+  assert.equal((await fetch(`${agentUrl}/_agent-native/kinu/builder/test`, { method: "POST", headers: nativeHeaders, body: "{}" })).status, 404)
   assert.equal((await fetch(`${agentUrl}/_agent-native/kinu/actions/assessment`, { method: "POST", headers: nativeHeaders, body: "{}" })).status, 404)
   assert.equal((await fetch(`${agentUrl}/_agent-native/kinu/builder/connect`, { method: "POST", headers: { ...nativeHeaders, origin: "https://other.example" }, body: "{}" })).status, 403)
   assert.equal(response.headers.getSetCookie().every((value) => value.includes("=1;")), true)

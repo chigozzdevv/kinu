@@ -6,12 +6,11 @@ import type { Config } from "./config"
 import { resolveSession, sessionCookie } from "./session"
 import { begin, callbackPath, disconnect, finish, pendingOrg, status } from "./grant"
 import { withStorage } from "./storage"
-import { assessment } from "./assessment"
 import { checkWrite, boundedBody } from "./capabilities"
 
 export function builderPath(path: string, method: string): boolean {
   return method === "GET" && (path === callbackPath || path === "/_agent-native/kinu/builder/status") ||
-    method === "POST" && /^\/_agent-native\/kinu\/builder\/(connect|disconnect|model|test)$/.test(path)
+    method === "POST" && /^\/_agent-native\/kinu\/builder\/(connect|disconnect|model)$/.test(path)
 }
 
 export async function builderCallback(request: Request, config: Config): Promise<Response> {
@@ -37,10 +36,6 @@ export async function builderResponse(request: Request, session: AuthSession, co
   administrator(session)
   await checkWrite(request, session, config)
   const path = new URL(request.url).pathname
-  if (path.endsWith("/test")) {
-    const value = await assessment(session.orgId!, { stage: "investigate", kind: "credential-security-review", confidence: "low", candidate_count: 0, policy_allows_rotation: false })
-    return Response.json({ ok: true, decision: value.decision })
-  }
   return withStorage(async (db) => {
     if (path.endsWith("/connect")) return Response.json({ authorization_url: await begin(db, session, sessionCookie(request.headers, config)!, config.publicUrl) })
     if (path.endsWith("/disconnect")) { await disconnect(db, session.orgId!); return Response.json({ connected: false }) }
