@@ -196,8 +196,6 @@ class Resend(HttpProviderConnector):
                 response.secret,
                 {"kind": "api-key", "scopes": expected},
             )
-            if await self.identify(connection, response.secret) != response.result["provider_id"]:
-                raise ConnectorError("resend-proof", "Resend creation identity changed")
         except BaseException:
             response.secret.clear()
             raise

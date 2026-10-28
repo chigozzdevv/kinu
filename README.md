@@ -169,3 +169,8 @@ It creates one domain-scoped sending key, stores it privately, deploys it and re
 mapping. It never prints the key or sends email. An interrupted attempt requires evidence review;
 rerunning it cannot create another key. A completed attempt returns its existing credential.
 The workload's `/health` endpoint checks liveness; `/probe` verifies the loaded key with Resend.
+
+If setup stopped before installation, `--recover` checks the unchanged placeholder and a private
+creation receipt before retiring the unused key. It archives the attempt and clears its staging
+secret. Setup can then be run again. Recovery refuses installed keys and unknown creation outcomes.
+Use `--resume` to recheck an already captured key and continue installation without issuing another.

@@ -4,18 +4,19 @@ import json
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+from connectors.base import ConnectorResponse, SecretValue
 from connectors.base.errors import ConnectorError
 from connectors.resend.client import Resend
 from contracts import ManagedCredential
 from core.auth import PrincipalGrant, Role
 from core.auth.identity import AuthenticatedIdentity
 from core.errors import ResourceConflictError
+from core.ids import new_id
 from pymongo.errors import DuplicateKeyError
 
 from hosting.mapping import Mappings
 from hosting.models import Import, Mapping
 from hosting.proof import Proof, fingerprint
-from hosting.resources import identity
 
 
 class Seed:
@@ -25,7 +26,15 @@ class Seed:
         self.rows = mappings.versions.vault.database.collection("host_seeds")
 
     async def setup(
-        self, org: str, host_id: str, provider_id: str, project: str, url: str, actor: str
+        self,
+        org: str,
+        host_id: str,
+        provider_id: str,
+        project: str,
+        url: str,
+        actor: str,
+        *,
+        resume: bool = False,
     ) -> ManagedCredential:
         hosts, vault = self.mappings.hosts, self.mappings.versions.vault
         endpoint = urlsplit(url)
@@ -63,9 +72,16 @@ class Seed:
                 and existing["provider_connection_id"] == provider_id
             ):
                 return await hosts.inventory.get_credential(org, existing["credential_id"])
-            raise ResourceConflictError(
-                "Sandbox setup was already attempted; review its recorded outcome"
-            )
+            if (
+                not resume
+                or existing["phase"] != "stored"
+                or existing["provider_connection_id"] != provider_id
+            ):
+                raise ResourceConflictError(
+                    "Sandbox setup was already attempted; review its recorded outcome"
+                )
+        elif resume:
+            raise ResourceConflictError("No captured sandbox key is available to resume")
         adapter = hosts.adapter(grant)
         value = await adapter.read(selected)
         if value is None:
@@ -78,35 +94,46 @@ class Seed:
         previous = await adapter.current(selected)
         if previous.state != "ready":
             raise ResourceConflictError("Deploy the test app before initializing its key")
-        attempt = identity("seed", org, host_id, selected.reference)
-        try:
-            await self.rows.insert_one(
-                query
-                | {
-                    "id": attempt,
-                    "actor_id": actor,
-                    "provider_connection_id": provider_id,
-                    "phase": "creating",
-                    "created_at": datetime.now(UTC),
-                }
+        if existing:
+            attempt = existing["id"]
+            captured = await vault.get(org, attempt)
+            response = ConnectorResponse(
+                result={"provider_id": existing["provider_id"]},
+                secret=SecretValue(captured["token"].encode()),
             )
-        except DuplicateKeyError:
-            raise ResourceConflictError("Sandbox setup is already running") from None
-        response = await self.provider.issue(provider, "Kinu sandbox " + attempt[-12:])
+        else:
+            attempt = new_id("seed")
+            try:
+                await self.rows.insert_one(
+                    query
+                    | {
+                        "id": attempt,
+                        "actor_id": actor,
+                        "provider_connection_id": provider_id,
+                        "phase": "creating",
+                        "created_at": datetime.now(UTC),
+                    }
+                )
+            except DuplicateKeyError:
+                raise ResourceConflictError("Sandbox setup is already running") from None
+            response = await self.provider.issue(provider, "Kinu sandbox " + attempt[-12:])
         assert response.secret is not None
         with response.secret as secret:
             expected = fingerprint(secret.bytes())
-            await vault.put(org, attempt, {"token": secret.bytes().decode()})
-            await self.rows.update_one(
-                query,
-                {
-                    "$set": {
-                        "phase": "stored",
-                        "staging_id": attempt,
-                        "provider_id": response.result["provider_id"],
-                    }
-                },
-            )
+            if not existing:
+                await vault.put(org, attempt, {"token": secret.bytes().decode()})
+                await self.rows.update_one(
+                    query | {"id": attempt, "phase": "creating"},
+                    {
+                        "$set": {
+                            "phase": "stored",
+                            "staging_id": attempt,
+                            "provider_id": response.result["provider_id"],
+                        }
+                    },
+                )
+            if await self.provider.identify(provider, secret) != response.result["provider_id"]:
+                raise ResourceConflictError("Resend creation identity changed")
             current = await adapter.read(selected)
             if current is None:
                 raise ResourceConflictError("Test variable changed before installation")
@@ -118,7 +145,11 @@ class Seed:
                 or await hosts.inventory.get_connection(org, provider_id) != provider
             ):
                 raise ResourceConflictError("Sandbox connections changed before installation")
-            await self.rows.update_one(query, {"$set": {"phase": "writing"}})
+            acquired = await self.rows.update_one(
+                query | {"id": attempt, "phase": "stored"}, {"$set": {"phase": "writing"}}
+            )
+            if not acquired.modified_count:
+                raise ResourceConflictError("Another setup or recovery changed this attempt")
             await adapter.write(selected, secret)
         await self.rows.update_one(query, {"$set": {"phase": "deploying"}})
         deployment = await adapter.deploy(selected, previous, attempt)
@@ -186,8 +217,28 @@ async def run(args: argparse.Namespace) -> None:
             allowed |= actor == args.actor and grant.enabled and Role.ADMINISTRATOR in grant.roles
         if not allowed:
             raise ResourceConflictError("Choose this workspace's enabled administrator")
+        if args.recover:
+            from hosting.recovery import recover
+
+            await recover(
+                service.mappings,
+                service.providers.resend,
+                args.workspace,
+                args.host,
+                args.provider,
+                args.project,
+                args.actor,
+            )
+            print(json.dumps({"recovered": True}))
+            return
         credential = await Seed(service.mappings, service.providers.resend).setup(
-            args.workspace, args.host, args.provider, args.project, args.url, args.actor
+            args.workspace,
+            args.host,
+            args.provider,
+            args.project,
+            args.url,
+            args.actor,
+            resume=args.resume,
         )
         print(json.dumps({"credential_id": credential.id, "provider_id": credential.provider_id}))
 
@@ -196,6 +247,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Initialize the dedicated Render/Resend sandbox")
     for name in ("workspace", "host", "provider", "project", "url", "actor"):
         parser.add_argument("--" + name, required=True)
+    recovery = parser.add_mutually_exclusive_group()
+    recovery.add_argument(
+        "--recover",
+        action="store_true",
+        help="Retire and archive an unused failed setup before retrying",
+    )
+    recovery.add_argument(
+        "--resume",
+        action="store_true",
+        help="Recheck and install an already captured key without creating another",
+    )
     args = parser.parse_args()
     try:
         asyncio.run(run(args))
