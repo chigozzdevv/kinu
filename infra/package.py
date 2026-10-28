@@ -73,7 +73,7 @@ def main() -> None:
             "--python-version",
             "3.12",
             "--python-platform",
-            "x86_64-manylinux2014",
+            "x86_64-manylinux_2_34",
             "--only-binary",
             ":all:",
             "--no-deps",
