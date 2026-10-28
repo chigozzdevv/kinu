@@ -186,7 +186,7 @@ class Repository:
 
 
 @pytest.mark.anyio
-async def test_secure_capture_barriers_remain_until_result_is_persisted() -> None:
+async def test_secure_capture_keeps_observation_closed_after_result_is_persisted() -> None:
     repository = Repository()
     service = BrowserService(repository, lambda: NOW)
     session = await service.create(_session())
@@ -198,6 +198,8 @@ async def test_secure_capture_barriers_remain_until_result_is_persisted() -> Non
     assert session.status is BrowserStatus.CAPTURING
     assert session.model_paused is True
     assert session.recording_paused is True
+    with pytest.raises(ResourceConflictError):
+        await service.freeze("org_one", session.id, session.revision)
     result = SecureCaptureResult(
         id="capture_one",
         organisation_id="org_one",
@@ -211,9 +213,12 @@ async def test_secure_capture_barriers_remain_until_result_is_persisted() -> Non
     )
     session = await service.complete_capture(result, session.revision)
     assert repository.captures == [result]
-    assert session.status is BrowserStatus.RUNNING
-    assert session.model_paused is False
-    assert session.recording_paused is False
+    assert session.status is BrowserStatus.TERMINATED
+    assert session.model_paused is True
+    assert session.recording_paused is True
+    for action in (service.start, service.freeze):
+        with pytest.raises(ResourceConflictError):
+            await action("org_one", session.id, session.revision)
 
 
 @pytest.mark.anyio

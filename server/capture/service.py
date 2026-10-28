@@ -6,7 +6,6 @@ from typing import Protocol
 
 from browser.driver import BrowserDriver
 from connectors.base import SecretValue
-from connectors.secrets import SecretStore
 from contracts import (
     Connection,
     ConnectionAuthorization,
@@ -33,6 +32,23 @@ class CaptureError(Exception):
         self.cleanup_required = cleanup_required
 
 
+class CaptureSink(Protocol):
+    async def add_version_for(
+        self,
+        connection: Connection,
+        secret: str,
+        value: SecretValue,
+        access_token: SecretValue | None = None,
+    ) -> dict[str, object]: ...
+
+    async def disable_for(
+        self,
+        connection: Connection,
+        version: str,
+        access_token: SecretValue | None = None,
+    ) -> dict[str, object]: ...
+
+
 class CaptureConnections(Protocol):
     async def get_connection(self, organisation_id: str, resource_id: str) -> Connection: ...
 
@@ -42,7 +58,7 @@ class SecureCapture:
         self,
         page: Page,
         driver: BrowserDriver,
-        secrets: SecretStore,
+        secrets: CaptureSink,
         connections: CaptureConnections,
         clock: Callable[[], datetime],
     ) -> None:

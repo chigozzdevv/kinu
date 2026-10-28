@@ -159,17 +159,26 @@ class BrowserService:
         current = await self._current(result.organisation_id, result.session_id, revision)
         if current.status is not BrowserStatus.CAPTURING:
             raise ResourceConflictError("secure capture barrier is not armed")
-        takeover = current.takeover_subject is not None
+        # A captured page must never return to model observation.
         changed = self._change(
             current,
-            status=BrowserStatus.TAKEOVER if takeover else BrowserStatus.RUNNING,
-            model_paused=takeover,
-            recording_paused=takeover,
+            status=BrowserStatus.TERMINATED,
+            model_paused=True,
+            recording_paused=True,
+            takeover_subject=None,
+            terminated_at=self._clock(),
         )
         return await self._repository.complete_capture(current, changed, result)
 
     async def freeze(self, organisation_id: str, session_id: str, revision: int) -> BrowserSession:
         current = await self._current(organisation_id, session_id, revision)
+        if current.status not in {
+            BrowserStatus.READY,
+            BrowserStatus.RUNNING,
+            BrowserStatus.PAUSED,
+            BrowserStatus.TAKEOVER,
+        }:
+            raise ResourceConflictError("browser cannot pause from its current state")
         changed = self._change(
             current,
             status=BrowserStatus.PAUSED,
