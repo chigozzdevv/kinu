@@ -63,7 +63,8 @@ in the private executor database; the dashboard receives configuration status on
 Gmail uses Google's read-only OAuth scope. Add exact alert senders and select their credential
 providers after connecting. Kinu reads new matching messages every five minutes, ignores
 attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
-sender-aligned DKIM, a unique credential match and permitted controls. Register Google's web OAuth
+sender-aligned DKIM with a 2048-bit RSA key, a unique credential match and permitted controls.
+Alerts that fail sender verification remain available for manual review. Register Google's web OAuth
 client with the callback shown in Settings. Public Gmail use requires Google's verification;
 Testing applications require test users and have limited refresh-token lifetimes.
 
