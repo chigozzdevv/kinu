@@ -30,7 +30,7 @@ class RunHistoryService(Protocol):
         self, organisation_id: str, approval_id: str
     ) -> ApprovalEvidenceSnapshot: ...
 
-    async def input_image(
+    async def image(
         self, organisation_id: str, run_id: str, activity_id: str
     ) -> tuple[bytes, str]: ...
 
@@ -126,7 +126,11 @@ def _stage_presentation(
         details = [
             StageDetail(
                 label="Method",
-                value="Computer Use" if _browser_activity(output) else "Provider API",
+                value="Browser"
+                if output.get("method") == "browser"
+                or (run and run.browser_playbook_version)
+                or _browser_activity(output)
+                else "Provider API",
             )
         ]
         provider_id = _text(values.get("provider_id"))
@@ -216,6 +220,12 @@ def _stage_presentation(
         return _approval_presentation(output, approvals)
     if stage is Stage.REVOKE:
         details = [
+            StageDetail(
+                label="Method",
+                value="Browser"
+                if output.get("method") == "browser" or (run and run.browser_playbook_version)
+                else "Provider API",
+            ),
             StageDetail(label="Old credential", value="Rejected"),
             StageDetail(label="Replacement", value="Valid"),
         ]

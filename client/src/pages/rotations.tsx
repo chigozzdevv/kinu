@@ -101,10 +101,10 @@ function StageMarker({ completed, current, failed, paused }: { completed: boolea
   return <span className="size-5 shrink-0 rounded-full border border-[var(--border)]" aria-label="Not started" />
 }
 
-function ComputerUseInputImage({ runId, activity }: { runId: string; activity: ComputerUseActivity }) {
+function ComputerUseImage({ runId, activity }: { runId: string; activity: ComputerUseActivity }) {
   const frame = useQuery({
     queryKey: ["rotations", runId, "computer-use", activity.id, "image"],
-    queryFn: () => api.getComputerUseInputImage(runId, activity.id),
+    queryFn: () => api.getComputerUseImage(runId, activity.id),
     staleTime: Infinity,
   })
   const [imageUrl, setImageUrl] = useState("")
@@ -122,7 +122,7 @@ function ComputerUseInputImage({ runId, activity }: { runId: string; activity: C
   return <div className="grid aspect-video place-items-center overflow-hidden rounded-xl bg-[var(--surface-soft)]">
       {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
       {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
-      {imageUrl && <img src={imageUrl} alt="Sanitised browser image sent to the agent" className="size-full object-contain" />}
+      {imageUrl && <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />}
     </div>
 }
 
@@ -167,10 +167,14 @@ function ComputerUseStream({ runId, activities, secretStoreName }: { runId: stri
                 From browser
               </div>
               <div className="rounded-2xl border border-[var(--border)] bg-white p-2">
-                <ComputerUseInputImage runId={runId} activity={input} />
+                <ComputerUseImage runId={runId} activity={input} />
               </div>
             </div>
           </>}
+          {proposal?.image_reference && <div className="max-w-[720px]">
+            <div className="mb-1.5 text-[9px] font-semibold text-[var(--ink-muted)]">Before action</div>
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-2"><ComputerUseImage runId={runId} activity={proposal} /></div>
+          </div>}
           {(thought || response || proposal) && <ChatMessage sender={<span className="inline-flex items-center gap-1.5"><Reply className="size-3" aria-hidden="true" /><AgentMark />Agent</span>}>
             {thought && <div className="mb-3"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Thought summary</div><div className="mt-1">{thought}</div></div>}
             {response && <div>{response}</div>}
@@ -186,7 +190,7 @@ function ComputerUseStream({ runId, activities, secretStoreName }: { runId: stri
           </ChatMessage>}
           {receipt && <div className="flex items-center gap-2 text-[10px] text-[var(--ink-soft)]">
             {receiptLabel === "completed" ? <span aria-hidden="true">✅</span> : receiptLabel === "validated" ? <Check className="size-3.5 text-[var(--green)]" aria-hidden="true" /> : receiptLabel === "paused" ? <Pause className="size-3.5" aria-hidden="true" /> : <X className="size-3.5 text-[var(--red)]" aria-hidden="true" />}
-            {receiptLabel === "completed" ? <span className="font-semibold text-[var(--ink)]">{input?.effect === "create-credential" ? `Credential added to ${secretStoreName}` : input?.effect === "revoke-credential" ? "Previous credential revoked" : "Step completed"}</span> : <span><strong className="font-semibold text-[var(--ink)]">Kinu {receiptLabel}</strong>{receipt.target ? ` · ${receipt.target}` : ""}</span>}
+            {receiptLabel === "completed" ? <span className="font-semibold text-[var(--ink)]">{(input?.effect === "create-credential" || execution?.stage === "create") ? `Credential added to ${secretStoreName}` : (input?.effect === "revoke-credential" || execution?.stage === "revoke") ? "Previous credential revoked" : "Step completed"}</span> : <span><strong className="font-semibold text-[var(--ink)]">Kinu {receiptLabel}</strong>{receipt.target ? ` · ${receipt.target}` : ""}</span>}
           </div>}
         </div>
       })}

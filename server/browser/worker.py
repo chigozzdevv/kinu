@@ -33,6 +33,7 @@ from rotation.stages import stable
 
 from browser.catalog import Catalog
 from browser.identity import normalize
+from browser.images import Images
 from browser.launch import BrowserFactory, Launcher
 from browser.planner import ControlPlanner
 from browser.playbook import browser_step_context, resolve_playbook_step
@@ -75,6 +76,7 @@ class Worker:
     ) -> None:
         self.catalog, self.versions, self.planner = catalog, versions, planner
         self.database, self.launcher = catalog.database, launcher or Launcher()
+        self.images = Images(catalog.vault)
         self.sessions = BrowserService(Records(self.database), lambda: datetime.now(UTC))
 
     async def lock(self, connection: Connection, run: RotationRun) -> None:
@@ -231,10 +233,18 @@ class Worker:
                         )
                         if selected != step.id:
                             raise ResourceConflictError("Browser control is not approved")
+                        await tab.driver.validate_step(step)
+                        await validate(self.database, state, fence)
+                        activity_id = stable("activity", session.id + ":" + step.id + ":proposed")
+                        reference, image_digest = await self.images.save(
+                            org, run.id, activity_id, await tab.driver.evidence_screenshot(session)
+                        )
                         await self.sessions.record_activity(
                             session,
                             ComputerUseActivity(
-                                id=stable("activity", session.id + ":" + step.id + ":proposed"),
+                                id=activity_id,
+                                image_reference=reference,
+                                image_digest=image_digest,
                                 organisation_id=org,
                                 session_id=session.id,
                                 run_id=run.id,

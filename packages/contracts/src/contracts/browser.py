@@ -134,6 +134,8 @@ class ComputerUseActivity(Contract):
 
     @model_validator(mode="after")
     def validate_safe_shape(self) -> "ComputerUseActivity":
+        if bool(self.image_reference) != bool(self.image_digest):
+            raise ValueError("Computer Use screenshots require both a reference and digest")
         if len(json.dumps(self.arguments, sort_keys=True, separators=(",", ":"))) > 8192:
             raise ValueError("Computer Use arguments exceed the activity limit")
         if self.phase is ComputerUseActivityPhase.INPUT:

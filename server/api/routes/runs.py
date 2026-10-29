@@ -154,7 +154,7 @@ async def get_run_history(
 
 
 @router.get("/{run_id}/computer-use/{activity_id}/image")
-async def get_computer_use_input_image(
+async def get_computer_use_image(
     organisation_id: OrganisationId,
     run_id: RunId,
     activity_id: Identifier,
@@ -165,7 +165,7 @@ async def get_computer_use_input_image(
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     if api.history is None:
         raise ResourceConflictError("Computer Use history is unavailable")
-    content, content_type = await api.history.input_image(organisation_id, run_id, activity_id)
+    content, content_type = await api.history.image(organisation_id, run_id, activity_id)
     return Response(
         content=content,
         media_type=content_type,

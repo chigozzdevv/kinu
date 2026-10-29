@@ -102,6 +102,7 @@ class Stages:
             )
         if stage is Stage.CREATE:
             result = await self.effects.issue(state, run.id)
+            result["method"] = "browser" if state.playbook else "api"
             await generations.record(self.database, state, target, run.id, result)
             return (
                 frozenset({"replacement-created", "mutation-resolved", "generation-recorded"}),
@@ -194,6 +195,7 @@ class Stages:
         if stage is Stage.REVOKE:
             observation = await self.output(Stage.OBSERVE)
             result = await self.effects.revoke(state, created, deployment_output, observation)
+            result["method"] = "browser" if state.playbook else "api"
             return (
                 frozenset(
                     {"old-revoked", "replacement-valid", "old-rejected", "old-secret-retired"}

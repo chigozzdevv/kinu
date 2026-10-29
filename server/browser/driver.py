@@ -89,6 +89,42 @@ class BrowserDriver:
         ]
         return await self._page.screenshot(type="png", animations="disabled", mask=masks)
 
+    async def evidence_screenshot(self, session: BrowserSession) -> bytes:
+        if (
+            session.status is not BrowserStatus.RUNNING
+            or session.model_paused
+            or session.recording_paused
+        ):
+            raise ResourceConflictError("Browser evidence is blocked during private capture")
+        self._check_authentication()
+        self.validate_url(self.url)
+        await self._page.evaluate(r"""() => {
+          const secrets = [
+            /\b(?:re_|sk_|rk_)[A-Za-z0-9_-]{24,}/,
+            /\bBearer\s+[A-Za-z0-9._-]{16,}/,
+            /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/
+          ];
+          for (const element of document.querySelectorAll('body *')) {
+            const sensitive = secrets.some(secret => secret.test(element.textContent || ''));
+            if (!element.children.length && sensitive) {
+              element.setAttribute('data-kinu-evidence-mask', '');
+            }
+          }
+        }""")
+        masks = self._page.locator(
+            "input, textarea, [contenteditable], iframe, canvas, video, img, object, embed, "
+            "[data-kinu-evidence-mask]"
+        )
+        try:
+            return await self._page.screenshot(
+                type="png", animations="disabled", mask=[masks], mask_color="#3b3f46"
+            )
+        finally:
+            await self._page.locator("[data-kinu-evidence-mask]").evaluate_all(
+                "elements => elements.forEach(element => "
+                "element.removeAttribute('data-kinu-evidence-mask'))"
+            )
+
     async def live_screenshot(
         self,
         session: BrowserSession,

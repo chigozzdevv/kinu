@@ -107,6 +107,20 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         assert platform.revoked == [credential.provider_id]
         assert not mutations
         assert len(planner.calls) == 2
-        history = (await HistoryStore(database).get(org, run.id)).model_dump_json()
+        history_store = HistoryStore(database, worker.images)
+        public = await history_store.get(org, run.id)
+        history = public.model_dump_json()
         assert "re_private-" not in history + str(planner.calls)
+        proposals = [
+            activity for activity in public.computer_use if activity.phase.value == "proposal"
+        ]
+        assert len(proposals) == 2 and all(activity.image_reference for activity in proposals)
+        for activity in proposals:
+            content, kind = await history_store.image(org, run.id, activity.id)
+            assert content.startswith(b"\x89PNG") and kind == "image/png"
+        assert all(
+            any(detail.label == "Method" and detail.value == "Browser" for detail in stage.details)
+            for stage in public.stages
+            if stage.stage.value in {"create", "revoke"}
+        )
         assert platform.loaded.startswith("re_private-browser-fixture-")

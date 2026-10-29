@@ -111,7 +111,9 @@ async def runtime(
                     overview=OverviewService(counts, counts, counts, counts, _now),
                     agent_repository=agents,
                     agent_continuity=AgentMemoryService(agents, _now),
-                    history=HistoryStore(database),
+                    history=HistoryStore(
+                        database, BrowserBridge(private, config.public_url) if private else None
+                    ),
                     notifications=notifications,
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,

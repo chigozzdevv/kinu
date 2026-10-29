@@ -9,15 +9,15 @@ from contracts import (
 from policy import digest
 
 from core.errors import ResourceConflictError, ResourceNotFoundError
-from core.history import _activity
+from core.history import BrowserEvidenceReader, _activity
 from core.storage.database import Database
 from core.storage.records import Records
 from core.storage.runs import RunStore
 
 
 class HistoryStore:
-    def __init__(self, database: Database) -> None:
-        self._database = database
+    def __init__(self, database: Database, images: BrowserEvidenceReader | None = None) -> None:
+        self._database, self._images = database, images
 
     async def get(self, organisation_id: str, run_id: str) -> RotationHistory:
         run = await RunStore(self._database).get(organisation_id, run_id)
@@ -77,7 +77,20 @@ class HistoryStore:
                 )
         raise ResourceConflictError("Approval evidence is unavailable or no longer matches")
 
-    async def input_image(
-        self, organisation_id: str, run_id: str, activity_id: str
-    ) -> tuple[bytes, str]:
-        raise ResourceNotFoundError("This rotation has no browser screenshot")
+    async def image(self, organisation_id: str, run_id: str, activity_id: str) -> tuple[bytes, str]:
+        await RunStore(self._database).get(organisation_id, run_id)
+        row = await self._database.collection("browser_activity").find_one(
+            {"organisation_id": organisation_id, "run_id": run_id, "id": activity_id}
+        )
+        if not row or self._images is None:
+            raise ResourceNotFoundError("This rotation has no browser screenshot")
+        activity = ComputerUseActivity.model_validate(
+            {key: value for key, value in row.items() if key != "_id"}
+        )
+        if not activity.image_reference or not activity.image_digest:
+            raise ResourceNotFoundError("This step has no saved browser screenshot")
+        if activity.image_reference != f"kinu://browser-images/{run_id}/{activity_id}":
+            raise ResourceConflictError("Browser screenshot belongs to another activity")
+        return await self._images.read_image(
+            organisation_id, run_id, activity_id, activity.image_digest
+        )

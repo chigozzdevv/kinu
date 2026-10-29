@@ -59,7 +59,7 @@ export const workflow = {
     return request(`${workspacePath()}/runs/${runId}/history`)
   },
 
-  async getComputerUseInputImage(runId: string, activityId: string): Promise<Blob> {
+  async getComputerUseImage(runId: string, activityId: string): Promise<Blob> {
     return requestBlob(`${workspacePath()}/runs/${runId}/computer-use/${activityId}/image`)
   },
 

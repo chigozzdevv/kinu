@@ -10,6 +10,7 @@ from contracts import (
     Trigger,
 )
 from core.history import _activity
+from testkit import make_run
 
 NOW = datetime(2026, 8, 23, 12, tzinfo=UTC)
 
@@ -204,3 +205,23 @@ def test_browser_failure_history_exposes_the_safe_provider_reason() -> None:
     assert [(item.label, item.value) for item in public.details] == [
         ("Provider response", "approved page was not reached")
     ]
+
+
+def test_browser_method_uses_the_pinned_execution_path_for_create_and_revoke() -> None:
+    for stage in (Stage.CREATE, Stage.REVOKE):
+        result = StageExecutionResult(
+            id="stage_browser",
+            organisation_id="org_one",
+            run_id="run_one",
+            stage=stage,
+            status=StageExecutionStatus.SUCCEEDED,
+            checks=frozenset({"verified"}),
+            evidence_ids=("evidence_browser",),
+            output={"provider_id": "key_one"},
+            started_at=NOW,
+            completed_at=NOW,
+        )
+        run = make_run(NOW).model_copy(update={"browser_playbook_version": "version_browser"})
+        assert ("Method", "Browser") in [(d.label, d.value) for d in _activity(result, run).details]
+        api = _activity(result, make_run(NOW))
+        assert ("Method", "Provider API") in [(d.label, d.value) for d in api.details]

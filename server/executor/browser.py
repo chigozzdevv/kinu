@@ -1,3 +1,4 @@
+import base64
 from typing import Annotated, Any, Literal
 
 from contracts import Contract, Identifier
@@ -71,3 +72,18 @@ async def browser(body: Request, runtime: Annotated[Runtime, Depends(authenticat
         except (KeyError, ValueError, TypeError):
             raise ResourceConflictError("Browser interaction could not be completed") from None
     raise ResourceConflictError("Unknown browser setup operation")
+
+
+class ImageRequest(Contract):
+    organisation_id: Identifier
+    run_id: Identifier
+    activity_id: Identifier
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post("/browser/image")
+async def image(body: ImageRequest, runtime: Annotated[Runtime, Depends(authenticated)]) -> Any:
+    content, kind = await runtime.browser_worker.images.read_image(
+        body.organisation_id, body.run_id, body.activity_id, body.digest
+    )
+    return {"image": base64.b64encode(content).decode(), "content_type": kind}

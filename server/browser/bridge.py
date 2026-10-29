@@ -1,4 +1,8 @@
+import base64
+import hashlib
+
 from contracts import Connection, SetupSession
+from core.errors import ResourceConflictError
 from core.private import PrivateClient
 
 
@@ -90,3 +94,26 @@ class Bridge:
                 "/browser", {"operation": "reap", "organisation_id": organisation_id}
             )
         )
+
+    async def read_image(
+        self, organisation_id: str, run_id: str, resource: str, expected_digest: str
+    ) -> tuple[bytes, str]:
+        result = await self.private.call(
+            "/browser/image",
+            {
+                "organisation_id": organisation_id,
+                "run_id": run_id,
+                "activity_id": resource,
+                "digest": expected_digest,
+            },
+        )
+        try:
+            content = base64.b64decode(result["image"], validate=True)
+            if (
+                result["content_type"] != "image/png"
+                or hashlib.sha256(content).hexdigest() != expected_digest
+            ):
+                raise ValueError
+        except (ValueError, TypeError, KeyError):
+            raise ResourceConflictError("Browser screenshot could not be verified") from None
+        return content, "image/png"
