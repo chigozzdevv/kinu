@@ -54,28 +54,22 @@ function ComputerUseImage({ runId, activity }: { runId: string; activity: Comput
   </div>
 }
 
-function receiptText(receipt: ComputerUseActivity, secretStoreName: string): string {
-  if (receipt.status === "validated") return "Action approved"
-  if (receipt.status === "paused") return "Action paused"
-  if (receipt.status !== "succeeded") return "Action failed"
-  if (receipt.stage === "create") return `Credential saved to ${secretStoreName}`
-  if (receipt.stage === "revoke") return "Previous credential revoked"
-  return "Step completed"
-}
-
-function ExecutionResponse({ receipt }: { receipt: ComputerUseActivity }) {
+function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
   const response = {
     status: receipt.status,
     ...(receipt.result ? { provider_id: receipt.result.provider_id } : {}),
     ...(receipt.result?.secret_reference ? { stored: true } : {}),
   }
-  return <div className="mt-3 border-t border-white/15 pt-3">
-    <div className="mb-1 text-[9px] font-semibold text-white/60">Response</div>
-    <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-5">{JSON.stringify(response, null, 2)}</pre>
+  return <div>
+    <div className="flex items-center gap-2 font-semibold">
+      {receipt.status === "succeeded" ? <Check className="size-3.5 shrink-0 text-emerald-400" aria-hidden="true" /> : receipt.status === "failed" ? <X className="size-3.5 shrink-0 text-red-400" aria-hidden="true" /> : receipt.status === "paused" ? <Pause className="size-3.5 shrink-0 text-amber-300" aria-hidden="true" /> : <Check className="size-3.5 shrink-0 text-white/60" aria-hidden="true" />}
+      <span>Response</span>
+    </div>
+    <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-5">{JSON.stringify(response, null, 2)}</pre>
   </div>
 }
 
-export function RunActivity({ runId, activities, secretStoreName }: { runId: string; activities: ComputerUseActivity[]; secretStoreName: string }) {
+export function RunActivity({ runId, activities }: { runId: string; activities: ComputerUseActivity[] }) {
   const turns = [...new Set(activities.map((activity) => activity.turn))]
   return <div className="mt-5 max-w-[720px] space-y-8">
     {turns.map((turn) => {
@@ -84,7 +78,6 @@ export function RunActivity({ runId, activities, secretStoreName }: { runId: str
       const execution = events.find((activity) => activity.phase === "execution")
       const validation = events.find((activity) => activity.phase === "validation")
       const receipt = execution ?? validation
-      const completed = execution?.status === "succeeded"
       return <div key={turn} className="space-y-4">
         {proposal?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={proposal} /></Message>}
         {proposal && <Message actor="builder">
@@ -95,13 +88,7 @@ export function RunActivity({ runId, activities, secretStoreName }: { runId: str
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>
           </details>}
         </Message>}
-        {receipt && <Message actor="kinu">
-          <div className="flex items-center gap-2">
-            {completed || receipt.status === "validated" ? <Check className="size-3.5 shrink-0" aria-hidden="true" /> : receipt.status === "paused" ? <Pause className="size-3.5 shrink-0" aria-hidden="true" /> : <X className="size-3.5 shrink-0" aria-hidden="true" />}
-            <span>{receiptText(receipt, secretStoreName)}</span>
-          </div>
-          {execution && <ExecutionResponse receipt={execution} />}
-        </Message>}
+        {receipt && <Message actor="kinu"><ActionResponse receipt={receipt} /></Message>}
         {proposal && !receipt && <Message actor="kinu"><span className="inline-flex items-center gap-2"><LoaderCircle className="size-3 animate-spin" aria-hidden="true" />Working…</span></Message>}
       </div>
     })}
