@@ -1,6 +1,6 @@
 import fnmatch
 import hashlib
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Protocol
 
@@ -17,6 +17,8 @@ from contracts import (
     SecureField,
 )
 from playwright.async_api import Locator, Page
+
+from capture.evidence import snapshot
 
 MASK = "••••••••"
 
@@ -62,12 +64,14 @@ class SecureCapture:
         secrets: CaptureSink,
         connections: CaptureConnections,
         clock: Callable[[], datetime],
+        evidence: Callable[[bytes], Awaitable[None]] | None = None,
     ) -> None:
         self._page = page
         self._driver = driver
         self._secrets = secrets
         self._connections = connections
         self._clock = clock
+        self._evidence = evidence
 
     async def transfer(
         self,
@@ -205,6 +209,8 @@ class SecureCapture:
                     "secret remains visible in the document after masking", secret_reference
                 )
             await self._clear_clipboard()
+            if self._evidence:
+                await self._evidence(await snapshot(self._page, raw))
             return SecureCaptureResult(
                 id=capture_id,
                 organisation_id=organisation_id,

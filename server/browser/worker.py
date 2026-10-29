@@ -39,6 +39,7 @@ from browser.images import Images
 from browser.launch import BrowserFactory, Launcher
 from browser.planner import ControlPlanner
 from browser.playbook import browser_step_context, resolve_playbook_step
+from browser.progress import Progress
 from browser.records import Records
 from browser.service import BrowserService
 
@@ -227,12 +228,19 @@ class Worker:
                         "browser.type": BrowserActionKind.TYPE,
                         "browser.select": BrowserActionKind.SELECT,
                     }.get(step.tool, BrowserActionKind.CLICK)
+                    result_image: tuple[str, str] | None = None
                     if step.effect is not PlaybookEffect.NONE:
-                        selected = await self.planner.choose(
-                            org,
-                            step.objective,
-                            {step.id: step.selectors[0].name or step.objective[:160]},
-                        )
+                        progress = Progress(self.sessions, session, step)
+                        try:
+                            selected = await self.planner.choose(
+                                org,
+                                step.objective,
+                                {step.id: step.selectors[0].name or step.objective[:160]},
+                                progress.publish,
+                            )
+                        except Exception:
+                            await progress.fail()
+                            raise
                         if selected.control != step.id:
                             raise ResourceConflictError("Browser control is not approved")
                         await tab.driver.validate_step(step)
@@ -296,12 +304,28 @@ class Worker:
                             await field.wait_for(
                                 state="visible", timeout=min(step.timeout_seconds, 30) * 1000
                             )
+
+                            async def save_image(
+                                content: bytes,
+                                activity_id: str = stable(
+                                    "activity", session.id + ":" + step.id + ":executed"
+                                ),
+                            ) -> None:
+                                nonlocal result_image
+                                result_image = await self.images.save(
+                                    org,
+                                    run.id,
+                                    activity_id,
+                                    content,
+                                )
+
                             capture = await SecureCapture(
                                 tab.page,
                                 tab.driver,
                                 Sink(self.versions, run.id),
                                 InventoryStore(self.database),
                                 lambda: datetime.now(UTC),
+                                evidence=save_image,
                             ).transfer(
                                 stable("capture", run.id),
                                 org,
@@ -339,6 +363,7 @@ class Worker:
                                 else str(context["old_provider_id"]),
                                 secret_reference=capture.secret_reference if capture else None,
                             ),
+                            image=result_image,
                         )
                     if capture:
                         return capture
@@ -354,6 +379,7 @@ class Worker:
         kind: BrowserActionKind,
         status: ComputerUseActivityStatus,
         result: BrowserActionResult | None = None,
+        image: tuple[str, str] | None = None,
     ) -> None:
         await self.sessions.record_activity(
             session,
@@ -370,6 +396,8 @@ class Worker:
                 action=kind,
                 target=step.id,
                 safety_decision="approved-control",
+                image_reference=image[0] if image else None,
+                image_digest=image[1] if image else None,
                 result=result,
                 recorded_at=datetime.now(UTC),
             ),

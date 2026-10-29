@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from capture import CaptureError, SecureCapture
@@ -232,3 +233,58 @@ def _checkpoint() -> PageCheckpoint:
     return PageCheckpoint(
         url_pattern="https://console.vendor.example.com/keys/*", required_text=("Key created",)
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("exposed", [False, True])
+async def test_result_image_is_taken_only_after_storage_and_verified_masking(
+    monkeypatch: pytest.MonkeyPatch, exposed: bool
+) -> None:
+    locator, secrets = Locator(), Secrets()
+    page, frames = Page(locator, exposed), []
+
+    async def snapshot(value: Any, raw: str) -> bytes:
+        assert value is page and raw == "one-time-key"
+        assert secrets.seen == b"one-time-key" and locator.masked and page.clipboard_cleared
+        return b"private-redacted-frame"
+
+    image = AsyncMock(side_effect=snapshot)
+    monkeypatch.setattr("capture.service.snapshot", image)
+
+    async def evidence(content: bytes) -> None:
+        frames.append(content)
+
+    capture = SecureCapture(
+        cast(Any, page),
+        cast(Any, Driver(locator)),
+        cast(Any, secrets),
+        Connections(),
+        lambda: NOW,
+        evidence=evidence,
+    )
+    with SecretValue(b"ephemeral-access") as access:
+        if exposed:
+            with pytest.raises(CaptureError, match="remains visible"):
+                await capture.transfer(
+                    "capture_one",
+                    "org_one",
+                    "session_one",
+                    _field(),
+                    _checkpoint(),
+                    "sink_one",
+                    "secret://project-one/key",
+                    access,
+                )
+        else:
+            await capture.transfer(
+                "capture_one",
+                "org_one",
+                "session_one",
+                _field(),
+                _checkpoint(),
+                "sink_one",
+                "secret://project-one/key",
+                access,
+            )
+    assert image.await_count == (0 if exposed else 1)
+    assert frames == ([] if exposed else [b"private-redacted-frame"])

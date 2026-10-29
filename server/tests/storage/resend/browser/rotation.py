@@ -131,6 +131,12 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         assert len(executions) == 2 and all(activity.result for activity in executions)
         created = next(activity for activity in executions if activity.stage.value == "create")
         retired = next(activity for activity in executions if activity.stage.value == "revoke")
+        assert created.image_reference and created.image_digest
+        image, kind = await history_store.image(org, run.id, created.id)
+        assert image.startswith(b"\x89PNG") and kind == "image/png"
+        assert sum(bool(item.image_reference) for item in public.computer_use) == 3
+        progress = [item for item in public.computer_use if item.phase.value == "response"]
+        assert len(progress) >= 4 and all(item.status.value == "streaming" for item in progress)
         assert created.result and created.result.provider_id == platform.created[-1]
         assert created.result.secret_reference
         assert retired.result and retired.result.provider_id == credential.provider_id

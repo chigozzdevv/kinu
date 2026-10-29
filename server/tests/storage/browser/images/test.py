@@ -6,6 +6,7 @@ import httpx
 import pytest
 from api.app import create_app
 from browser.images import Images
+from capture.evidence import snapshot
 from contracts import (
     BrowserActionKind,
     BrowserPolicy,
@@ -75,7 +76,8 @@ async def test_evidence_masks_inputs_and_token_text_and_blocks_capture_pages() -
         image = await tab.driver.evidence_screenshot(session())
         pixels = await tab.page.evaluate(
             """async ({image, boxes}) => {
-          const img = new Image(); img.src = 'data:image/png;base64,' + image; await img.decode();
+          const img = new Image(); img.src = 'data:image/png;base64,' + image;
+              await img.decode();
           const canvas = document.createElement('canvas');
           canvas.width = img.width; canvas.height = img.height;
           const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
@@ -95,6 +97,41 @@ async def test_evidence_masks_inputs_and_token_text_and_blocks_capture_pages() -
         )
         with pytest.raises(ResourceConflictError, match="blocked during private capture"):
             await tab.driver.evidence_screenshot(blocked)
+
+
+async def test_private_result_image_covers_fields_text_and_generated_content() -> None:
+    executable()
+    secret = "custom-private-value-without-a-provider-prefix"
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content(
+            "<style>#generated::after { content: attr(data-value); }</style>"
+            f'<input id="private" value="{secret}">'
+            f'<p id="text">{secret}</p><div id="generated" data-value="{secret}"></div>'
+            "<button>Key created</button>"
+        )
+        boxes = [
+            await tab.page.locator(selector).bounding_box()
+            for selector in (
+                "#private",
+                "#text",
+                "#generated",
+            )
+        ]
+        image = await snapshot(tab.page, secret)
+        pixels = await tab.page.evaluate(
+            """async ({image, boxes}) => {
+              const img = new Image(); img.src = 'data:image/png;base64,' + image;
+              await img.decode();
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width; canvas.height = img.height;
+              const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+              return boxes.map(box => Array.from(ctx.getImageData(
+                Math.floor(box.x + box.width / 2), Math.floor(box.y + box.height / 2), 1, 1).data));
+            }""",
+            {"image": base64.b64encode(image).decode(), "boxes": boxes},
+        )
+        assert pixels == [[59, 63, 70, 255]] * 3
 
 
 async def test_images_are_encrypted_scoped_verified_and_expire(
