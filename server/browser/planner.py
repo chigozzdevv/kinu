@@ -111,8 +111,10 @@ class Planner:
                     + " Choose the matching control from "
                     + json.dumps(controls)
                     + ". Return its exact control ID, without a selector prefix, or stop. "
-                    + "Include a brief public decision summary in one sentence, based only on "
-                    + "these controls. Do not invent unseen page or verification details.",
+                    + "Include one brief public sentence explaining what you will do and its "
+                    + "purpose. Use the objective and approved controls only. Do not narrate "
+                    + "control matching or repeat the control label. Do not claim an action "
+                    + "has succeeded or invent unseen page or verification details.",
                     Choice,
                     page=page,
                     screenshot=False,
