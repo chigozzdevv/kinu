@@ -98,7 +98,11 @@ class Assessment:
         )
         provider_id = match.provider_id if match else None
         resource = signal.event.resource.model_copy(
-            update={"credential_id": match.id if match else None, "provider_id": None}
+            update={
+                "credential_id": match.id if match else None,
+                "generation_id": match.active_generation_id if match else None,
+                "provider_id": None,
+            }
         )
         signal = signal.model_copy(
             update={"event": signal.event.model_copy(update={"resource": resource})}

@@ -32,6 +32,7 @@ class IncidentStatus(StrEnum):
 class SourceResource(Contract):
     connection_id: Identifier | None = None
     credential_id: Identifier | None = None
+    generation_id: Identifier | None = None
     repository: str | None = Field(default=None, max_length=256)
     project: str | None = Field(default=None, max_length=256)
     service: str | None = Field(default=None, max_length=256)
@@ -78,6 +79,7 @@ class Incident(Contract):
     candidates: tuple[CorrelationCandidate, ...] = ()
     credential_id: Identifier | None = None
     run_id: Identifier | None = None
+    resolution_run_id: Identifier | None = None
     dismissal_reason: str | None = Field(default=None, max_length=1024)
     created_at: AwareDatetime
     updated_at: AwareDatetime
@@ -87,6 +89,10 @@ class Incident(Contract):
     def validate_resolution(self) -> "Incident":
         if self.status is IncidentStatus.DISMISSED and not self.dismissal_reason:
             raise ValueError("a dismissed incident requires a reason")
-        if self.status in {IncidentStatus.CONTAINED, IncidentStatus.RESOLVED} and not self.run_id:
-            raise ValueError("a contained or resolved incident requires a run")
+        if self.status is IncidentStatus.CONTAINED and not self.run_id:
+            raise ValueError("a contained incident requires a run")
+        if self.status is IncidentStatus.RESOLVED and not (self.resolution_run_id or self.run_id):
+            raise ValueError("a resolved incident requires a resolution run")
+        if self.resolution_run_id and self.status is not IncidentStatus.RESOLVED:
+            raise ValueError("a resolution run requires a resolved incident")
         return self

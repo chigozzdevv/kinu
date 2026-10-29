@@ -189,6 +189,7 @@ async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
     await assessment.process(box, "message_one", data)
     incidents = await IncidentStore(database).list_incidents(demo.organisation_id, 10)
     assert len(incidents) == 1 and data["done"]
+    assert incidents[0].resource.generation_id == "generation_demo_initial"
     events = await AuditStore(database).list_events(demo.organisation_id, 100)
     if signed and approved:
         assert len(agent.inputs) == len(queue.sent) == 1

@@ -127,8 +127,9 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
     const canResolve = selected.status === "action-required"
     const canDismiss = ["new", "correlating", "action-required"].includes(selected.status)
     const requiresCredentialChoice = canResolve && !selected.credential_id
-    const actions = selected.run_id
-      ? <Button onClick={() => onNavigateRotation(selected.run_id!)}>Open rotation <ArrowUpRight className="size-3.5" /></Button>
+    const linkedRunId = selected.resolution_run_id ?? selected.run_id
+    const actions = linkedRunId
+      ? <Button onClick={() => onNavigateRotation(linkedRunId)}>Open rotation <ArrowUpRight className="size-3.5" /></Button>
       : canResolve || canDismiss
         ? <>{canDismiss && <Button variant="secondary" onClick={() => setDismissing(true)}>Dismiss</Button>}{canResolve && <Button disabled={resolve.isPending || !selectedCandidateId} onClick={() => resolve.mutate()}>{resolve.isPending ? "Starting…" : selected.credential_id ? "Start rotation" : "Confirm and rotate"}</Button>}</>
         : undefined
@@ -137,7 +138,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <PageHeader eyebrow="Operations / Incidents" title={titleCase(selected.source)} onBack={() => { setSelectedId(""); onSelectIncident("") }} actions={actions} />
       {(resolve.error || dismiss.error) && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{(resolve.error ?? dismiss.error)?.message}</div>}
       <DetailCard>
-        <DetailList><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Reference">{selected.source_event_id}</Detail>{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
+        <DetailList><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Status">{titleCase(selected.status)}</Detail><Detail label="Reference">{selected.source_event_id}</Detail>{selected.resolution_run_id && selected.run_id && selected.resolution_run_id !== selected.run_id && <Detail label="Previous attempt"><button type="button" className="focus-ring rounded hover:underline" onClick={() => onNavigateRotation(selected.run_id!)}>View rotation</button></Detail>}{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
         {requiresCredentialChoice && <section className="mt-6 border-t border-[var(--border-soft)] pt-5"><h3 className="eyebrow mb-2">Credential</h3><div className="divide-y divide-[var(--border-soft)] border-y border-[var(--border-soft)]">
           {selected.candidates.map((candidate) => {
             const item = credential(candidate.credential_id)

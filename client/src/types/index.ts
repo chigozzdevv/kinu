@@ -286,6 +286,7 @@ export interface Incident {
   status: "new" | "correlating" | "action-required" | "rotation-started" | "contained" | "resolved" | "dismissed"
   resource: {
     credential_id: Identifier | null
+    generation_id: Identifier | null
     repository: string | null
     project: string | null
     service: string | null
@@ -301,6 +302,7 @@ export interface Incident {
   }>
   credential_id: Identifier | null
   run_id: Identifier | null
+  resolution_run_id: Identifier | null
   dismissal_reason: string | null
   created_at: string
   updated_at: string

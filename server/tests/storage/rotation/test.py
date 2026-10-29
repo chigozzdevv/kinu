@@ -36,6 +36,7 @@ from demo.effects import Effects
 from demo.mail import Mailbox, MailTask, investigate
 from demo.snapshot import loader
 from rotation.rotate import Rotation
+from rotation.stages import stable
 from rotation.state import Snapshot
 
 pytestmark = pytest.mark.anyio
@@ -237,6 +238,7 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
             resolved.model_copy(
                 update={
                     "status": IncidentStatus.ROTATING,
+                    "resolution_run_id": None,
                     "revision": resolved.revision + 1,
                 }
             ),
@@ -383,3 +385,98 @@ async def test_expired_worker_is_finalized_without_repeating_effects(
     assert result.status is RunStatus.FAILED
     assert result.failure and result.failure.code == "worker-lease-expired"
     assert not api.calls
+
+
+async def test_completed_rotation_resolves_only_alerts_for_the_retired_generation(
+    database: Database, demo: DemoConfig
+) -> None:
+    run_id = await create(database, demo, "shared_resolution")
+    primary = await link_incident(database, demo, run_id)
+    old_resource = primary.resource.model_copy(update={"generation_id": "generation_demo_initial"})
+    examples = (
+        ("unlinked", old_resource, None, IncidentStatus.ACTION),
+        ("failed_attempt", old_resource, "run_previous_failed", IncidentStatus.ACTION),
+        ("unknown_generation", primary.resource, None, IncidentStatus.ACTION),
+        (
+            "replacement",
+            primary.resource.model_copy(update={"generation_id": stable("generation", run_id)}),
+            None,
+            IncidentStatus.ACTION,
+        ),
+        ("dismissed", old_resource, None, IncidentStatus.DISMISSED),
+    )
+    async with Records(database).write(demo.organisation_id) as rows:
+        for suffix, resource, previous, status in examples:
+            await rows.add(
+                primary.model_copy(
+                    update={
+                        "id": "incident_" + suffix,
+                        "event_id": "event_" + suffix,
+                        "run_id": previous,
+                        "status": status,
+                        "resource": resource,
+                        "dismissal_reason": "Not relevant"
+                        if status is IncidentStatus.DISMISSED
+                        else None,
+                        "revision": 0,
+                    }
+                ),
+                demo.organisation_id,
+            )
+    run = await Rotation(database, Api(demo), loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
+    assert run.status is RunStatus.COMPLETED
+    store = IncidentStore(database)
+    for suffix, _, previous, _ in examples[:2]:
+        incident = await store.get(demo.organisation_id, "incident_" + suffix)
+        assert incident.status is IncidentStatus.RESOLVED
+        assert incident.run_id == previous and incident.resolution_run_id == run_id
+    for suffix in ("unknown_generation", "replacement"):
+        assert (
+            await store.get(demo.organisation_id, "incident_" + suffix)
+        ).status is IncidentStatus.ACTION
+    assert (
+        await store.get(demo.organisation_id, "incident_dismissed")
+    ).status is IncidentStatus.DISMISSED
+    assert await RunStore(database).reconcile_incidents(demo.organisation_id, run_id) == ()
+
+
+async def test_shared_resolution_requires_every_retirement_check(
+    database: Database, demo: DemoConfig
+) -> None:
+    run_id = await create(database, demo, "retirement_proof")
+    primary = await link_incident(database, demo, run_id)
+    run = await Rotation(database, Api(demo), loader(database, demo), demo.region).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
+    assert run.status is RunStatus.COMPLETED
+    incident = primary.model_copy(
+        update={
+            "id": "incident_stale",
+            "event_id": "event_stale",
+            "run_id": None,
+            "status": IncidentStatus.ACTION,
+            "resource": primary.resource.model_copy(
+                update={"generation_id": "generation_demo_initial"}
+            ),
+            "revision": 0,
+        }
+    )
+    async with Records(database).write(demo.organisation_id) as rows:
+        await rows.add(incident, demo.organisation_id)
+    executions = database.collection("executions")
+    query = {"organisation_id": demo.organisation_id, "run_id": run_id, "stage": "revoke"}
+    checkpoint = await executions.find_one(query)
+    assert checkpoint is not None
+    output = checkpoint["data"]["output"]
+    for check in ("old_rejected", "replacement_valid", "old_secret_retired"):
+        incomplete = {key: value for key, value in output.items() if key != check}
+        await executions.update_one(query, {"$set": {"data.output": incomplete}})
+        assert await RunStore(database).reconcile_incidents(demo.organisation_id, run_id) == ()
+        assert (
+            await IncidentStore(database).get(demo.organisation_id, incident.id)
+        ).status is IncidentStatus.ACTION
+    await executions.update_one(query, {"$set": {"data.output": output}})
+    changed = await RunStore(database).reconcile_incidents(demo.organisation_id, run_id)
+    assert len(changed) == 1 and changed[0].resolution_run_id == run_id
