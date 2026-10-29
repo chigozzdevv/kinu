@@ -4,7 +4,7 @@ import type { AgentEngine } from "@agent-native/core/agent/engine"
 import { access, connection } from "./grant"
 import { builderEngine } from "./engine"
 import { withStorage } from "./storage"
-import { reserve } from "./usage"
+import { DailyLimitError, reserve } from "./usage"
 
 export const navigationSchema = z.strictObject({
   system: z.string().max(24000),
@@ -72,8 +72,9 @@ export function navigationResponse(org: string, input: Navigation, requestSignal
       try {
         const result = await navigation(org, input, (content) => send({ type: "summary", content }), signal)
         send({ type: "result", result })
-      } catch {
-        send({ type: "error", message: "Browser inference failed; check the Builder connection and credits" })
+      } catch (error) {
+        send(error instanceof DailyLimitError ? { type: "error", code: error.code, message: error.message }
+          : { type: "error", code: "browser-inference", message: "Browser inference failed; check the Builder connection" })
       } finally {
         if (!signal.aborted) controller.close()
       }

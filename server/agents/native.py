@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from connectors.base.errors import ConnectorError
 from core.errors import ResourceConflictError
 from core.private import PrivateClient
 
@@ -37,6 +38,10 @@ class NativeAgent:
                 if previous and result.get("summary") != previous:
                     raise ResourceConflictError("Browser explanation did not match its result")
                 return result
+            elif event.get("type") == "error" and event.get("code") == "ai-daily-limit":
+                raise ConnectorError(
+                    "ai-daily-limit", "Kinu reached this workspace's daily AI limit"
+                )
             else:
                 raise ResourceConflictError(
                     "Browser inference failed; check the Builder connection"

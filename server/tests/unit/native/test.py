@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 from agents.native import NativeAgent
+from connectors.base.errors import ConnectorError
 from core.errors import ResourceConflictError
 from core.private import PrivateClient
 from pydantic import SecretStr
@@ -72,3 +73,22 @@ async def test_incomplete_or_inconsistent_streams_cannot_return_an_action(
         )
         with pytest.raises(ResourceConflictError):
             await agent.navigate("org_one", {})
+
+
+@pytest.mark.anyio
+async def test_daily_limit_retains_its_distinct_error_code() -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                headers={"content-type": "application/x-ndjson"},
+                content=json.dumps({"type": "error", "code": "ai-daily-limit"}) + "\n",
+            )
+        )
+    ) as http:
+        agent = NativeAgent(
+            PrivateClient(http, "https://agent.internal", SecretStr("worker-token"))
+        )
+        with pytest.raises(ConnectorError) as error:
+            await agent.navigate("org_one", {})
+        assert error.value.code == "ai-daily-limit"
