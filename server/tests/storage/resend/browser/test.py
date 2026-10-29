@@ -128,8 +128,16 @@ async def test_browser_receipts_verify_with_read_only_calls_and_preserve_account
                 source, ID, value, {"kind": "api-key", "scopes": ["sending_access", "domain:" + ID]}
             )
             assert await adapter.identify(browser, value) == ID
+            await receipts.collection.delete_one(
+                {"organisation_id": source.organisation_id, "connection_id": source.id}
+            )
+            assert await receipts.metadata(source, ID) is None
             await adapter.remember(browser, ID, value)
+            assert await receipts.metadata(source, ID) is not None
             assert await adapter.identify(browser, value) == ID
+            with pytest.raises(ConnectorError, match="linked API account"):
+                await adapter.remember(browser, "foreign-account-key", value)
+            assert await receipts.metadata(source, "foreign-account-key") is None
             assert await adapter.test_credential(browser, value) == 200
             listed.append("foreign-account-key")
             with pytest.raises(ConnectorError, match="accounts differ"):

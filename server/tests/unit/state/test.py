@@ -268,3 +268,21 @@ def bindings(stage: Stage) -> StageBindings:
             )
         )
     return StageBindings()
+
+
+def test_interrupted_recovery_can_return_to_cleanup_and_get_a_new_fence() -> None:
+    machine, run = start()
+    failure = Failure(
+        code="cleanup-needed", message="unused replacement needs cleanup", retryable=False
+    )
+    run = machine.cleanup(run, failure, run.fencing_token, run.revision, NOW)
+    assert run.lease is not None
+    run = machine.recover(run, run.lease.owner_id, run.revision, LEASE_END, NOW)
+    previous = run.fencing_token
+    later = LEASE_END + timedelta(seconds=1)
+    run = machine.cleanup(run, failure, run.fencing_token, run.revision, later)
+    assert run.status is RunStatus.CLEANUP and run.failure == failure
+    assert run.recovery_stage is None and run.recovery_failure is None
+    run = machine.recover(run, "recovery_two", run.revision, later + timedelta(minutes=5), later)
+    assert run.status is RunStatus.RECOVERING and run.fencing_token == previous + 1
+    assert run.recovery_failure == failure

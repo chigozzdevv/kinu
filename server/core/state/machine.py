@@ -181,7 +181,17 @@ class RotationMachine:
         self._interrupt_control(run, fencing_token, expected_revision, now)
         if run.status not in {RunStatus.RUNNING, RunStatus.RECOVERING, RunStatus.PAUSED}:
             raise TransitionRejectedError("terminal work cannot enter cleanup")
-        return self._update(run, now, status=RunStatus.CLEANUP, failure=failure)
+        return self._update(
+            run,
+            now,
+            status=RunStatus.CLEANUP,
+            failure=failure,
+            recovery_id=None,
+            recovery_stage=None,
+            recovery_mode=None,
+            recovery_failure=None,
+            recovery_evidence_ids=(),
+        )
 
     def fail(
         self,

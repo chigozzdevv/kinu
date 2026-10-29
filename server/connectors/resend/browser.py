@@ -79,9 +79,13 @@ class BrowserResend:
     async def remember(self, connection: Connection, identity: str, value: SecretValue) -> None:
         source = await self.source(connection)
         assert source.http
-        await self.receipts.remember(
-            connection, identity, value, {"kind": "api-key", "scopes": scopes(source.http)}
-        )
+        if not any(item["provider_id"] == identity for item in await self.api.metadata(source)):
+            raise ConnectorError(
+                "resend-account", "Captured key is absent from the linked API account"
+            )
+        metadata = {"kind": "api-key", "scopes": scopes(source.http)}
+        await self.receipts.remember(connection, identity, value, metadata)
+        await self.receipts.remember(source, identity, value, metadata)
 
     async def test_credential(self, connection: Connection, value: SecretValue) -> int:
         return await self.api.test_credential(await self.source(connection), value)
