@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import builderIcon from "@iconify-icons/logos/builder-io-icon.js"
-import { Check, LoaderCircle, MonitorCog, Pause, X } from "lucide-react"
+import { Check, LoaderCircle, MonitorCog, Pause } from "lucide-react"
 import type { ComputerUseActivity } from "../types"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
@@ -55,8 +55,9 @@ function ComputerUseImage({ runId, activity }: { runId: string; activity: Comput
 }
 
 function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
-  const Indicator = receipt.status === "failed" ? X : receipt.status === "paused" ? Pause : Check
-  const tone = receipt.status === "succeeded" ? "bg-emerald-500" : receipt.status === "failed" ? "bg-red-500" : receipt.status === "paused" ? "bg-amber-500" : "bg-white/20"
+  const symbol = receipt.status === "succeeded" ? "✅" : receipt.status === "failed" ? "❌" : null
+  const Indicator = receipt.status === "paused" ? Pause : Check
+  const tone = receipt.status === "paused" ? "bg-amber-500" : "bg-white/20"
   const response = {
     status: receipt.status,
     ...(receipt.result ? { provider_id: receipt.result.provider_id } : {}),
@@ -64,7 +65,7 @@ function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
   }
   return <div>
     <div className="flex items-center gap-2 font-semibold">
-      <span className={`grid size-4 shrink-0 place-items-center rounded-full ${tone}`} aria-hidden="true"><Indicator className="size-2.5 text-white" strokeWidth={3} /></span>
+      {symbol ? <span role="img" aria-label={receipt.status === "succeeded" ? "Succeeded" : "Failed"} className="shrink-0 text-[14px] leading-none">{symbol}</span> : <span className={`grid size-4 shrink-0 place-items-center rounded-full ${tone}`} aria-hidden="true"><Indicator className="size-2.5 text-white" strokeWidth={3} /></span>}
       <span>Response</span>
     </div>
     <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-5">{JSON.stringify(response, null, 2)}</pre>
