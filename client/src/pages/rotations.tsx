@@ -201,12 +201,14 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
           {stages.map((stage, index) => {
             const activity = latestActivity(history.data, stage.id)
             const computerUse = history.data?.computer_use.filter((item) => item.stage === stage.id) ?? []
+            const hasFrame = computerUse.some((item) => Boolean(item.image_reference))
+            const details = activity?.details.filter((detail) => !(hasFrame && detail.label === "Method" && detail.value === "Browser")) ?? []
             const attempts = history.data?.stages.filter((item) => item.stage === stage.id) ?? []
             const completed = Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
             const current = index === stageIndex && selected.status !== "completed"
             const failed = activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
-            const hasActivityDetails = Boolean((activity && (activity.details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason)) || computerUse.length)
+            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason)) || computerUse.length)
             const liveExecutor = current && !activity ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
@@ -227,11 +229,11 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                 {activity && <>
                 {activity.reason && <p className="mb-4 text-[11px] leading-5 text-[var(--red)]">{activity.reason}</p>}
                 {needsConnectionRecovery && <Button size="sm" variant="secondary" className="mb-5" onClick={() => onNavigateConnection(needsConnectionRecovery)}>Open connection <ArrowUpRight className="size-3.5" /></Button>}
-                {activity.details.filter((detail) => !(computerUse.length && detail.label === "Method" && detail.value === "Computer Use")).length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{activity.details.filter((detail) => !(computerUse.length && detail.label === "Method" && detail.value === "Computer Use")).map((detail) => {
+                {details.length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{details.map((detail) => {
                   const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && !["manual", "console", "dashboard"].includes(selected.trigger.source)
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
-                {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${activity.details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
+                {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
                 {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} secretStoreName={secretStoreName} />}
                 {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Console Operator Agent</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
