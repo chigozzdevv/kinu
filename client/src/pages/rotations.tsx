@@ -207,15 +207,16 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const hasFrame = computerUse.some((item) => Boolean(item.image_reference))
             const details = activity?.details.filter((detail) => !(hasFrame && detail.label === "Method" && detail.value === "Browser")) ?? []
             const attempts = history.data?.stages.filter((item) => item.stage === stage.id) ?? []
-            const completed = Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
+            const recovered = selected.status === "compensated" && selected.recovery_stage === stage.id && selected.recovery_evidence_ids.length > 0
+            const completed = recovered || Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
             const current = index === stageIndex && !["completed", "cancelled", "compensated"].includes(selected.status)
-            const failed = activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status))
+            const failed = !recovered && (activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status)))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
             const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason)) || computerUse.length)
             const liveExecutor = current && !activity && !computerUse.length ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
-            const summary = current ? activeStageSummary(stage.id, selected.status) : activity?.summary
+            const summary = recovered ? "Recovered" : current ? activeStageSummary(stage.id, selected.status) : activity?.summary
             const needsConnectionRecovery = current && selected.failure?.code === "provider-authentication-expired" && credential?.connection_id
             return <section key={stage.id} className="relative">
               {index < stages.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-[-14px] left-[17.5px] top-[30px] w-px bg-[var(--border)]" />}
@@ -230,7 +231,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
               {expanded && <div className="ml-10 px-2 pb-5 pt-1">
                 {liveExecutor && <div><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{liveExecutor.label}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{liveExecutor.value}</div></div>}
                 {activity && <>
-                {activity.reason && <p className="mb-4 text-[11px] leading-5 text-[var(--red)]">{activity.reason}</p>}
+                {activity.reason && <p className={`mb-4 text-[11px] leading-5 ${recovered ? "text-[var(--ink-soft)]" : "text-[var(--red)]"}`}>{recovered ? "This step stopped earlier; recovery is complete." : activity.reason}</p>}
                 {needsConnectionRecovery && <Button size="sm" variant="secondary" className="mb-5" onClick={() => onNavigateConnection(needsConnectionRecovery)}>Open connection <ArrowUpRight className="size-3.5" /></Button>}
                 {details.length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{details.map((detail) => {
                   const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && !["manual", "console", "dashboard"].includes(selected.trigger.source)

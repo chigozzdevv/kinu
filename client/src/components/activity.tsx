@@ -29,7 +29,7 @@ function Message({ actor, attachment = false, children }: { actor: Actor; attach
   </div>
 }
 
-function ComputerUseImage({ runId, activity }: { runId: string; activity: ComputerUseActivity }) {
+function ComputerUseImage({ runId, activity, caption }: { runId: string; activity: ComputerUseActivity; caption: string }) {
   const frame = useQuery({
     queryKey: ["rotations", runId, "computer-use", activity.id, "image"],
     queryFn: () => api.getComputerUseImage(runId, activity.id),
@@ -47,11 +47,11 @@ function ComputerUseImage({ runId, activity }: { runId: string; activity: Comput
     return () => URL.revokeObjectURL(value)
   }, [frame.data])
 
-  return <div className="grid aspect-video place-items-center overflow-hidden rounded-xl bg-[var(--surface-soft)]">
+  return <figure><div className="grid aspect-video place-items-center overflow-hidden rounded-xl bg-[var(--surface-soft)]">
     {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
     {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
     {imageUrl && <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />}
-  </div>
+  </div><figcaption className="px-1 pt-1.5 text-[9px] text-[var(--ink-muted)]">{caption}</figcaption></figure>
 }
 
 function Explanation({ text, streaming }: { text: string; streaming: boolean }) {
@@ -88,7 +88,9 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
   return <div className="mt-5 max-w-[720px] space-y-8">
     {turns.map((turn) => {
       const events = activities.filter((activity) => activity.turn === turn)
+      const input = events.find((activity) => activity.phase === "input")
       const proposal = events.find((activity) => activity.phase === "proposal")
+      const before = input?.image_reference ? input : proposal
       const execution = events.find((activity) => activity.phase === "execution")
       const validation = events.find((activity) => activity.phase === "validation")
       const responses = events.filter((activity) => activity.phase === "response")
@@ -97,14 +99,18 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
       const content = proposal?.content ?? response?.content
       const streaming = !proposal && response?.status === "streaming"
       return <div key={turn} className="space-y-4">
-        {proposal?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={proposal} /></Message>}
+        {input?.prompt && <Message actor="kinu">
+          <Explanation text={input.prompt} streaming={false} />
+          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}>Playbook <code className="break-all">{input.target}</code></p>}
+        </Message>}
+        {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before click" /></Message>}
         {(proposal || content) && <Message actor="builder">
           {content && <Explanation text={content} streaming={streaming} />}
-          {proposal && <div className={`${content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.intent}</span></div>}
+          {proposal && <div className={`${content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.arguments.button ? `“${proposal.arguments.button}”` : proposal.intent}</span></div>}
           {proposal && Object.keys(proposal.arguments).length > 0 && <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
         </Message>}
         {receipt && <Message actor="kinu"><ActionResponse receipt={receipt} /></Message>}
-        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} /></Message>}
+        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} caption="After creation · Key hidden" /></Message>}
         {proposal && !receipt && <Message actor="kinu"><span className="inline-flex items-center gap-2"><LoaderCircle className="size-3 animate-spin" aria-hidden="true" />Working…</span></Message>}
       </div>
     })}
