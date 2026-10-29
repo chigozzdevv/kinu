@@ -84,7 +84,7 @@ async def test_browser_checks_form_values_before_actions_and_page_after_actions(
         await tab.page.locator("#create").click()
         assert step.checkpoint
         await tab.driver.validate_checkpoint(step.checkpoint)
-        with pytest.raises(ResourceConflictError, match="instead of one"):
+        with pytest.raises(ResourceConflictError, match="did not become visible"):
             await tab.driver.validate_step(step)
         await tab.page.set_content('<a href="/keys">API keys</a>')
         await tab.driver.setup_enter("https://portal.example/keys")
@@ -92,6 +92,26 @@ async def test_browser_checks_form_values_before_actions_and_page_after_actions(
         await tab.driver.setup_navigate("https://portal.example/login")
         with pytest.raises(AuthenticationRequiredError):
             await tab.driver.setup_enter("https://portal.example/keys")
+
+
+async def test_browser_waits_for_delayed_controls_and_rejects_ambiguous_matches() -> None:
+    executable()
+    selector = Selector(kind=SelectorKind.ROLE, value="textbox", name="Name")
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content("<h1>API keys</h1>")
+        await tab.page.evaluate(
+            "setTimeout(() => document.body.insertAdjacentHTML("
+            "'beforeend', '<input aria-label=Name>'), 100)"
+        )
+        field = await tab.driver.locator(selector)
+        await field.fill("replacement")
+        assert await field.input_value() == "replacement"
+        await tab.page.evaluate(
+            "document.body.insertAdjacentHTML('beforeend', '<input aria-label=Name>')"
+        )
+        with pytest.raises(ResourceConflictError, match="instead of one"):
+            await tab.driver.locator(selector)
 
 
 def definition() -> PlaybookDraft:

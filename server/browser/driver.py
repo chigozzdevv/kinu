@@ -54,7 +54,7 @@ class BrowserDriver:
         if action.kind is BrowserActionKind.NAVIGATE:
             assert action.url is not None
             self.validate_url(action.url)
-            await self._page.goto(action.url, wait_until="domcontentloaded")
+            await self._page.goto(action.url, wait_until="load")
         elif action.kind is BrowserActionKind.CLICK:
             await (await self.locator(_selector(action))).click()
         elif action.kind is BrowserActionKind.TYPE:
@@ -112,7 +112,7 @@ class BrowserDriver:
 
     async def setup_navigate(self, url: str) -> None:
         self.validate_url(url)
-        await self._page.goto(url, wait_until="domcontentloaded")
+        await self._page.goto(url, wait_until="load")
 
     async def setup_enter(self, url: str) -> None:
         self._check_authentication()
@@ -227,6 +227,12 @@ class BrowserDriver:
         else:
             raise ResourceConflictError(f"selector kind {selector.kind.value} is unsupported")
         count = await locator.count()
+        if require_unique and (count == 0 or (count == 1 and not await locator.is_visible())):
+            try:
+                await locator.wait_for(state="visible", timeout=_CHECKPOINT_TIMEOUT_MS)
+            except PlaywrightTimeoutError:
+                raise ResourceConflictError("approved selector did not become visible") from None
+            count = await locator.count()
         if require_unique and count != 1:
             raise ResourceConflictError(
                 f"approved selector resolved to {count} elements instead of one"

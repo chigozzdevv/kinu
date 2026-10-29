@@ -104,7 +104,7 @@ def procedure(domain_id: str, domain_name: str) -> PlaybookDraft:
                     "create",
                     "Create the scoped replacement key",
                     effect="create-credential",
-                    selectors=[role("button", "Add ⌘ ↩︎")],
+                    selectors=[{"kind": "css", "value": '[role="dialog"] button[type="submit"]'}],
                     conditions=[
                         {
                             "selector": role("textbox", "Name"),
@@ -176,7 +176,7 @@ def procedure(domain_id: str, domain_name: str) -> PlaybookDraft:
                     "Retire the verified old key",
                     stage="revoke",
                     effect="revoke-credential",
-                    selectors=[role("button", "Delete API Key ⌘ ↩︎")],
+                    selectors=[{"kind": "css", "value": '[role="dialog"] button[type="submit"]'}],
                     result_checkpoint={**page, "required_text": ["API keys"]},
                     conditions=[
                         {

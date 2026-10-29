@@ -112,7 +112,7 @@ function openCreate() {
   <input type="hidden" value="full_access">
   <label for="domain">Domain</label>
   <button id="domain-button" role="combobox" onclick="chooseDomain()" disabled>All domains</button>
-  <button onclick="createKey()">Add ⌘ ↩︎</button>`;
+  <button type="submit" onclick="createKey()">Add Ctrl ↩︎</button>`;
   document.body.appendChild(dialog);
 }
 function choosePermission() {
@@ -152,7 +152,7 @@ function retire() {
   document.querySelector('[role=menu]').remove();
   const dialog=document.createElement('div');dialog.setAttribute('role','dialog');
   dialog.innerHTML='<input placeholder="Enter API Key name">'+
-    '<button onclick="confirmOld()">Delete API Key ⌘ ↩︎</button>';
+    '<button type="submit" onclick="confirmOld()">Delete API Key Ctrl ↩︎</button>';
   document.body.appendChild(dialog);
 }
 async function confirmOld() {
