@@ -114,6 +114,24 @@ async def test_browser_waits_for_delayed_controls_and_rejects_ambiguous_matches(
             await tab.driver.locator(selector)
 
 
+async def test_browser_waits_for_custom_select_options_to_render() -> None:
+    executable()
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content('<button id="permission">Full access</button>')
+        await tab.page.evaluate(
+            "document.querySelector('#permission').onclick = () => setTimeout(() => {"
+            "const option = document.createElement('button');"
+            "option.setAttribute('role', 'option'); option.textContent = 'Sending access';"
+            "option.onclick = () => document.querySelector('#permission').textContent = "
+            "option.textContent; document.body.appendChild(option);}, 100)"
+        )
+        await tab.driver._select_option(
+            Selector(kind=SelectorKind.CSS, value="#permission"), "Sending access"
+        )
+        assert await tab.page.locator("#permission").inner_text() == "Sending access"
+
+
 def definition() -> PlaybookDraft:
     checkpoint = {"url_pattern": "https://portal.example/keys*", "required_text": ["API keys"]}
     base = {"parameters": {}, "evidence_checks": ["page_verified"], "checkpoint": checkpoint}

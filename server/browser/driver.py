@@ -266,6 +266,14 @@ class BrowserDriver:
         option = self._page.get_by_role("option", name=value, exact=True)
         if await option.count() != 1:
             option = self._page.get_by_text(value, exact=True)
+        count = await option.count()
+        if count == 0 or (count == 1 and not await option.is_visible()):
+            try:
+                await option.wait_for(state="visible", timeout=_CHECKPOINT_TIMEOUT_MS)
+            except PlaywrightTimeoutError:
+                raise ResourceConflictError(
+                    "approved select option did not become visible"
+                ) from None
         if await option.count() != 1 or not await option.is_visible():
             raise ResourceConflictError("approved select option is not uniquely visible")
         await option.click()
