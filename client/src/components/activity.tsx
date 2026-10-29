@@ -101,7 +101,7 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
       return <div key={turn} className="space-y-4">
         {input?.prompt && <Message actor="kinu">
           <Explanation text={input.prompt} streaming={false} />
-          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}>Playbook <code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
+          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}><code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
         </Message>}
         {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before click" /></Message>}
         {(proposal || content) && <Message actor="builder">
