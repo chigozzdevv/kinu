@@ -125,4 +125,24 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
             for stage in public.stages
             if stage.stage.value in {"create", "revoke"}
         )
+        executions = [
+            activity for activity in public.computer_use if activity.phase.value == "execution"
+        ]
+        assert len(executions) == 2 and all(activity.result for activity in executions)
+        created = next(activity for activity in executions if activity.stage.value == "create")
+        retired = next(activity for activity in executions if activity.stage.value == "revoke")
+        assert created.result and created.result.provider_id == platform.created[-1]
+        assert created.result.secret_reference
+        assert retired.result and retired.result.provider_id == credential.provider_id
+        assert retired.result.secret_reference is None
+        await database.collection("browser_activity").update_one(
+            {"organisation_id": org, "run_id": run.id, "id": created.id},
+            {"$unset": {"result": ""}},
+        )
+        captured = await history_store.get(org, run.id)
+        assert (
+            next(item for item in captured.computer_use if item.id == created.id).result
+            == created.result
+        )
+        assert "re_private-" not in captured.model_dump_json()
         assert platform.loaded.startswith("re_private-browser-fixture-")

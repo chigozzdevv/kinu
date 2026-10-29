@@ -109,6 +109,11 @@ class BrowserActionRecord(Contract):
         return self
 
 
+class BrowserActionResult(Contract):
+    provider_id: str = Field(min_length=1, max_length=256)
+    secret_reference: str | None = Field(default=None, max_length=1024)
+
+
 class ComputerUseActivity(Contract):
     id: Identifier
     organisation_id: Identifier
@@ -129,11 +134,17 @@ class ComputerUseActivity(Contract):
     arguments: dict[str, Any] = Field(default_factory=dict)
     intent: str | None = Field(default=None, max_length=2048)
     safety_decision: str | None = Field(default=None, max_length=64)
+    result: BrowserActionResult | None = None
     target: str | None = Field(default=None, max_length=256)
     recorded_at: AwareDatetime
 
     @model_validator(mode="after")
     def validate_safe_shape(self) -> "ComputerUseActivity":
+        if self.result is not None and (
+            self.phase is not ComputerUseActivityPhase.EXECUTION
+            or self.status is not ComputerUseActivityStatus.SUCCEEDED
+        ):
+            raise ValueError("Browser results require a successful execution")
         if bool(self.image_reference) != bool(self.image_digest):
             raise ValueError("Computer Use screenshots require both a reference and digest")
         if len(json.dumps(self.arguments, sort_keys=True, separators=(",", ":"))) > 8192:

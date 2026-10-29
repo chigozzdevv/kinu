@@ -18,11 +18,14 @@ from contracts import (
     BrowserAction,
     BrowserActionKind,
     BrowserActionRecord,
+    BrowserActionResult,
     BrowserActionStatus,
     BrowserPolicy,
     BrowserSession,
     BrowserStatus,
     ComputerUseActivity,
+    ComputerUseActivityPhase,
+    ComputerUseActivityStatus,
     Connection,
     ConnectionAuthorization,
     ConnectionInterface,
@@ -857,3 +860,28 @@ def test_browser_choices_require_a_bounded_public_summary() -> None:
         Choice.model_validate(
             {"control": "create_key", "summary": "Approved control.", "reasoning": "private"}
         )
+
+
+def test_browser_results_require_a_successful_execution() -> None:
+    activity = ComputerUseActivity(
+        id="activity_result",
+        organisation_id="org_one",
+        session_id="browser_one",
+        run_id="run_one",
+        step_id="create_key",
+        stage=Stage.CREATE,
+        turn=1,
+        phase=ComputerUseActivityPhase.EXECUTION,
+        status=ComputerUseActivityStatus.SUCCEEDED,
+        action=BrowserActionKind.CLICK,
+        result=BrowserActionResult(
+            provider_id="key_one", secret_reference="kinu://vault/key/versions/one"
+        ),
+        recorded_at=NOW,
+    )
+    assert activity.result and activity.result.provider_id == "key_one"
+    for phase, status in (("proposal", "proposed"), ("execution", "failed")):
+        with pytest.raises(ValueError, match="successful execution"):
+            ComputerUseActivity.model_validate(
+                {**activity.model_dump(), "phase": phase, "status": status}
+            )

@@ -7,6 +7,7 @@ from connectors.base import SecretValue
 from contracts import (
     BrowserAction,
     BrowserActionKind,
+    BrowserActionResult,
     BrowserPolicy,
     BrowserSession,
     BrowserStatus,
@@ -17,6 +18,7 @@ from contracts import (
     CredentialGeneration,
     ManagedCredential,
     PlaybookEffect,
+    PlaybookStep,
     RotationRun,
     RunStatus,
     SecureCaptureResult,
@@ -309,40 +311,66 @@ class Worker:
                                 state.store.id,
                                 credential.secret_resource,
                             )
+                        elif step.checkpoint:
+                            await tab.driver.validate_checkpoint(
+                                step.result_checkpoint or step.checkpoint
+                            )
                     except Exception:
                         await self.sessions.finish_action(
                             org, session.id, action.id, False, "Browser action did not complete"
                         )
+                        if step.effect is not PlaybookEffect.NONE:
+                            await self._receipt(
+                                session, step, kind, ComputerUseActivityStatus.FAILED
+                            )
                         raise
                     await self.sessions.finish_action(org, session.id, action.id, True)
                     if capture:
                         session = await self.sessions.complete_capture(capture, session.revision)
                     if step.effect is not PlaybookEffect.NONE:
-                        await self.sessions.record_activity(
+                        await self._receipt(
                             session,
-                            ComputerUseActivity(
-                                id=stable("activity", session.id + ":" + step.id + ":executed"),
-                                organisation_id=org,
-                                session_id=session.id,
-                                run_id=run.id,
-                                step_id=step.id,
-                                stage=stage,
-                                turn=session.step_count,
-                                phase=ComputerUseActivityPhase.EXECUTION,
-                                status=ComputerUseActivityStatus.SUCCEEDED,
-                                action=kind,
-                                target=step.id,
-                                safety_decision="approved-control",
-                                recorded_at=datetime.now(UTC),
+                            step,
+                            kind,
+                            ComputerUseActivityStatus.SUCCEEDED,
+                            BrowserActionResult(
+                                provider_id=capture.provider_id
+                                if capture
+                                else str(context["old_provider_id"]),
+                                secret_reference=capture.secret_reference if capture else None,
                             ),
                         )
                     if capture:
                         return capture
-                    if step.checkpoint:
-                        await tab.driver.validate_checkpoint(
-                            step.result_checkpoint or step.checkpoint
-                        )
                 return None
         finally:
             if session.status is not BrowserStatus.TERMINATED:
                 await self.sessions.terminate(org, session.id, session.revision)
+
+    async def _receipt(
+        self,
+        session: BrowserSession,
+        step: PlaybookStep,
+        kind: BrowserActionKind,
+        status: ComputerUseActivityStatus,
+        result: BrowserActionResult | None = None,
+    ) -> None:
+        await self.sessions.record_activity(
+            session,
+            ComputerUseActivity(
+                id=stable("activity", session.id + ":" + step.id + ":executed"),
+                organisation_id=session.organisation_id,
+                session_id=session.id,
+                run_id=session.run_id,
+                step_id=step.id,
+                stage=step.stage,
+                turn=session.step_count,
+                phase=ComputerUseActivityPhase.EXECUTION,
+                status=status,
+                action=kind,
+                target=step.id,
+                safety_decision="approved-control",
+                result=result,
+                recorded_at=datetime.now(UTC),
+            ),
+        )

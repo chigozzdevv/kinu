@@ -2,8 +2,13 @@ from contracts import (
     Approval,
     ApprovalEvidenceKind,
     ApprovalEvidenceSnapshot,
+    BrowserActionResult,
     ComputerUseActivity,
+    ComputerUseActivityPhase,
+    ComputerUseActivityStatus,
     RotationHistory,
+    SecureCaptureResult,
+    Stage,
     StageExecutionResult,
 )
 from policy import digest
@@ -31,20 +36,58 @@ class HistoryStore:
             approvals = await rows.match(Approval, organisation_id, {"run_id": run_id})
         return RotationHistory(
             run_id=run_id,
-            computer_use=tuple(
-                [
-                    ComputerUseActivity.model_validate(
-                        {key: value for key, value in row.items() if key != "_id"}
-                    )
-                    async for row in self._database.collection("browser_activity")
-                    .find({"organisation_id": organisation_id, "run_id": run_id})
-                    .sort("recorded_at", 1)
-                ]
-            ),
+            computer_use=await self._browser_activity(organisation_id, run_id),
             stages=tuple(
                 _activity(StageExecutionResult.model_validate(row["data"]), run, approvals)
                 for row in results
             ),
+        )
+
+    async def _browser_activity(self, org: str, run: str) -> tuple[ComputerUseActivity, ...]:
+        activities = [
+            ComputerUseActivity.model_validate(
+                {key: value for key, value in row.items() if key != "_id"}
+            )
+            async for row in self._database.collection("browser_activity")
+            .find({"organisation_id": org, "run_id": run})
+            .sort("recorded_at", 1)
+        ]
+        sessions = {
+            item.session_id
+            for item in activities
+            if item.phase is ComputerUseActivityPhase.EXECUTION
+            and item.status is ComputerUseActivityStatus.SUCCEEDED
+            and item.stage is Stage.CREATE
+            and item.result is None
+        }
+        captures = (
+            {
+                row["session_id"]: SecureCaptureResult.model_validate(
+                    {key: value for key, value in row.items() if key != "_id"}
+                )
+                async for row in self._database.collection("browser_captures").find(
+                    {"organisation_id": org, "session_id": {"$in": sorted(sessions)}}
+                )
+            }
+            if sessions
+            else {}
+        )
+        return tuple(
+            item.model_copy(
+                update={
+                    "result": BrowserActionResult(
+                        provider_id=captures[item.session_id].provider_id,
+                        secret_reference=captures[item.session_id].secret_reference,
+                    )
+                }
+            )
+            if item.session_id in captures
+            and item.phase is ComputerUseActivityPhase.EXECUTION
+            and item.status is ComputerUseActivityStatus.SUCCEEDED
+            and item.stage is Stage.CREATE
+            and item.result is None
+            else item
+            for item in activities
         )
 
     async def approval_evidence(
