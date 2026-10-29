@@ -7,13 +7,24 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 import dkim
+from core.errors import ResourceConflictError
 from dkim.util import parse_tag_value
+from dns import exception as dns_error
+from dns import resolver as dns_resolver
+
+
+class ProofUnavailableError(ResourceConflictError):
+    pass
 
 
 async def authenticated(raw: bytes, sender: str, dns: Callable[..., Any] | None = None) -> bool:
     try:
         async with asyncio.timeout(8):
             return await asyncio.to_thread(_verify, raw, sender, dns)
+    except (ProofUnavailableError, TimeoutError):
+        raise ProofUnavailableError(
+            "Email signature verification is temporarily unavailable"
+        ) from None
     except Exception:
         return False
 
@@ -33,6 +44,16 @@ def _verify(raw: bytes, sender: str, dns: Callable[..., Any] | None) -> bool:
     if date.tzinfo is None or not now - timedelta(days=7) <= date <= now + timedelta(minutes=5):
         return False
     domain = sender.rsplit("@", 1)[1].casefold().encode()
+
+    def lookup(name: bytes, timeout: float = 3) -> bytes | None:
+        try:
+            value: bytes | None = (dns or _txt)(name, timeout=timeout)
+            return value
+        except (dkim.DnsTimeoutError, dns_error.DNSException, OSError):
+            raise ProofUnavailableError(
+                "Email signing-key lookup is temporarily unavailable"
+            ) from None
+
     verifier = dkim.DKIM(raw, minkey=1024, timeout=3)
     for index, signature in enumerate(message.get_all("DKIM-Signature", [])[:5]):
         tags = parse_tag_value(str(signature).encode())
@@ -44,6 +65,16 @@ def _verify(raw: bytes, sender: str, dns: Callable[..., Any] | None) -> bool:
             or not required <= signed
         ):
             continue
-        if verifier.verify(idx=index, **({"dnsfunc": dns} if dns else {})):
+        if verifier.verify(idx=index, dnsfunc=lookup):
             return True
     return False
+
+
+def _txt(name: bytes, timeout: float = 3) -> bytes | None:
+    try:
+        answers = dns_resolver.resolve(name.decode("ascii"), "TXT", lifetime=timeout, search=False)
+    except (dns_resolver.NXDOMAIN, dns_resolver.NoAnswer):
+        return None
+    if len(answers) != 1:
+        return None
+    return b"".join(answers[0].strings)

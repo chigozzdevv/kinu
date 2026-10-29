@@ -10,6 +10,7 @@ from mail.assessment import Assessment
 from mail.google import Google
 from mail.models import GoogleConfig, Grant, Mailbox, Sender
 from mail.poll import Poller
+from mail.proof import ProofUnavailableError
 from mail.service import Service
 from mail.vault import Vault
 from pydantic import SecretStr
@@ -24,8 +25,8 @@ def anyio_backend() -> str:
 
 
 class Receiver(Assessment):
-    def __init__(self, store: MemoryMail) -> None:
-        self.store = store
+    def __init__(self, store: MemoryMail, unavailable: bool = False) -> None:
+        self.store, self.unavailable = store, unavailable
         self.calls = 0
 
     async def active(self, box: Mailbox) -> None:
@@ -37,6 +38,9 @@ class Receiver(Assessment):
         self, box: Mailbox, identity: str, raw: bytes, sender: Sender, received: datetime
     ) -> dict[str, Any]:
         await self.active(box)
+        if self.unavailable:
+            self.unavailable = False
+            raise ProofUnavailableError("DNS lookup failed")
         return {"done": False, "revision": box.revision}
 
     async def process(self, box: Mailbox, identity: str, data: dict[str, Any]) -> None:
@@ -47,7 +51,11 @@ class Receiver(Assessment):
 
 
 @pytest.mark.parametrize("disconnect", [False, True])
-async def test_refresh_deduplication_and_disconnect_during_delivery(disconnect: bool) -> None:
+@pytest.mark.parametrize("unavailable", [False, True])
+async def test_refresh_retry_deduplication_and_disconnect(
+    disconnect: bool,
+    unavailable: bool,
+) -> None:
     now = datetime.now(UTC)
     store = MemoryMail()
     box = Mailbox(
@@ -110,11 +118,15 @@ async def test_refresh_deduplication_and_disconnect_during_delivery(disconnect: 
             None,
             cursor={"since": int(now.timestamp()) - 100, "start": int(now.timestamp()) - 100},
         )
-        receiver = Receiver(store)
+        receiver = Receiver(store, unavailable)
         poller = Poller(service, receiver)
         await poller.run()
+        if unavailable and not disconnect:
+            assert receiver.calls == 0
+            assert await store.message(box.organisation_id, box.id, "message_one") is None
         await poller.run()
-    assert len(reads) == len(refreshes) == 1
+    assert len(reads) == (2 if unavailable and not disconnect else 1)
+    assert len(refreshes) == 1
     assert receiver.calls == (0 if disconnect else 1)
     _, saved = await store.mailbox(box.organisation_id, box.id)
     assert "fixture-refresh" not in str(saved)

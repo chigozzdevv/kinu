@@ -65,7 +65,7 @@ providers after connecting. Kinu reads new matching messages every five minutes,
 attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
 sender-aligned DKIM using SHA-256 with an RSA key of at least 1024 bits, a unique credential match
 and permitted controls. Senders should use 2048-bit keys where available.
-Alerts that fail sender verification remain available for manual review. Register Google's web OAuth
+Invalid signatures require manual review; temporary DNS failures are retried. Register Google's web OAuth
 client with the callback shown in Settings. Public Gmail use requires Google's verification;
 Testing applications require test users and have limited refresh-token lifetimes.
 
