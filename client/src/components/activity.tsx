@@ -11,17 +11,17 @@ type Actor = "browser" | "builder" | "kinu"
 const names: Record<Actor, string> = { browser: "Browser", builder: "Builder AI", kinu: "Kinu" }
 
 function Avatar({ actor }: { actor: Actor }) {
-  return <span className="mt-0.5 grid size-7 shrink-0 place-items-center overflow-hidden rounded-[9px] border border-[var(--border)] bg-white" aria-hidden="true">
+  return <span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full border border-[var(--border)] bg-white" aria-hidden="true">
     {actor === "builder" ? <Icon icon={builderIcon} className="size-4" /> : actor === "kinu" ? <img src="/favicon.svg" alt="" className="size-full" /> : <MonitorCog className="size-4 text-[var(--ink-soft)]" strokeWidth={1.6} />}
   </span>
 }
 
 function Message({ actor, attachment = false, children }: { actor: Actor; attachment?: boolean; children: ReactNode }) {
-  const outgoing = actor === "kinu"
+  const outgoing = actor !== "builder"
   return <div className={`flex items-start gap-2.5 ${outgoing ? "flex-row-reverse" : ""}`}>
     <Avatar actor={actor} />
     <div className={`min-w-0 ${attachment ? "w-full max-w-[560px]" : "w-fit max-w-[calc(100%-38px)]"}`}>
-      <div className={`mb-1.5 text-[10px] font-semibold text-[var(--ink-muted)] ${outgoing ? "text-right" : ""}`}>{names[actor]}</div>
+      <div className={`mb-1.5 flex h-7 items-center text-[10px] font-semibold text-[var(--ink-muted)] ${outgoing ? "justify-end" : ""}`}>{names[actor]}</div>
       <div className={`rounded-2xl border text-[11px] leading-5 ${attachment ? "border-[var(--border)] bg-white p-2" : outgoing ? "border-[var(--ink)] bg-[var(--ink)] px-4 py-3 text-white" : "border-[var(--border)] bg-white px-4 py-3 text-[var(--ink)]"}`}>
         {children}
       </div>
