@@ -231,7 +231,7 @@ class Worker:
                             step.objective,
                             {step.id: step.selectors[0].name or step.objective[:160]},
                         )
-                        if selected != step.id:
+                        if selected.control != step.id:
                             raise ResourceConflictError("Browser control is not approved")
                         await tab.driver.validate_step(step)
                         await validate(self.database, state, fence)
@@ -256,7 +256,8 @@ class Worker:
                                 action=kind,
                                 intent=step.objective,
                                 target=step.id,
-                                arguments={"control_id": selected},
+                                arguments={"control_id": selected.control},
+                                content=selected.summary,
                                 recorded_at=datetime.now(UTC),
                             ),
                         )

@@ -10,6 +10,7 @@ import httpx
 import pytest
 from browser.driver import BrowserDriver
 from browser.launch import Tab
+from browser.planner import Choice
 from contracts import BrowserActionKind, BrowserPolicy, PlaybookDraft
 from core.errors import ResourceConflictError
 from playwright.async_api import Route, async_playwright
@@ -32,12 +33,15 @@ class Planner:
         self.calls: list[dict[str, str]] = []
         self.stop = False
 
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> str:
+    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice:
         self.calls.append(controls)
         assert NEW not in json.dumps(controls)
         if self.stop:
             raise ResourceConflictError("Agent did not select a control")
-        return next(iter(controls))
+        return Choice(
+            control=next(iter(controls)),
+            summary="The requested action matches the approved control.",
+        )
 
 
 class Launcher:

@@ -9,6 +9,7 @@ from broker import CapabilitySigner
 from browser.access import BrowserAccessService
 from browser.auth import BrowserAuthBroker
 from browser.driver import AuthenticationRequiredError, BrowserDriver
+from browser.planner import Choice
 from browser.playbook import browser_step_context, resolve_playbook_step
 from browser.service import BrowserService
 from browser.url import metadata_url
@@ -842,3 +843,17 @@ async def test_terminated_browser_can_be_reprovisioned() -> None:
     assert session.worker_instance is None
     assert session.fencing_token == 4
     assert session.terminated_at is None
+
+
+def test_browser_choices_require_a_bounded_public_summary() -> None:
+    from pydantic import ValidationError
+
+    choice = Choice(control="create_key", summary="The approved control matches key creation.")
+    assert choice.summary == "The approved control matches key creation."
+    for summary in ("", " ", "a" * 321):
+        with pytest.raises(ValidationError):
+            Choice(control="create_key", summary=summary)
+    with pytest.raises(ValidationError):
+        Choice.model_validate(
+            {"control": "create_key", "summary": "Approved control.", "reasoning": "private"}
+        )

@@ -20,20 +20,21 @@ class Navigation(Protocol):
     async def navigate(self, organisation_id: str, value: dict[str, Any]) -> dict[str, Any]: ...
 
 
-class ControlPlanner(Protocol):
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> str: ...
-
-
 class Choice(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     control: str = Field(min_length=1, max_length=128)
+    summary: str = Field(min_length=1, max_length=320)
+
+
+class ControlPlanner(Protocol):
+    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice: ...
 
 
 class Planner:
     def __init__(self, agent: Navigation, executable: str | None = None) -> None:
         self.agent, self.executable = agent, executable
 
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> str:
+    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice:
         if (
             not controls
             or len(controls) > 12
@@ -109,7 +110,9 @@ class Planner:
                     objective
                     + " Choose the matching control from "
                     + json.dumps(controls)
-                    + ". Return its exact control ID, without a selector prefix, or stop.",
+                    + ". Return its exact control ID, without a selector prefix, or stop. "
+                    + "Include a brief public decision summary in one sentence, based only on "
+                    + "these controls. Do not invent unseen page or verification details.",
                     Choice,
                     page=page,
                     screenshot=False,
@@ -118,7 +121,7 @@ class Planner:
                 )
                 if result.data.control not in controls:
                     raise ResourceConflictError("Agent did not select an approved browser control")
-                return result.data.control
+                return result.data
             finally:
                 try:
                     if stage:

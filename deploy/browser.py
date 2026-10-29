@@ -65,7 +65,10 @@ class Agent:
         self.calls += 1
         if "control" in value["schema"].get("properties", {}):
             assert "create_key" in str(value["messages"])
-            return {"control": "create_key"}
+            return {
+                "control": "create_key",
+                "summary": "The approved control matches key creation.",
+            }
         return {"progress": "The approved control was found.", "completed": True}
 
 
@@ -167,7 +170,7 @@ async def check() -> None:
     choice = await Planner(agent).choose(
         "org_check", "Create a replacement key", {"create_key": "Create key"}
     )
-    assert choice == "create_key" and 0 < agent.calls <= 4
+    assert choice.control == "create_key" and choice.summary and 0 < agent.calls <= 4
     print("Browser checks passed: private capture, context disposal and Stagehand inference.")
 
 

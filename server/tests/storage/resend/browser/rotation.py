@@ -114,7 +114,9 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         proposals = [
             activity for activity in public.computer_use if activity.phase.value == "proposal"
         ]
-        assert len(proposals) == 2 and all(activity.image_reference for activity in proposals)
+        assert len(proposals) == 2 and all(
+            activity.image_reference and activity.content for activity in proposals
+        )
         for activity in proposals:
             content, kind = await history_store.image(org, run.id, activity.id)
             assert content.startswith(b"\x89PNG") and kind == "image/png"

@@ -1,7 +1,7 @@
-import { Sparkles } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, Paperclip, Pause, Plus, Reply, X } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, Pause, Plus, X } from "lucide-react"
+import { RunActivity } from "../components/activity"
 import { DetailCard } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
@@ -12,7 +12,7 @@ import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Field, SelectControl, formControl } from "../components/workspace"
-import type { ComputerUseActivity, RotationHistory, RotationRun, RunStageActivity, StageName } from "../types"
+import type { RotationHistory, RotationRun, RunStageActivity, StageName } from "../types"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
 
@@ -101,102 +101,6 @@ function StageMarker({ completed, current, failed, paused }: { completed: boolea
   return <span className="size-5 shrink-0 rounded-full border border-[var(--border)]" aria-label="Not started" />
 }
 
-function ComputerUseImage({ runId, activity }: { runId: string; activity: ComputerUseActivity }) {
-  const frame = useQuery({
-    queryKey: ["rotations", runId, "computer-use", activity.id, "image"],
-    queryFn: () => api.getComputerUseImage(runId, activity.id),
-    staleTime: Infinity,
-  })
-  const [imageUrl, setImageUrl] = useState("")
-
-  useEffect(() => {
-    if (!frame.data) {
-      setImageUrl("")
-      return
-    }
-    const value = URL.createObjectURL(frame.data)
-    setImageUrl(value)
-    return () => URL.revokeObjectURL(value)
-  }, [frame.data])
-
-  return <div className="grid aspect-video place-items-center overflow-hidden rounded-xl bg-[var(--surface-soft)]">
-      {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
-      {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
-      {imageUrl && <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />}
-    </div>
-}
-
-function ChatMessage({ sender, outgoing = false, dark = false, children }: { sender: ReactNode; outgoing?: boolean; dark?: boolean; children: ReactNode }) {
-  return <div className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
-    <div className="w-fit max-w-[min(100%,720px)]">
-      <div className="mb-1.5 text-left text-[9px] font-semibold text-[var(--ink-muted)]">{sender}</div>
-      <div className={`rounded-2xl border px-4 py-3 text-[10px] leading-5 ${outgoing || dark ? "border-[var(--ink)] bg-[var(--ink)] text-white" : "border-[var(--border)] bg-white text-[var(--ink)]"}`}>
-        {children}
-      </div>
-    </div>
-  </div>
-}
-
-function ComputerUseStream({ runId, activities, secretStoreName }: { runId: string; activities: ComputerUseActivity[]; secretStoreName: string }) {
-  const turns = [...new Set(activities.map((activity) => activity.turn))]
-  const latest = activities.at(-1)
-  const running = Boolean(latest && !["execution"].includes(latest.phase) && latest.status !== "completed" && latest.status !== "failed")
-  return <div className="mt-5">
-    <div className="flex items-center gap-2 text-[9px] font-semibold text-[var(--ink-muted)]">Computer Use{running && <LoaderCircle className="size-3 animate-spin" />}</div>
-    <div className="mt-4 space-y-8">
-      {turns.map((turn) => {
-        const events = activities.filter((activity) => activity.turn === turn)
-        const input = events.find((activity) => activity.phase === "input")
-        const thought = events.filter((activity) => activity.phase === "thought").map((activity) => activity.content ?? "").join("")
-        const response = events.filter((activity) => activity.phase === "response" && activity.content).map((activity) => activity.content).join("")
-        const proposal = events.find((activity) => activity.phase === "proposal")
-        const validation = events.find((activity) => activity.phase === "validation")
-        const execution = events.find((activity) => activity.phase === "execution")
-        const receipt = execution ?? validation
-        const receiptLabel = execution
-          ? execution.status === "succeeded" ? "completed" : execution.status === "paused" ? "paused" : "failed"
-          : validation?.status === "validated" ? "validated" : "rejected"
-        return <div key={turn} className="space-y-4">
-          {input && <>
-            <ChatMessage sender="Kinu" dark>
-              <span>{input.prompt}</span>
-            </ChatMessage>
-            <div className="max-w-[720px]">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold text-[var(--ink-muted)]">
-                <Paperclip className="size-3" aria-hidden="true" />
-                From browser
-              </div>
-              <div className="rounded-2xl border border-[var(--border)] bg-white p-2">
-                <ComputerUseImage runId={runId} activity={input} />
-              </div>
-            </div>
-          </>}
-          {proposal?.image_reference && <div className="max-w-[720px]">
-            <div className="mb-1.5 text-[9px] font-semibold text-[var(--ink-muted)]">Before action</div>
-            <div className="rounded-2xl border border-[var(--border)] bg-white p-2"><ComputerUseImage runId={runId} activity={proposal} /></div>
-          </div>}
-          {(thought || response || proposal) && <ChatMessage sender={<span className="inline-flex items-center gap-1.5"><Reply className="size-3" aria-hidden="true" /><AgentMark />Agent</span>}>
-            {thought && <div className="mb-3"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Thought summary</div><div className="mt-1">{thought}</div></div>}
-            {response && <div>{response}</div>}
-            {proposal && <div className={`${thought || response ? "mt-3" : ""} space-y-2`}>
-              {proposal.intent && <div>{proposal.intent}</div>}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="font-semibold">Function call</span>
-                <span>{titleCase(proposal.action ?? "action")}</span>
-                {proposal.safety_decision && <span className="text-[var(--ink-muted)]">· {titleCase(proposal.safety_decision)}</span>}
-              </div>
-              {proposal.arguments && <pre className="overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
-            </div>}
-          </ChatMessage>}
-          {receipt && <div className="flex items-center gap-2 text-[10px] text-[var(--ink-soft)]">
-            {receiptLabel === "completed" ? <span aria-hidden="true">✅</span> : receiptLabel === "validated" ? <Check className="size-3.5 text-[var(--green)]" aria-hidden="true" /> : receiptLabel === "paused" ? <Pause className="size-3.5" aria-hidden="true" /> : <X className="size-3.5 text-[var(--red)]" aria-hidden="true" />}
-            {receiptLabel === "completed" ? <span className="font-semibold text-[var(--ink)]">{(input?.effect === "create-credential" || execution?.stage === "create") ? `Credential added to ${secretStoreName}` : (input?.effect === "revoke-credential" || execution?.stage === "revoke") ? "Previous credential revoked" : "Step completed"}</span> : <span><strong className="font-semibold text-[var(--ink)]">Kinu {receiptLabel}</strong>{receipt.target ? ` · ${receipt.target}` : ""}</span>}
-          </div>}
-        </div>
-      })}
-    </div>
-  </div>
-}
 
 function variant(run: RotationRun) {
   if (["failed", "cleanup-required"].includes(run.status)) return "danger" as const
@@ -328,7 +232,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${activity.details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
-                {computerUse.length > 0 && <ComputerUseStream runId={selected.id} activities={computerUse} secretStoreName={secretStoreName} />}
+                {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} secretStoreName={secretStoreName} />}
                 {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Console Operator Agent</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
                 </>}
@@ -366,5 +270,3 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     </Modal>
   </div>
 }
-
-function AgentMark() { return <Sparkles className="size-3.5" aria-hidden="true" /> }
