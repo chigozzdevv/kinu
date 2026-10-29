@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from html import escape
 from typing import Any, Protocol
 
+from connectors.base.errors import ConnectorError
 from core.errors import ResourceConflictError
 from playwright.async_api import async_playwright
 from pydantic import BaseModel, ConfigDict, Field
@@ -89,6 +90,9 @@ class Planner:
                 "messages": messages,
                 "schema": params.response_format.schema_.model_dump(mode="json"),
             }
+            properties = request["schema"].get("properties", {})
+            if "control" in properties:
+                properties["control"]["enum"] = list(controls)
             if len(json.dumps(request).encode()) > 60000:
                 raise ResourceConflictError("Browser inference input is too large")
             result = await self.agent.navigate(org, request, progress)
@@ -141,7 +145,9 @@ class Planner:
                     cache=False,
                 )
                 if result.data.control not in controls:
-                    raise ResourceConflictError("Agent did not select an approved browser control")
+                    raise ConnectorError(
+                        "browser-control-rejected", "AI selected a control outside the playbook"
+                    )
                 return result.data
             finally:
                 try:

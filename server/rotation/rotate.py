@@ -171,6 +171,7 @@ class Rotation:
             created = await self.journal.get(org, run_id, Stage.CREATE)
             deployment = await self.journal.get(org, run_id, Stage.DEPLOY)
             restored = True
+            rollback_error: Exception | None = None
             try:
                 if created:
                     restored = await self.effects.rollback(
@@ -178,7 +179,8 @@ class Rotation:
                     )
                 elif current.stage is Stage.CREATE:
                     restored = await self.effects.cleanup_unrecorded(state, run_id)
-            except Exception:
+            except Exception as rollback_failure:
+                rollback_error = rollback_failure
                 restored = False
             if restored and created:
                 await discard(self.database, org, stable("generation", run.id))
@@ -202,7 +204,18 @@ class Rotation:
                         output={
                             "error_code": error.code
                             if isinstance(error, ConnectorError)
-                            else "rotation-check-failed"
+                            else "rotation-check-failed",
+                            "error_type": type(error).__name__,
+                            **(
+                                {
+                                    "rollback_error_type": type(rollback_error).__name__,
+                                    "rollback_error_code": rollback_error.code
+                                    if isinstance(rollback_error, ConnectorError)
+                                    else "rollback-check-failed",
+                                }
+                                if rollback_error is not None
+                                else {}
+                            ),
                         },
                         started_at=now,
                         completed_at=now,

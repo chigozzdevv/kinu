@@ -71,6 +71,7 @@ class Agent:
         self.calls += 1
         if "control" in value["schema"].get("properties", {}):
             assert "create_key" in str(value["messages"])
+            assert value["schema"]["properties"]["control"]["enum"] == ["create_key"]
             return {
                 "control": "create_key",
                 "summary": "The approved control matches key creation.",
