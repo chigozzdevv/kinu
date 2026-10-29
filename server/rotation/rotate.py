@@ -186,7 +186,7 @@ class Rotation:
                 code="api-rotation-failed" if restored else "api-cleanup-required",
                 message=f"Stopped during {current.stage.value} before retiring the old key."
                 if restored
-                else "Rotation stopped; inspect the recorded evidence before recovery.",
+                else f"Stopped at {current.stage.value}. Review the saved checks before recovery.",
                 retryable=False,
             )
             if await self.journal.get(org, run_id, current.stage) is None:

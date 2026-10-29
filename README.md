@@ -83,10 +83,11 @@ For Resend browser execution, open the provider connection and choose **Use brow
 in through its private browser. Edit an existing credential and select that browser connection.
 Kinu preserves its generation, vault value and consumer bindings; an active rotation blocks the
 switch. The linked API connection verifies receipts and issuer metadata. Creation and retirement
-run through the dashboard with checked names, permissions, domain and key IDs. The agent's public action
-explanation streams into the run history and is saved with its proposed action. Redacted screenshots
-before protected actions and after verified private key capture are encrypted in the executor vault
-for 90 days and available to workspace members who can read the run. The result image is taken with
+run through the dashboard with checked names, permissions, domain and key IDs. Kinu records the task
+and pinned playbook version before inference. The agent receives that step's approved controls and
+constraints; its public action explanation streams into the run history with the selected button.
+Redacted screenshots before protected actions and after verified private key capture are encrypted
+in the executor vault for 90 days and available to workspace members who can read the run. The result image is taken with
 page scripts frozen and sensitive fields covered; secret values and screenshots never reach the model.
 
 For hosting, choose Vercel, Railway or Render, select allowed projects, then open the connection's

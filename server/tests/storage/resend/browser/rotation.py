@@ -114,10 +114,19 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         proposals = [
             activity for activity in public.computer_use if activity.phase.value == "proposal"
         ]
-        assert len(proposals) == 2 and all(
-            activity.image_reference and activity.content for activity in proposals
-        )
-        for activity in proposals:
+        assert len(proposals) == 2 and all(activity.content for activity in proposals)
+        inputs = [activity for activity in public.computer_use if activity.phase.value == "input"]
+        assert len(inputs) == 2
+        for activity in inputs:
+            assert activity.image_reference and activity.instruction and activity.prompt
+            assert activity.target == result.browser_playbook_version
+            assert (org, activity.prompt + "\n" + activity.instruction) in planner.requests
+            assert "Playbook: " in activity.instruction and "Step: " in activity.instruction
+            proposal = next(item for item in proposals if item.session_id == activity.session_id)
+            assert activity.recorded_at <= proposal.recorded_at
+            assert public.computer_use.index(activity) < public.computer_use.index(proposal)
+            assert proposal.intent in {"Add", "Delete API Key"}
+            assert proposal.arguments["button"] == proposal.intent
             content, kind = await history_store.image(org, run.id, activity.id)
             assert content.startswith(b"\x89PNG") and kind == "image/png"
         assert all(

@@ -39,7 +39,7 @@ from browser.images import Images
 from browser.launch import BrowserFactory, Launcher
 from browser.planner import ControlPlanner
 from browser.playbook import browser_step_context, resolve_playbook_step
-from browser.progress import Progress
+from browser.proposal import Proposals
 from browser.records import Records
 from browser.service import BrowserService
 
@@ -77,10 +77,11 @@ class Worker:
         planner: ControlPlanner,
         launcher: BrowserFactory | None = None,
     ) -> None:
-        self.catalog, self.versions, self.planner = catalog, versions, planner
+        self.catalog, self.versions = catalog, versions
         self.database, self.launcher = catalog.database, launcher or Launcher()
         self.images = Images(catalog.vault)
         self.sessions = BrowserService(Records(self.database), lambda: datetime.now(UTC))
+        self.proposals = Proposals(self.sessions, self.images, planner)
 
     async def lock(self, connection: Connection, run: RotationRun) -> None:
         org = connection.organisation_id
@@ -230,48 +231,7 @@ class Worker:
                     }.get(step.tool, BrowserActionKind.CLICK)
                     result_image: tuple[str, str] | None = None
                     if step.effect is not PlaybookEffect.NONE:
-                        progress = Progress(self.sessions, session, step)
-                        try:
-                            selected = await self.planner.choose(
-                                org,
-                                step.objective,
-                                {step.id: step.selectors[0].name or step.objective[:160]},
-                                progress.publish,
-                            )
-                        except Exception:
-                            await progress.fail()
-                            raise
-                        if selected.control != step.id:
-                            raise ResourceConflictError("Browser control is not approved")
-                        await tab.driver.validate_step(step)
-                        await validate(self.database, state, fence)
-                        activity_id = stable("activity", session.id + ":" + step.id + ":proposed")
-                        reference, image_digest = await self.images.save(
-                            org, run.id, activity_id, await tab.driver.evidence_screenshot(session)
-                        )
-                        await self.sessions.record_activity(
-                            session,
-                            ComputerUseActivity(
-                                id=activity_id,
-                                image_reference=reference,
-                                image_digest=image_digest,
-                                organisation_id=org,
-                                session_id=session.id,
-                                run_id=run.id,
-                                step_id=step.id,
-                                stage=stage,
-                                turn=session.step_count + 1,
-                                phase=ComputerUseActivityPhase.PROPOSAL,
-                                status=ComputerUseActivityStatus.PROPOSED,
-                                action=kind,
-                                intent=step.objective,
-                                target=step.id,
-                                arguments={"control_id": selected.control},
-                                content=selected.summary,
-                                recorded_at=datetime.now(UTC),
-                            ),
-                        )
-                        await tab.driver.validate_step(step)
+                        await self.proposals.record(session, step, version, tab.driver)
                         await validate(self.database, state, fence)
                     if step.effect is PlaybookEffect.CREATE_CREDENTIAL:
                         session = await self.sessions.arm_capture(org, session.id, session.revision)

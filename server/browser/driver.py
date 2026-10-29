@@ -89,6 +89,17 @@ class BrowserDriver:
         ]
         return await self._page.screenshot(type="png", animations="disabled", mask=masks)
 
+    async def control_label(self, selector: Selector) -> str:
+        target = await self.locator(selector)
+        label = await target.evaluate("""element => {
+          const clone = element.cloneNode(true);
+          clone.querySelectorAll('kbd, svg, [aria-hidden="true"]').forEach(item => item.remove());
+          return (element.getAttribute('aria-label') || clone.textContent || '').trim();
+        }""")
+        if not isinstance(label, str) or not 1 <= len(label) <= 160:
+            raise ResourceConflictError("Approved browser control has no bounded label")
+        return " ".join(label.split())
+
     async def evidence_screenshot(self, session: BrowserSession) -> bytes:
         if (
             session.status is not BrowserStatus.RUNNING
@@ -117,7 +128,7 @@ class BrowserDriver:
         )
         try:
             return await self._page.screenshot(
-                type="png", animations="disabled", mask=[masks], mask_color="#3b3f46"
+                type="png", animations="disabled", mask=[masks], mask_color="#dce1e6"
             )
         finally:
             await self._page.locator("[data-kinu-evidence-mask]").evaluate_all(

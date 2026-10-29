@@ -1,4 +1,5 @@
 import base64
+import struct
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -16,6 +17,8 @@ from contracts import (
     ComputerUseActivityPhase,
     ComputerUseActivityStatus,
     CreateRunCommand,
+    Selector,
+    SelectorKind,
     Stage,
     Trigger,
 )
@@ -68,11 +71,15 @@ async def test_evidence_masks_inputs_and_token_text_and_blocks_capture_pages() -
         await tab.page.set_content(
             '<input id="password" value="private-password">'
             '<div id="token">re_' + "A" * 36 + "</div>"
-            '<button id="submit">Create scoped key</button>'
+            '<button id="submit">Add<kbd>Ctrl Enter</kbd><svg></svg></button>'
         )
         boxes = [
             await tab.page.locator(selector).bounding_box() for selector in ("#password", "#token")
         ]
+        assert (
+            await tab.driver.control_label(Selector(kind=SelectorKind.CSS, value="#submit"))
+            == "Add"
+        )
         image = await tab.driver.evidence_screenshot(session())
         pixels = await tab.page.evaluate(
             """async ({image, boxes}) => {
@@ -86,7 +93,7 @@ async def test_evidence_masks_inputs_and_token_text_and_blocks_capture_pages() -
         }""",
             {"image": base64.b64encode(image).decode(), "boxes": boxes},
         )
-        assert pixels == [[59, 63, 70, 255], [59, 63, 70, 255]]
+        assert pixels == [[220, 225, 230, 255], [220, 225, 230, 255]]
         assert await tab.page.locator("[data-kinu-evidence-mask]").count() == 0
         blocked = session().model_copy(
             update={
@@ -131,7 +138,42 @@ async def test_private_result_image_covers_fields_text_and_generated_content() -
             }""",
             {"image": base64.b64encode(image).decode(), "boxes": boxes},
         )
-        assert pixels == [[59, 63, 70, 255]] * 3
+        assert pixels == [[220, 225, 230, 255]] * 3
+
+
+async def test_private_result_image_focuses_the_capture_dialog() -> None:
+    executable()
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content(
+            '<aside><svg></svg><img src="data:image/png;base64,"></aside>'
+            '<section role="dialog" style="position:fixed;left:100px;top:80px;'
+            'width:360px;height:200px;background:white">'
+            '<h1>View API Key</h1><input data-kinu-capture="masked" value="private-result">'
+            "<button>Done</button></section>"
+        )
+        box = await tab.page.get_by_role("dialog").bounding_box()
+        assert box is not None
+        field = await tab.page.locator("input").bounding_box()
+        assert field is not None
+        image = await snapshot(tab.page, "private-result")
+        pixel = await tab.page.evaluate(
+            """async ({image, x, y}) => {
+              const img = new Image(); img.src = 'data:image/png;base64,' + image;
+              await img.decode();
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width; canvas.height = img.height;
+              const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+              return Array.from(ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data);
+            }""",
+            {
+                "image": base64.b64encode(image).decode(),
+                "x": field["x"] + field["width"] / 2 - box["x"],
+                "y": field["y"] + field["height"] / 2 - box["y"],
+            },
+        )
+        assert pixel == [220, 225, 230, 255]
+        assert struct.unpack(">II", image[16:24]) == (round(box["width"]), round(box["height"]))
 
 
 async def test_images_are_encrypted_scoped_verified_and_expire(

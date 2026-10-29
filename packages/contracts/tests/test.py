@@ -97,7 +97,7 @@ def test_contracts_are_immutable() -> None:
         mutation.compensation = "retry"
 
 
-def test_computer_use_input_records_the_exact_safe_model_request() -> None:
+def test_computer_use_input_records_the_playbook_task_and_browser_evidence() -> None:
     activity = ComputerUseActivity(
         id="activity_one",
         organisation_id="org_one",

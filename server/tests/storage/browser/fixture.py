@@ -31,6 +31,7 @@ def executable() -> str:
 class Planner:
     def __init__(self) -> None:
         self.calls: list[dict[str, str]] = []
+        self.requests: list[tuple[str, str]] = []
         self.stop = False
 
     async def choose(
@@ -41,6 +42,7 @@ class Planner:
         progress: Callable[[str], Awaitable[None]] | None = None,
     ) -> Choice:
         self.calls.append(controls)
+        self.requests.append((org, objective))
         assert NEW not in json.dumps(controls)
         if self.stop:
             raise ResourceConflictError("Agent did not select a control")

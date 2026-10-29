@@ -158,7 +158,7 @@ class ComputerUseActivity(Contract):
                 or not self.image_reference
                 or not self.image_digest
             ):
-                raise ValueError("Computer Use input requires the exact safe model request")
+                raise ValueError("Computer Use input requires a playbook task and browser evidence")
             if self.content is not None or self.action is not None or self.arguments:
                 raise ValueError("Computer Use input cannot include model output")
         elif self.phase in {

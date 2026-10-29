@@ -26,8 +26,12 @@ async def snapshot(page: Page, secret: str) -> bytes:
             "input, textarea, [contenteditable], iframe, canvas, video, img, svg, object, embed, "
             "[data-kinu-capture], [data-kinu-evidence-mask]"
         )
-        content = await page.screenshot(
-            type="png", animations="disabled", mask=[masks], mask_color="#3b3f46"
+        dialog = page.locator('[data-kinu-capture="masked"]').locator(
+            "xpath=ancestor::*[@role='dialog' or self::dialog][1]"
+        )
+        target = dialog if await dialog.count() == 1 and await dialog.is_visible() else page
+        content = await target.screenshot(
+            type="png", animations="disabled", mask=[masks], mask_color="#dce1e6"
         )
         if page.url != origin:
             raise ValueError("Capture page changed during evidence recording")
