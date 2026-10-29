@@ -55,6 +55,8 @@ function ComputerUseImage({ runId, activity }: { runId: string; activity: Comput
 }
 
 function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
+  const Indicator = receipt.status === "failed" ? X : receipt.status === "paused" ? Pause : Check
+  const tone = receipt.status === "succeeded" ? "bg-emerald-500" : receipt.status === "failed" ? "bg-red-500" : receipt.status === "paused" ? "bg-amber-500" : "bg-white/20"
   const response = {
     status: receipt.status,
     ...(receipt.result ? { provider_id: receipt.result.provider_id } : {}),
@@ -62,7 +64,7 @@ function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
   }
   return <div>
     <div className="flex items-center gap-2 font-semibold">
-      {receipt.status === "succeeded" ? <Check className="size-3.5 shrink-0 text-emerald-400" aria-hidden="true" /> : receipt.status === "failed" ? <X className="size-3.5 shrink-0 text-red-400" aria-hidden="true" /> : receipt.status === "paused" ? <Pause className="size-3.5 shrink-0 text-amber-300" aria-hidden="true" /> : <Check className="size-3.5 shrink-0 text-white/60" aria-hidden="true" />}
+      <span className={`grid size-4 shrink-0 place-items-center rounded-full ${tone}`} aria-hidden="true"><Indicator className="size-2.5 text-white" strokeWidth={3} /></span>
       <span>Response</span>
     </div>
     <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-5">{JSON.stringify(response, null, 2)}</pre>
