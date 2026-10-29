@@ -126,7 +126,7 @@ claim a completed rollback or revoke a key whose configuration may still be in u
 ## AI and execution
 
 Connect Builder.io under **Settings → AI**. Each workspace authorizes its own Builder account
-and chooses a model. OAuth requests AI invocation and refresh access. The default limit is 20
+and chooses a model. OAuth requests AI invocation and refresh access. The default limit is 100
 calls per workspace per UTC day. An operator can grant a workspace a higher allowance for that
 day without resetting its recorded call count. Builder's credits and account limits still apply.
 

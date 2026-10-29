@@ -8,13 +8,13 @@ export class DailyLimitError extends Error {
 export async function reserve(db: Db, organisationId: string) {
   const usage = db.collection("usage"), scope = { organisation_id: organisationId, day: new Date().toISOString().slice(0, 10) }
   try {
-    await usage.updateOne(scope, { $setOnInsert: { calls: 0, limit: 20 } }, { upsert: true })
+    await usage.updateOne(scope, { $setOnInsert: { calls: 0, limit: 100 } }, { upsert: true })
   } catch (error) {
     if (!(error instanceof MongoServerError && error.code === 11000)) throw error
   }
-  const result = await usage.updateOne({ ...scope, $expr: { $lt: ["$calls", { $ifNull: ["$limit", 20] }] } }, { $inc: { calls: 1 } })
+  const result = await usage.updateOne({ ...scope, $expr: { $lt: ["$calls", { $ifNull: ["$limit", 100] }] } }, { $inc: { calls: 1 } })
   if (!result.modifiedCount) {
     const current = await usage.findOne(scope, { projection: { limit: 1 } })
-    throw new DailyLimitError(typeof current?.limit === "number" ? current.limit : 20)
+    throw new DailyLimitError(typeof current?.limit === "number" ? current.limit : 100)
   }
 }
