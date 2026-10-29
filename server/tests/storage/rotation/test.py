@@ -10,15 +10,22 @@ from agents.decision import IncidentInput
 from connectors.aws import Role
 from connectors.base.errors import ConnectorError
 from contracts import (
+    Confidence,
     CreateRunCommand,
     CredentialGeneration,
     GenerationState,
+    Incident,
+    IncidentStatus,
+    IngestionEvent,
     ManagedCredential,
     RunStatus,
+    Severity,
+    SourceResource,
     Stage,
     Trigger,
 )
 from core.errors import ActiveRunConflictError
+from core.incident.store import IncidentStore
 from core.storage.database import Database
 from core.storage.history import HistoryStore
 from core.storage.records import Records
@@ -54,6 +61,43 @@ async def create(database: Database, config: DemoConfig, suffix: str = "one") ->
         )
     )
     return result.run.id
+
+
+async def link_incident(database: Database, config: DemoConfig, run_id: str) -> Incident:
+    now = datetime.now(UTC)
+    event = IngestionEvent(
+        id="event_incident",
+        organisation_id=config.organisation_id,
+        source="email",
+        source_event_id="message_incident",
+        kind="credential-exposure-detected",
+        observed_at=now,
+        severity=Severity.HIGH,
+        confidence=Confidence.VERIFIED,
+        resource=SourceResource(credential_id=config.credential_id),
+        source_reference="kinu://mail/test",
+        received_at=now,
+    )
+    incident = Incident(
+        id="incident_rotation",
+        organisation_id=config.organisation_id,
+        event_id=event.id,
+        source=event.source,
+        kind=event.kind,
+        source_event_id=event.source_event_id,
+        severity=event.severity,
+        confidence=event.confidence,
+        status=IncidentStatus.ACTION,
+        resource=event.resource,
+        credential_id=config.credential_id,
+        created_at=now,
+        updated_at=now,
+    )
+    store = IncidentStore(database)
+    await store.ingest(incident, event)
+    return await store.link_run(
+        config.organisation_id, incident.id, 0, config.credential_id, run_id, now
+    )
 
 
 class Api(Effects):
@@ -150,6 +194,18 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
     database: Database, demo: DemoConfig
 ) -> None:
     run_id = await create(database, demo)
+    incident = await link_incident(database, demo, run_id)
+    review = incident.model_copy(
+        update={
+            "id": "incident_review",
+            "event_id": "event_review",
+            "run_id": None,
+            "status": IncidentStatus.ACTION,
+            "revision": 0,
+        }
+    )
+    async with Records(database).write(demo.organisation_id) as rows:
+        await rows.add(review, demo.organisation_id)
     api = Api(demo)
     run = await Rotation(database, api, loader(database, demo), demo.region).execute(
         demo.organisation_id, run_id, "worker_one"
@@ -171,6 +227,24 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
         )
     ).status is RunStatus.COMPLETED
     assert api.calls == previous_calls
+    store = IncidentStore(database)
+    resolved = await store.get(demo.organisation_id, incident.id)
+    assert resolved.status is IncidentStatus.RESOLVED and resolved.run_id == run_id
+    assert (await store.get(demo.organisation_id, review.id)).status is IncidentStatus.ACTION
+    assert await RunStore(database).reconcile_incidents(demo.organisation_id, run_id) == ()
+    async with Records(database).write(demo.organisation_id) as rows:
+        await rows.replace(
+            resolved.model_copy(
+                update={
+                    "status": IncidentStatus.ROTATING,
+                    "revision": resolved.revision + 1,
+                }
+            ),
+            resolved.revision,
+        )
+    changed = await RunStore(database).reconcile_incidents(demo.organisation_id, run_id)
+    assert len(changed) == 1 and changed[0].status is IncidentStatus.RESOLVED
+    assert await RunStore(database).reconcile_incidents(demo.organisation_id, run_id) == ()
 
 
 @pytest.mark.parametrize("stage", [Stage.STORE, Stage.VERIFY, Stage.ROLLOUT, Stage.OBSERVE])
@@ -178,11 +252,15 @@ async def test_failure_preserves_old_key_and_compensates_candidate(
     database: Database, demo: DemoConfig, stage: Stage
 ) -> None:
     run_id, api = await create(database, demo), Api(demo, stage)
+    incident = await link_incident(database, demo, run_id)
     run = await Rotation(database, api, loader(database, demo), demo.region).execute(
         demo.organisation_id, run_id, "worker_one"
     )
     assert run.status is RunStatus.FAILED
     assert not api.old_revoked and api.candidate_revoked and not api.promoted
+    assert (
+        await IncidentStore(database).get(demo.organisation_id, incident.id)
+    ).status is IncidentStatus.ACTION
     async with Records(database).read() as rows:
         old = await rows.get(CredentialGeneration, demo.organisation_id, "generation_demo_initial")
     assert old.state is GenerationState.ACTIVE
@@ -194,11 +272,15 @@ async def test_failure_after_retirement_keeps_new_workload_and_holds_credential_
     database: Database, demo: DemoConfig
 ) -> None:
     run_id, api = await create(database, demo), Api(demo, Stage.COMPLETE)
+    incident = await link_incident(database, demo, run_id)
     run = await Rotation(database, api, loader(database, demo), demo.region).execute(
         demo.organisation_id, run_id, "worker_one"
     )
     assert run.status is RunStatus.CLEANUP
     assert api.old_revoked and api.promoted and not api.candidate_revoked
+    assert (
+        await IncidentStore(database).get(demo.organisation_id, incident.id)
+    ).status is IncidentStatus.ACTION
     with pytest.raises(ActiveRunConflictError):
         await create(database, demo, "two")
 

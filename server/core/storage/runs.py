@@ -1,6 +1,7 @@
 from contracts import (
     CreateRunCommand,
     EventKind,
+    Incident,
     RotationRun,
     RunCommand,
     RunStatus,
@@ -17,6 +18,7 @@ from core.errors import (
     StorageIntegrityError,
 )
 from core.storage.database import Database
+from core.storage.incidents import sync_incidents
 from core.storage.repository import (
     MutationResult,
     Transition,
@@ -135,6 +137,11 @@ class RunStore:
             ]
         )
 
+    async def reconcile_incidents(self, organisation_id: str, run_id: str) -> tuple[Incident, ...]:
+        async with self._database.transaction(organisation_id) as session:
+            run = await self._get(organisation_id, run_id, session)
+            return await sync_incidents(self._database, run, session)
+
     async def count_runs(self, organisation_id: str, statuses: frozenset[RunStatus]) -> int:
         return await self._database.collection("runs").count_documents(
             {"organisation_id": organisation_id, "data.status": {"$in": sorted(statuses)}}
@@ -191,6 +198,7 @@ class RunStore:
                 {"$set": {"revision": updated.revision, "data": updated.model_dump(mode="json")}},
                 session=session,
             )
+            await sync_incidents(self._database, updated, session)
             await self._record(
                 updated,
                 step,

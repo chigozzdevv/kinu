@@ -2,14 +2,35 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from contracts import CancelRunCommand, CreateRunCommand, RunStatus, StartRunCommand, Trigger
+from contracts import (
+    CancelRunCommand,
+    Confidence,
+    CreateRunCommand,
+    Incident,
+    IncidentStatus,
+    RotationRun,
+    RunStatus,
+    Severity,
+    SourceResource,
+    StartRunCommand,
+    Trigger,
+)
 from core.account import AccountService
 from core.account.store import AccountStore
 from core.auth import AuthenticatedIdentity
-from core.errors import ActiveRunConflictError, IdempotencyConflictError, RunNotFoundError
+from core.errors import (
+    ActiveRunConflictError,
+    IdempotencyConflictError,
+    ResourceConflictError,
+    RunNotFoundError,
+)
+from core.incident.store import IncidentStore
 from core.storage.database import Database
+from core.storage.incidents import sync_incidents
+from core.storage.records import Records
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
+from pymongo.asynchronous.client_session import AsyncClientSession
 
 pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 10, 27, tzinfo=UTC)
@@ -92,3 +113,92 @@ async def test_credential_lock_blocks_overlap_and_terminal_command_releases_it(
     assert cancelled.run.status is RunStatus.CANCELLED
     assert (await workflow.create(next_command)).applied
     assert len(await RunStore(database).steps(run.organisation_id, run.id)) == 3
+
+
+async def test_incident_updates_are_atomic_scoped_and_preserve_closed_alerts(
+    database: Database, identity: AuthenticatedIdentity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow, command = await setup(database, identity)
+    run = (await workflow.create(command)).run
+    org = run.organisation_id
+    foreign = await AccountService(
+        AccountStore(database, lambda: NOW), lambda: NOW
+    ).create_organisation(identity, "Other workspace")
+    incident = Incident(
+        id="incident_run",
+        organisation_id=org,
+        event_id="event_run",
+        source="email",
+        source_event_id="message_run",
+        severity=Severity.HIGH,
+        confidence=Confidence.VERIFIED,
+        status=IncidentStatus.ROTATING,
+        resource=SourceResource(credential_id=run.credential_id),
+        credential_id=run.credential_id,
+        run_id=run.id,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    async with Records(database).write(org) as rows:
+        await rows.add(incident, org)
+        for status in (IncidentStatus.RESOLVED, IncidentStatus.DISMISSED):
+            await rows.add(
+                incident.model_copy(
+                    update={
+                        "id": "incident_" + status.value,
+                        "event_id": "event_" + status.value,
+                        "source_event_id": "message_" + status.value,
+                        "status": status,
+                        "dismissal_reason": "Reviewed"
+                        if status is IncidentStatus.DISMISSED
+                        else None,
+                    }
+                ),
+                org,
+            )
+    foreign_org = foreign.organisation.id
+    async with Records(database).write(foreign_org) as rows:
+        await rows.add(incident.model_copy(update={"organisation_id": foreign_org}), foreign_org)
+    started = (
+        await workflow.start(
+            StartRunCommand(
+                id="start_one",
+                organisation_id=org,
+                run_id=run.id,
+                actor_id="operator_one",
+                expected_revision=run.revision,
+                owner_id="worker_one",
+                expires_at=NOW + timedelta(minutes=5),
+            )
+        )
+    ).run
+    cancel = CancelRunCommand(
+        id="cancel_one",
+        organisation_id=org,
+        run_id=run.id,
+        actor_id="operator_one",
+        expected_revision=started.revision,
+    )
+
+    async def interrupted(
+        database: Database, current: RotationRun, session: AsyncClientSession
+    ) -> tuple[Incident, ...]:
+        await sync_incidents(database, current, session)
+        raise ResourceConflictError("Interrupted after incident update")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("core.storage.runs.sync_incidents", interrupted)
+        with pytest.raises(ResourceConflictError, match="Interrupted"):
+            await workflow.cancel(cancel)
+    assert (await RunStore(database).get(org, run.id)).status is RunStatus.RUNNING
+    store = IncidentStore(database)
+    assert (await store.get(org, incident.id)).status is IncidentStatus.ROTATING
+    assert await database.collection("run_locks").count_documents({"organisation_id": org}) == 1
+    result = await workflow.cancel(cancel)
+    assert result.run.status is RunStatus.CANCELLED
+    assert (await store.get(org, incident.id)).status is IncidentStatus.ACTION
+    assert (await store.get(foreign_org, incident.id)).status is IncidentStatus.ROTATING
+    for status in (IncidentStatus.RESOLVED, IncidentStatus.DISMISSED):
+        assert (await store.get(org, "incident_" + status.value)).status is status
+    assert not (await workflow.cancel(cancel)).applied
+    assert await RunStore(database).reconcile_incidents(org, run.id) == ()
