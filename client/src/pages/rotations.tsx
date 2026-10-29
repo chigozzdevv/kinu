@@ -67,7 +67,7 @@ function agentName(agent: "inventory" | "planner" | "playbook" | "operator") {
     inventory: "Inventory and Exposure Agent",
     planner: "Rotation Planning and Recovery Agent",
     playbook: "Playbook Builder Agent",
-    operator: "Console Operator Agent",
+    operator: "Builder AI",
   }[agent]
 }
 
@@ -75,7 +75,7 @@ function currentStageExecutor(run: RotationRun): { label: "Agent" | "Executor"; 
   if (run.status === "recovering") return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
   if (run.stage === "preflight" && run.browser_playbook_version) return { label: "Agent", value: "Inventory and Exposure Agent" }
   if (run.stage === "plan" && run.browser_playbook_version) return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
-  if (["create", "revoke"].includes(run.stage) && run.browser_playbook_version) return { label: "Agent", value: "Console Operator Agent" }
+  if (["create", "revoke"].includes(run.stage) && run.browser_playbook_version) return { label: "Agent", value: "Builder AI" }
   const executors: Record<StageName, string> = {
     trigger: "Workflow",
     preflight: "Workflow",
@@ -235,7 +235,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                 })}</div>}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
                 {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} secretStoreName={secretStoreName} />}
-                {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Console Operator Agent</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
+                {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Builder AI</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
                 </>}
               </div>}

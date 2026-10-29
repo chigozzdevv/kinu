@@ -415,6 +415,7 @@ export interface ComputerUseActivity {
   arguments: Record<string, unknown>
   intent: string | null
   safety_decision: string | null
+  result: { provider_id: string; secret_reference: string | null } | null
   target: string | null
   recorded_at: string
 }
