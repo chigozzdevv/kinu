@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import pytest
 from agents.decision import Decision, DecisionInput
 from connectors.aws.agent import NativeAgent
-from contracts import ControlVersion, ExposureSource, IncidentStatus, ManagedCredential
+from contracts import Connection, ControlVersion, ExposureSource, IncidentStatus, ManagedCredential
 from core.audit.store import AuditStore
 from core.errors import ResourceConflictError
 from core.incident.store import IncidentStore
@@ -12,9 +13,13 @@ from core.storage.database import Database
 from core.storage.records import Records
 from demo.config import DemoConfig
 from mail.assessment import Assessment
+from mail.google import Google
 from mail.links import save_connection
-from mail.models import Mailbox, Sender
+from mail.models import GoogleConfig, Mailbox, Sender, SenderUpdate
+from mail.service import Service
+from mail.vault import Vault
 from policy import digest
+from pydantic import SecretStr
 from rotation.queue import Dispatcher
 from tests.mail import MemoryMail
 
@@ -46,7 +51,7 @@ class Queue(Dispatcher):
 
 
 async def setup(
-    database: Database, demo: DemoConfig, *, approved: bool
+    database: Database, demo: DemoConfig, *, approved: bool, browser: bool = False
 ) -> tuple[Mailbox, MemoryMail]:
     box = Mailbox(
         id="gmail_one",
@@ -60,6 +65,23 @@ async def setup(
     store = MemoryMail()
     await store.save(box, "cipher", None)
     async with Records(database).write(demo.organisation_id) as rows:
+        if browser:
+            provider = await rows.get(Connection, demo.organisation_id, "connection_demo_provider")
+            changed = Connection.model_validate(
+                {
+                    **provider.model_dump(),
+                    "interface": "browser",
+                    "authorization": "browser-session",
+                    "http": None,
+                    "rpc": None,
+                    "authorization_reference": "browser://connection_demo_provider/fixture",
+                    "allowed_resources": ("provider.example",),
+                    "playbook_id": "browser_book",
+                    "playbook_version_id": "browser_version",
+                    "revision": provider.revision + 1,
+                }
+            )
+            await rows.replace(changed, provider.revision)
         credential = await rows.get(ManagedCredential, demo.organisation_id, demo.credential_id)
         original = await rows.get(ControlVersion, demo.organisation_id, credential.control_version)
         definition = original.definition.model_copy(
@@ -89,18 +111,30 @@ async def setup(
 
 
 @pytest.mark.parametrize(("signed", "approved"), [(True, True), (False, True), (True, False)])
+@pytest.mark.parametrize("browser", [False, True])
 async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
     database: Database,
     demo: DemoConfig,
     monkeypatch: pytest.MonkeyPatch,
     signed: bool,
     approved: bool,
+    browser: bool,
 ) -> None:
     async def proof(*args: Any) -> bool:
         return signed
 
     monkeypatch.setattr("mail.assessment.authenticated", proof)
-    box, store = await setup(database, demo, approved=approved)
+    box, store = await setup(database, demo, approved=approved, browser=browser)
+    config = GoogleConfig(key=SecretStr("mail-fixture-key-at-least-32-characters"))
+    async with httpx.AsyncClient() as http:
+        service = Service(
+            store, Google(config, http), Vault(config), database, "https://kinu.example"
+        )
+        box = await service.senders(
+            box.organisation_id,
+            box.id,
+            SenderUpdate(expected_revision=box.revision, senders=box.senders),
+        )
     agent, queue = Agent(), Queue(fail=signed and approved)
     assessment = Assessment(database, store, agent, queue, demo.region)
     raw = (

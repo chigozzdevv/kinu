@@ -5,7 +5,7 @@ import secrets
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from contracts import ConnectionInterface, ConnectionRole, ConnectionStatus
+from contracts import ConnectionRole, ConnectionStatus
 from core.errors import ResourceConflictError
 from core.inventory.store import InventoryStore
 from core.storage.database import Database
@@ -142,11 +142,10 @@ class Service:
             provider = await inventory.get_connection(org, rule.provider_connection_id)
             if (
                 ConnectionRole.PROVIDER not in provider.roles
-                or provider.interface is not ConnectionInterface.API
                 or provider.status is not ConnectionStatus.READY
                 or provider.archived_at
             ):
-                raise ResourceConflictError("select a connected API credential provider")
+                raise ResourceConflictError("select a connected credential provider")
         pending = box.model_copy(
             update={
                 "senders": update.senders,

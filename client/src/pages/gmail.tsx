@@ -25,7 +25,7 @@ export function GmailSetup({ connections, onBack, onClose, onChanged, onCreated,
   const [senders, setSenders] = useState<GmailSender[] | null>(null)
   const mailbox = useQuery({ queryKey: ["gmail", mailboxId], queryFn: () => api.getGmail(mailboxId), enabled: validId, retry: false })
   const accounts = useQuery({ queryKey: ["gmail-accounts"], queryFn: () => api.listGmail(), enabled: !validId, retry: false })
-  const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider") && item.interface === "api")
+  const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider"))
   const rows = senders ?? (mailbox.data?.senders.length ? mailbox.data.senders : [{ sender: "", provider_connection_id: providers[0]?.id ?? "" }])
   const begin = useMutation({ mutationFn: () => api.beginGmail(validId ? mailboxId : undefined), onSuccess: (value) => { window.location.assign(value.authorization_url) } })
   const save = useMutation({ mutationFn: () => api.saveGmail(mailbox.data!, rows.map((item) => ({ ...item, sender: item.sender.trim() }))), onSuccess: async (box) => {
