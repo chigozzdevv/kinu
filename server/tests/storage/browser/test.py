@@ -118,7 +118,9 @@ async def test_browser_waits_for_custom_select_options_to_render() -> None:
     executable()
     async with Launcher(Platform()).open(definition()) as tab:
         await tab.driver.setup_navigate("https://portal.example/keys")
-        await tab.page.set_content('<button id="permission">Full access</button>')
+        await tab.page.set_content(
+            '<p>Sending access</p><p>Sending access</p><button id="permission">Full access</button>'
+        )
         await tab.page.evaluate(
             "document.querySelector('#permission').onclick = () => setTimeout(() => {"
             "const option = document.createElement('button');"

@@ -264,8 +264,6 @@ class BrowserDriver:
             return
         await field.click()
         option = self._page.get_by_role("option", name=value, exact=True)
-        if await option.count() != 1:
-            option = self._page.get_by_text(value, exact=True)
         count = await option.count()
         if count == 0 or (count == 1 and not await option.is_visible()):
             try:
