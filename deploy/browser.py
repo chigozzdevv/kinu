@@ -1,5 +1,6 @@
 import asyncio
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -60,7 +61,12 @@ class Agent:
     def __init__(self, secret: str) -> None:
         self.secret, self.calls = secret, 0
 
-    async def navigate(self, organisation_id: str, value: dict[str, Any]) -> dict[str, Any]:
+    async def navigate(
+        self,
+        organisation_id: str,
+        value: dict[str, Any],
+        progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> dict[str, Any]:
         assert organisation_id == "org_check" and self.secret not in str(value)
         self.calls += 1
         if "control" in value["schema"].get("properties", {}):

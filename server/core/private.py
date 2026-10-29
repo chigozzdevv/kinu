@@ -1,3 +1,5 @@
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -30,3 +32,41 @@ class PrivateClient:
             return response.json()
         except (httpx.HTTPError, ValueError):
             raise ResourceConflictError("Private service is unavailable; try again") from None
+
+    async def stream(
+        self, path: str, data: dict[str, Any], *, timeout: float = 60
+    ) -> AsyncIterator[dict[str, Any]]:
+        try:
+            async with self.http.stream(
+                "POST",
+                self.origin + path,
+                json=data,
+                headers={"Authorization": "Bearer " + self.token.get_secret_value()},
+                timeout=timeout,
+                follow_redirects=False,
+            ) as response:
+                if not response.is_success or "application/x-ndjson" not in response.headers.get(
+                    "content-type", ""
+                ):
+                    raise ResourceConflictError("Private stream is unavailable")
+                pending, size, lines = b"", 0, 0
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > 1_048_576:
+                        raise ResourceConflictError("Private stream exceeded its limit")
+                    pending += chunk
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        lines += 1
+                        if len(line) > 32768 or lines > 512:
+                            raise ResourceConflictError("Private stream exceeded its limit")
+                        value = json.loads(line)
+                        if not isinstance(value, dict):
+                            raise ValueError
+                        yield value
+                    if len(pending) > 32768:
+                        raise ResourceConflictError("Private stream exceeded its limit")
+                if pending:
+                    raise ResourceConflictError("Private stream ended unexpectedly")
+        except (httpx.HTTPError, ValueError, UnicodeError):
+            raise ResourceConflictError("Private stream is unavailable; try again") from None

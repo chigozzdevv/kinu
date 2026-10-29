@@ -853,7 +853,8 @@ def test_browser_choices_require_a_bounded_public_summary() -> None:
 
     choice = Choice(control="create_key", summary="The approved control matches key creation.")
     assert choice.summary == "The approved control matches key creation."
-    for summary in ("", " ", "a" * 321):
+    assert len(Choice(control="create_key", summary="a" * 4096).summary) == 4096
+    for summary in ("", " ", "a" * 4097):
         with pytest.raises(ValidationError):
             Choice(control="create_key", summary=summary)
     with pytest.raises(ValidationError):

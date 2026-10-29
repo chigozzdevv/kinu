@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from html import escape
 from typing import Any, Protocol
 
@@ -17,24 +18,41 @@ from stagehand import (
 
 
 class Navigation(Protocol):
-    async def navigate(self, organisation_id: str, value: dict[str, Any]) -> dict[str, Any]: ...
+    async def navigate(
+        self,
+        organisation_id: str,
+        value: dict[str, Any],
+        progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class Choice(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     control: str = Field(min_length=1, max_length=128)
-    summary: str = Field(min_length=1, max_length=320)
+    summary: str = Field(min_length=1, max_length=4096)
 
 
 class ControlPlanner(Protocol):
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice: ...
+    async def choose(
+        self,
+        org: str,
+        objective: str,
+        controls: dict[str, str],
+        progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> Choice: ...
 
 
 class Planner:
     def __init__(self, agent: Navigation, executable: str | None = None) -> None:
         self.agent, self.executable = agent, executable
 
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice:
+    async def choose(
+        self,
+        org: str,
+        objective: str,
+        controls: dict[str, str],
+        progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> Choice:
         if (
             not controls
             or len(controls) > 12
@@ -73,7 +91,7 @@ class Planner:
             }
             if len(json.dumps(request).encode()) > 60000:
                 raise ResourceConflictError("Browser inference input is too large")
-            result = await self.agent.navigate(org, request)
+            result = await self.agent.navigate(org, request, progress)
             return LLMStructuredGenerateResult.model_validate(
                 {
                     "role": "assistant",
@@ -111,8 +129,9 @@ class Planner:
                     + " Choose the matching control from "
                     + json.dumps(controls)
                     + ". Return its exact control ID, without a selector prefix, or stop. "
-                    + "Include one brief public sentence explaining what you will do and its "
-                    + "purpose. Use the objective and approved controls only. Do not narrate "
+                    + "Include a complete, concise public explanation of the intended action, "
+                    + "its purpose and relevant constraints. Use only the objective and approved "
+                    + "controls. Do not narrate "
                     + "control matching or repeat the control label. Do not claim an action "
                     + "has succeeded or invent unseen page or verification details.",
                     Choice,

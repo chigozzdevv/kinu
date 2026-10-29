@@ -22,3 +22,23 @@ test("navigation accepts sanitized text with a schema and bounded structured out
   await assert.rejects(infer(input, engine("x".repeat(16385)), "test"), /boundary/)
   await assert.rejects(infer(input, engine("[]"), "test"), /invalid JSON/)
 })
+
+test("navigation streams only the public explanation before the result completes", async () => {
+  const summary = 'I will create the scoped key for the replacement. Keep the "sending" permission.\n' .repeat(5) + "Ready ✅"
+  const wire = JSON.stringify({ control: "create_key", summary })
+  let completed = false
+  const seen: string[] = [], early: boolean[] = []
+  const streaming: AgentEngine = { ...createBuilderEngine(), async *stream() {
+    for (let offset = 0; offset < wire.length; offset += 7) yield { type: "text-delta", text: wire.slice(offset, offset + 7) }
+    completed = true
+    yield { type: "stop", reason: "end_turn" }
+  } }
+  const result = await infer(input, streaming, "test", (text) => {
+    seen.push(text)
+    early.push(!completed)
+  })
+  assert.deepEqual(result, { control: "create_key", summary })
+  assert.ok(seen.length >= 2 && early[0])
+  assert.equal(seen.at(-1), summary)
+  assert.ok(seen.every((text) => summary.startsWith(text) && !text.includes("create_key")))
+})

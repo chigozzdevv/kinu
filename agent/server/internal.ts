@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { z } from "zod"
 import { assessment } from "./assessment"
 import { inputSchema } from "./decision"
-import { navigation, navigationSchema } from "./navigation"
+import { navigationResponse, navigationSchema } from "./navigation"
 
 export async function internalResponse(request: Request): Promise<Response> {
   const token = process.env.KINU_NATIVE_TOKEN_FILE
@@ -22,7 +22,7 @@ export async function internalResponse(request: Request): Promise<Response> {
   if (path === "/_internal/navigation") {
     const body = z.strictObject({ organisation_id: z.string().regex(/^[a-z][a-z0-9_-]{2,127}$/), input: navigationSchema }).safeParse(JSON.parse(text))
     if (!body.success) return Response.json({ error: "Invalid browser inference" }, { status: 422 })
-    return Response.json(await navigation(body.data.organisation_id, body.data.input), { headers: { "cache-control": "no-store" } })
+    return navigationResponse(body.data.organisation_id, body.data.input, request.signal)
   }
   const body = z.strictObject({ organisation_id: z.string().regex(/^[a-z][a-z0-9_-]{2,127}$/), input: inputSchema })
     .safeParse(JSON.parse(text))

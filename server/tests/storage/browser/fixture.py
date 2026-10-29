@@ -1,7 +1,7 @@
 import json
 import os
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
@@ -33,11 +33,20 @@ class Planner:
         self.calls: list[dict[str, str]] = []
         self.stop = False
 
-    async def choose(self, org: str, objective: str, controls: dict[str, str]) -> Choice:
+    async def choose(
+        self,
+        org: str,
+        objective: str,
+        controls: dict[str, str],
+        progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> Choice:
         self.calls.append(controls)
         assert NEW not in json.dumps(controls)
         if self.stop:
             raise ResourceConflictError("Agent did not select a control")
+        if progress:
+            await progress("The requested action")
+            await progress("The requested action matches the approved control.")
         return Choice(
             control=next(iter(controls)),
             summary="The requested action matches the approved control.",
