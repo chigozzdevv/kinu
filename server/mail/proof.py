@@ -33,7 +33,7 @@ def _verify(raw: bytes, sender: str, dns: Callable[..., Any] | None) -> bool:
     if date.tzinfo is None or not now - timedelta(days=7) <= date <= now + timedelta(minutes=5):
         return False
     domain = sender.rsplit("@", 1)[1].casefold().encode()
-    verifier = dkim.DKIM(raw, minkey=2048, timeout=3)
+    verifier = dkim.DKIM(raw, minkey=1024, timeout=3)
     for index, signature in enumerate(message.get_all("DKIM-Signature", [])[:5]):
         tags = parse_tag_value(str(signature).encode())
         signed = {item.strip().lower().decode() for item in tags.get(b"h", b"").split(b":")}

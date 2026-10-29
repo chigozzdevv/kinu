@@ -63,7 +63,8 @@ in the private executor database; the dashboard receives configuration status on
 Gmail uses Google's read-only OAuth scope. Add exact alert senders and select their credential
 providers after connecting. Kinu reads new matching messages every five minutes, ignores
 attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
-sender-aligned DKIM with a 2048-bit RSA key, a unique credential match and permitted controls.
+sender-aligned DKIM using SHA-256 with an RSA key of at least 1024 bits, a unique credential match
+and permitted controls. Senders should use 2048-bit keys where available.
 Alerts that fail sender verification remain available for manual review. Register Google's web OAuth
 client with the callback shown in Settings. Public Gmail use requires Google's verification;
 Testing applications require test users and have limited refresh-token lifetimes.
@@ -82,7 +83,8 @@ For Resend browser execution, open the provider connection and choose **Use brow
 in through its private browser. Edit an existing credential and select that browser connection.
 Kinu preserves its generation, vault value and consumer bindings; an active rotation blocks the
 switch. The linked API connection verifies receipts and issuer metadata. Creation and retirement
-run through the dashboard with checked names, permissions, domain and key IDs. Redacted screenshots
+run through the dashboard with checked names, permissions, domain and key IDs. The agent's brief
+decision summary is saved with its proposed action. Redacted screenshots
 before protected actions are encrypted in the executor vault for 90 days and available to workspace
 members who can read the run. Key-reveal pages are never recorded or sent to the model.
 

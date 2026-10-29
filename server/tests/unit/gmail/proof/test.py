@@ -16,9 +16,9 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-@pytest.fixture
-def signed() -> tuple[bytes, bytes, bytes]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+@pytest.fixture(params=[1024, 2048])
+def signed(request: pytest.FixtureRequest) -> tuple[bytes, bytes, bytes]:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=int(request.param))
     private = key.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.TraditionalOpenSSL,
@@ -92,6 +92,14 @@ async def test_partial_body_unsigned_subject_and_other_domains_require_review(
     for signature in (
         dkim.sign(raw, b"mail", b"attacker.example", key, include_headers=headers),
         dkim.sign(raw, b"mail", b"provider.example", key, include_headers=headers, length=True),
+        dkim.sign(
+            raw,
+            b"mail",
+            b"provider.example",
+            key,
+            include_headers=headers,
+            signature_algorithm=b"rsa-sha1",
+        ),
         dkim.sign(
             raw,
             b"mail",
