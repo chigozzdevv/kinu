@@ -62,10 +62,16 @@ class Assessment:
         provider = await self.inventory.get_connection(
             box.organisation_id, sender.provider_connection_id
         )
+        account = provider.verification_connection_id or provider.id
+        providers = {
+            item.id
+            for item in await self.inventory.connections(box.organisation_id)
+            if (item.verification_connection_id or item.id) == account and not item.archived_at
+        }
         credentials = [
             item
             for item in await self.inventory.credentials(box.organisation_id)
-            if not item.archived_at and item.connection_id == provider.id and item.provider_id
+            if not item.archived_at and item.connection_id in providers and item.provider_id
         ]
         proof = await authenticated(raw, sender.sender)
         rule = MailRule(

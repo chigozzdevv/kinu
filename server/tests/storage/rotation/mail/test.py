@@ -5,6 +5,7 @@ import httpx
 import pytest
 from agents.decision import Decision, DecisionInput
 from connectors.aws.agent import NativeAgent
+from connectors.resend.config import definition as resend_definition
 from contracts import Connection, ControlVersion, ExposureSource, IncidentStatus, ManagedCredential
 from core.audit.store import AuditStore
 from core.errors import ResourceConflictError
@@ -51,7 +52,12 @@ class Queue(Dispatcher):
 
 
 async def setup(
-    database: Database, demo: DemoConfig, *, approved: bool, browser: bool = False
+    database: Database,
+    demo: DemoConfig,
+    *,
+    approved: bool,
+    browser: bool = False,
+    browser_sender: bool = False,
 ) -> tuple[Mailbox, MemoryMail]:
     box = Mailbox(
         id="gmail_one",
@@ -59,7 +65,14 @@ async def setup(
         email="owner@gmail.com",
         connected_at=datetime.now(UTC),
         status="ready",
-        senders=(Sender(sender=SENDER, provider_connection_id="connection_demo_provider"),),
+        senders=(
+            Sender(
+                sender=SENDER,
+                provider_connection_id="connection_browser"
+                if browser_sender
+                else "connection_demo_provider",
+            ),
+        ),
     )
     await save_connection(database, box)
     store = MemoryMail()
@@ -67,21 +80,36 @@ async def setup(
     async with Records(database).write(demo.organisation_id) as rows:
         if browser:
             provider = await rows.get(Connection, demo.organisation_id, "connection_demo_provider")
-            changed = Connection.model_validate(
+            source = Connection.model_validate(
                 {
                     **provider.model_dump(),
+                    "platform": "resend",
+                    "rpc": None,
+                    "http": resend_definition("0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c"),
+                    "authorization": "api-key",
+                    "authorization_reference": "private://" + provider.id,
+                    "allowed_resources": ("resend:credentials:*",),
+                    "revision": provider.revision + 1,
+                }
+            )
+            await rows.replace(source, provider.revision)
+            changed = Connection.model_validate(
+                {
+                    **source.model_dump(),
+                    "id": "connection_browser",
                     "interface": "browser",
                     "authorization": "browser-session",
                     "http": None,
                     "rpc": None,
-                    "authorization_reference": "browser://connection_demo_provider/fixture",
+                    "authorization_reference": "browser://connection_browser/fixture",
+                    "verification_connection_id": source.id,
                     "allowed_resources": ("provider.example",),
                     "playbook_id": "browser_book",
                     "playbook_version_id": "browser_version",
-                    "revision": provider.revision + 1,
+                    "revision": 0,
                 }
             )
-            await rows.replace(changed, provider.revision)
+            await rows.add(changed, demo.organisation_id)
         credential = await rows.get(ManagedCredential, demo.organisation_id, demo.credential_id)
         original = await rows.get(ControlVersion, demo.organisation_id, credential.control_version)
         definition = original.definition.model_copy(
@@ -103,7 +131,15 @@ async def setup(
         await rows.add(version, demo.organisation_id)
         await rows.replace(
             credential.model_copy(
-                update={"control_version": version.id, "revision": credential.revision + 1}
+                update={
+                    "control_version": version.id,
+                    "revision": credential.revision + 1,
+                    **(
+                        {"connection_id": "connection_browser", "provider": "resend"}
+                        if browser
+                        else {}
+                    ),
+                }
             ),
             credential.revision,
         )
@@ -111,7 +147,7 @@ async def setup(
 
 
 @pytest.mark.parametrize(("signed", "approved"), [(True, True), (False, True), (True, False)])
-@pytest.mark.parametrize("browser", [False, True])
+@pytest.mark.parametrize("browser,browser_sender", [(False, False), (True, False), (True, True)])
 async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
     database: Database,
     demo: DemoConfig,
@@ -119,12 +155,15 @@ async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
     signed: bool,
     approved: bool,
     browser: bool,
+    browser_sender: bool,
 ) -> None:
     async def proof(*args: Any) -> bool:
         return signed
 
     monkeypatch.setattr("mail.assessment.authenticated", proof)
-    box, store = await setup(database, demo, approved=approved, browser=browser)
+    box, store = await setup(
+        database, demo, approved=approved, browser=browser, browser_sender=browser_sender
+    )
     config = GoogleConfig(key=SecretStr("mail-fixture-key-at-least-32-characters"))
     async with httpx.AsyncClient() as http:
         service = Service(
