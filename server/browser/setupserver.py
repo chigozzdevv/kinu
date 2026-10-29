@@ -134,7 +134,11 @@ class Setups:
         if not first or not first.checkpoint or not first.checkpoint.required_text:
             raise ResourceConflictError("Login verification requires a key-page checkpoint")
         try:
-            await live.tab.driver.validate_step(first)
+            try:
+                await live.tab.driver.validate_step(first)
+            except Exception:
+                await live.tab.driver.setup_enter(str(first.parameters["url"]))
+                await live.tab.driver.validate_step(first)
             return True
         except Exception:
             return False

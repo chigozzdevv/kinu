@@ -86,6 +86,12 @@ async def test_browser_checks_form_values_before_actions_and_page_after_actions(
         await tab.driver.validate_checkpoint(step.checkpoint)
         with pytest.raises(ResourceConflictError, match="instead of one"):
             await tab.driver.validate_step(step)
+        await tab.page.set_content('<a href="/keys">API keys</a>')
+        await tab.driver.setup_enter("https://portal.example/keys")
+        await tab.driver.validate_step(definition().steps[0])
+        await tab.driver.setup_navigate("https://portal.example/login")
+        with pytest.raises(AuthenticationRequiredError):
+            await tab.driver.setup_enter("https://portal.example/keys")
 
 
 def definition() -> PlaybookDraft:

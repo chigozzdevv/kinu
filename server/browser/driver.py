@@ -114,6 +114,20 @@ class BrowserDriver:
         self.validate_url(url)
         await self._page.goto(url, wait_until="domcontentloaded")
 
+    async def setup_enter(self, url: str) -> None:
+        self._check_authentication()
+        self.validate_url(self.url)
+        self.validate_url(url)
+        links = self._page.locator("a[href]")
+        matches = await links.evaluate_all(
+            "(elements, target) => elements.flatMap((element, index) => "
+            "element.href === target ? [index] : [])",
+            url,
+        )
+        if len(matches) != 1 or not await links.nth(matches[0]).is_visible():
+            raise ResourceConflictError("Approved key-page link is not uniquely visible")
+        await self.setup_navigate(url)
+
     async def setup_click(self, x: int, y: int) -> None:
         viewport = self._page.viewport_size
         if viewport is None:
