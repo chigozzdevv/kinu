@@ -54,6 +54,17 @@ function ComputerUseImage({ runId, activity }: { runId: string; activity: Comput
   </div>
 }
 
+function Explanation({ text, streaming }: { text: string; streaming: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const long = text.length > 600
+  const shown = long && !expanded ? text.slice(0, 600).trimEnd() + "…" : text
+  return <p className="whitespace-pre-wrap" aria-live="polite" aria-busy={streaming}>
+    {shown}
+    {long && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)} className="focus-ring ml-1 rounded font-semibold underline underline-offset-2">{expanded ? "View less" : "View more"}</button>}
+    {streaming && <LoaderCircle className="ml-2 inline size-3 animate-spin text-[var(--ink-muted)]" aria-label="Receiving response" />}
+  </p>
+}
+
 function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
   const symbol = receipt.status === "succeeded" ? "✅" : receipt.status === "failed" ? "❌" : null
   const Indicator = receipt.status === "paused" ? Pause : Check
@@ -80,18 +91,20 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
       const proposal = events.find((activity) => activity.phase === "proposal")
       const execution = events.find((activity) => activity.phase === "execution")
       const validation = events.find((activity) => activity.phase === "validation")
-      const receipt = execution ?? validation
+      const responses = events.filter((activity) => activity.phase === "response")
+      const response = responses.at(-1)
+      const receipt = execution ?? validation ?? (response?.status === "failed" ? response : undefined)
+      const content = proposal?.content ?? response?.content
+      const streaming = !proposal && response?.status === "streaming"
       return <div key={turn} className="space-y-4">
         {proposal?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={proposal} /></Message>}
-        {proposal && <Message actor="builder">
-          {proposal.content && <p>{proposal.content}</p>}
-          <div className={`${proposal.content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.intent}</span></div>
-          {Object.keys(proposal.arguments).length > 0 && <details className="mt-3">
-            <summary className="cursor-pointer text-[9px] font-semibold text-[var(--ink-muted)]">Details</summary>
-            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>
-          </details>}
+        {(proposal || content) && <Message actor="builder">
+          {content && <Explanation text={content} streaming={streaming} />}
+          {proposal && <div className={`${content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.intent}</span></div>}
+          {proposal && Object.keys(proposal.arguments).length > 0 && <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
         </Message>}
         {receipt && <Message actor="kinu"><ActionResponse receipt={receipt} /></Message>}
+        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} /></Message>}
         {proposal && !receipt && <Message actor="kinu"><span className="inline-flex items-center gap-2"><LoaderCircle className="size-3 animate-spin" aria-hidden="true" />Working…</span></Message>}
       </div>
     })}

@@ -135,7 +135,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   const [runs, graph, history, connections] = useQueries({ queries: [
     { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: (): number | false => selectedId && finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
-    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
+    { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => {
+      const run = queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((item) => item.id === selectedId)
+      return finished(run?.status) ? false : run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
+    } },
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
   ] })
   const create = useMutation({ mutationFn: () => {
@@ -196,6 +199,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <PageHeader eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={selected.status === "paused" && selected.stage === "approval" ? <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button> : undefined} />
       <DetailCard>
         <div>
+          {selected.status === "compensated" && <p className="mb-5 text-[11px] text-[var(--ink-soft)]">Recovery completed · {titleCase(selected.recovery_mode ?? "recovery")}</p>}
           <div className="space-y-1" aria-label={`Rotation is at ${titleCase(selected.stage)}`}>
           {stages.map((stage, index) => {
             const activity = latestActivity(history.data, stage.id)
@@ -204,17 +208,17 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const details = activity?.details.filter((detail) => !(hasFrame && detail.label === "Method" && detail.value === "Browser")) ?? []
             const attempts = history.data?.stages.filter((item) => item.stage === stage.id) ?? []
             const completed = Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
-            const current = index === stageIndex && selected.status !== "completed"
+            const current = index === stageIndex && !["completed", "cancelled", "compensated"].includes(selected.status)
             const failed = activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
             const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason)) || computerUse.length)
-            const liveExecutor = current && !activity ? currentStageExecutor(selected) : null
+            const liveExecutor = current && !activity && !computerUse.length ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
             const summary = current ? activeStageSummary(stage.id, selected.status) : activity?.summary
             const needsConnectionRecovery = current && selected.failure?.code === "provider-authentication-expired" && credential?.connection_id
             return <section key={stage.id} className="relative">
-              {index < stages.length - 1 && <span aria-hidden="true" className={`pointer-events-none absolute bottom-[-14px] left-[17.5px] top-[30px] w-px ${completed ? "bg-[var(--ink)]" : "bg-[var(--border)]"}`} />}
+              {index < stages.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-[-14px] left-[17.5px] top-[30px] w-px bg-[var(--border)]" />}
               <button type="button" onClick={() => expandable && setSelectedStage(expanded ? null : stage.id)} aria-expanded={expanded} className={`focus-ring relative grid w-full grid-cols-[20px_minmax(0,1fr)_20px] items-start gap-3 rounded-lg px-2 py-2.5 text-left focus-visible:outline-[var(--border)] focus-visible:outline-offset-0 ${expandable ? "cursor-pointer" : "cursor-default"}`}>
                 <StageMarker completed={completed} current={current} failed={failed} paused={paused} />
                 <span className="min-w-0">
@@ -233,10 +237,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
-                {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} />}
                 {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Builder AI</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
                 </>}
+                {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} />}
               </div>}
             </section>
           })}
