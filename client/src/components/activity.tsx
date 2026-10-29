@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import builderIcon from "@iconify-icons/logos/builder-io-icon.js"
-import { Check, LoaderCircle, MonitorCog, Pause } from "lucide-react"
+import { Check, EyeOff, LoaderCircle, MonitorCog, Pause } from "lucide-react"
 import type { ComputerUseActivity } from "../types"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
@@ -29,7 +29,7 @@ function Message({ actor, attachment = false, children }: { actor: Actor; attach
   </div>
 }
 
-function ComputerUseImage({ runId, activity, caption }: { runId: string; activity: ComputerUseActivity; caption: string }) {
+function ComputerUseImage({ runId, activity, caption, hidden = false }: { runId: string; activity: ComputerUseActivity; caption?: string; hidden?: boolean }) {
   const frame = useQuery({
     queryKey: ["rotations", runId, "computer-use", activity.id, "image"],
     queryFn: () => api.getComputerUseImage(runId, activity.id),
@@ -51,7 +51,7 @@ function ComputerUseImage({ runId, activity, caption }: { runId: string; activit
     {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
     {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
     {imageUrl && <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />}
-  </div><figcaption className="px-1 pt-1.5 text-[9px] text-[var(--ink-muted)]">{caption}</figcaption></figure>
+  </div><figcaption className="flex items-center justify-between px-1 pt-1.5 text-[9px] text-[var(--ink-muted)]">{caption}{hidden && <span className="ml-auto inline-flex" title="Key hidden" role="img" aria-label="Key hidden"><EyeOff className="size-3" aria-hidden="true" /></span>}</figcaption></figure>
 }
 
 function Explanation({ text, streaming }: { text: string; streaming: boolean }) {
@@ -101,7 +101,7 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
       return <div key={turn} className="space-y-4">
         {input?.prompt && <Message actor="kinu">
           <Explanation text={input.prompt} streaming={false} />
-          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}>Playbook <code className="break-all">{input.target}</code></p>}
+          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}>Playbook <code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
         </Message>}
         {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before click" /></Message>}
         {(proposal || content) && <Message actor="builder">
@@ -110,7 +110,7 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
           {proposal && Object.keys(proposal.arguments).length > 0 && <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
         </Message>}
         {receipt && <Message actor="kinu"><ActionResponse receipt={receipt} /></Message>}
-        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} caption="After creation · Key hidden" /></Message>}
+        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} hidden /></Message>}
         {proposal && !receipt && <Message actor="kinu"><span className="inline-flex items-center gap-2"><LoaderCircle className="size-3 animate-spin" aria-hidden="true" />Working…</span></Message>}
       </div>
     })}

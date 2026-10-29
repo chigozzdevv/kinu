@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Field, SelectControl } from "../components/workspace"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
+import { affectedResource } from "../lib/incident"
 import type { Incident } from "../types"
 
 const dismissalReasons = [
@@ -53,10 +54,10 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
     return (incidents.data ?? []).filter((item) => {
       const open = !["resolved", "dismissed"].includes(item.status)
       const matchesStatus = status === "all" || (status === "open" ? open : item.status === status)
-      const haystack = `${item.source} ${item.source_event_id} ${item.resource.repository} ${item.resource.service}`.toLowerCase()
+      const haystack = `${item.source} ${item.source_event_id} ${item.resource.repository} ${item.resource.service} ${affectedResource(item, graph.data).name}`.toLowerCase()
       return matchesStatus && (!term || haystack.includes(term))
     })
-  }, [incidents.data, search, status])
+  }, [incidents.data, graph.data, search, status])
 
   const selected = incidents.data?.find((incident) => incident.id === selectedId)
   const credential = (id: string | null) => graph.data?.credentials.find((item) => item.id === id)
@@ -136,7 +137,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <PageHeader eyebrow="Operations / Incidents" title={titleCase(selected.source)} onBack={() => { setSelectedId(""); onSelectIncident("") }} actions={actions} />
       {(resolve.error || dismiss.error) && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{(resolve.error ?? dismiss.error)?.message}</div>}
       <DetailCard>
-        <DetailList>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Reference">{selected.source_event_id}</Detail>{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
+        <DetailList><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Reference">{selected.source_event_id}</Detail>{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
         {requiresCredentialChoice && <section className="mt-6 border-t border-[var(--border-soft)] pt-5"><h3 className="eyebrow mb-2">Credential</h3><div className="divide-y divide-[var(--border-soft)] border-y border-[var(--border-soft)]">
           {selected.candidates.map((candidate) => {
             const item = credential(candidate.credential_id)
@@ -161,16 +162,17 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
     <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("open") }} filters={[{ label: "Status", value: status, defaultValue: "open", onChange: (event) => setStatus(event.target.value), children: <><option value="open">Open incidents</option><option value="all">All incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
     <Table>
       <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Affected resource</TableHead><TableHead>Credential</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{rows.map((incident) => (
-        <TableRow key={incident.id}>
+      <TableBody>{rows.map((incident) => {
+        const resource = affectedResource(incident, graph.data)
+        return <TableRow key={incident.id}>
           <TableCell><div className="font-medium">{titleCase(incident.source)}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incident.source_event_id}</div></TableCell>
-          <TableCell><div>{incident.resource.service ?? incident.resource.repository ?? "—"}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incident.resource.project ?? incident.resource.repository ?? "—"}</div></TableCell>
+          <TableCell><div>{resource.name}</div>{resource.detail && <div className="mt-1 max-w-[340px] truncate text-[9px] text-[var(--ink-muted)]" title={resource.detail}>{resource.detail}</div>}</TableCell>
           <TableCell>{credential(incident.credential_id)?.display_name ?? "Unconfirmed"}</TableCell>
           <TableCell><Badge variant={severityVariant(incident.severity)}>{incident.severity}</Badge></TableCell>
           <TableCell><Badge variant={statusVariant(incident.status)}>{titleCase(incident.status)}</Badge></TableCell>
           <TableCell className="pr-0"><div className="flex justify-end"><Button variant="ghost" size="sm" className="pr-1" onClick={() => openIncident(incident)}>View details <ChevronRight className="size-3.5" /></Button></div></TableCell>
         </TableRow>
-      ))}</TableBody>
+      })}</TableBody>
     </Table>
   </div>
 }
