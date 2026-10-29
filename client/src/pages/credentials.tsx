@@ -158,18 +158,20 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
 
   function operationalState(item: ManagedCredential) {
     if (!activityAvailable) return { label: "Status unavailable", variant: "warning" as const, moving: false }
-    const run = runs.data.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status))
+    const latestRun = runs.data.find((entry) => entry.credential_id === item.id)
+    const run = latestRun && !["completed", "compensated", "cancelled"].includes(latestRun.status) ? latestRun : undefined
     const incident = incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status))
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "running" || run?.status === "recovering") return { label: "Running", variant: "active" as const, moving: true }
     if (connection?.status !== "ready") return { ...connectionStatus(connection?.status), moving: false }
-    if (run?.status === "paused" || incident?.status === "action-required") return { label: "Action required", variant: "warning" as const, moving: false }
+    if (run?.status === "failed" || run?.status === "cleanup-required" || run?.status === "paused" || incident?.status === "action-required") return { label: "Action required", variant: "warning" as const, moving: false }
     if (run || incident) return { label: "Pending", variant: "warning" as const, moving: false }
     return { label: "Active", variant: "healthy" as const, moving: false }
   }
 
   function actionFor(item: ManagedCredential): { label: string; target?: CredentialTarget; runId?: string } {
-    const run = activityAvailable ? runs.data.find((entry) => entry.credential_id === item.id && !["completed", "compensated"].includes(entry.status)) : undefined
+    const latestRun = activityAvailable ? runs.data.find((entry) => entry.credential_id === item.id) : undefined
+    const run = latestRun && !["completed", "compensated", "cancelled"].includes(latestRun.status) ? latestRun : undefined
     const incident = activityAvailable ? incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status)) : undefined
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "paused" && run.stage === "approval") return { label: "Review approval", target: "approvals" }
