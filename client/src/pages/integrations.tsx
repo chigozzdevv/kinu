@@ -23,7 +23,6 @@ export function IntegrationsSettings() {
         {settings.data.editable && item.fields.length > 0 && <Button className="col-span-2 w-fit sm:col-span-1" variant="secondary" onClick={() => setSelected(item)}>Configure</Button>}
       </div>)}
     </div>
-    <p className="mt-5 text-[11px] leading-5 text-[var(--ink-muted)]">GitHub exposure ingestion and Doppler storage are not available in this installation. Browser playbooks can be imported; generation from text or video is not available.</p>
     {selected && <Configure key={selected.id} integration={selected} onClose={() => setSelected(null)} />}
   </div>
 }

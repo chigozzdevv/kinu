@@ -186,9 +186,6 @@ can use several AI calls within the shared daily limit.
 Browser rotation currently requires a readable predecessor, overlapping issuer keys and registered
 hosting consumers. Imported procedures require review; automatic playbook generation and live
 rotation takeover are unavailable. Expired provider sessions require reconnecting the connection.
-GitHub exposure ingestion, Doppler secret storage and playbook generation from text or video are
-not implemented. Settings lists only the integrations with working connection paths; API providers,
-hosting, Gmail, imported browser playbooks and the optional AWS adapter have the limits described above.
 
 ## Development
 
