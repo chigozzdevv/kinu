@@ -93,7 +93,7 @@ function ProfileSettings({ profile }: { profile: Awaited<ReturnType<typeof api.g
       ])
     },
   })
-  return <div className="max-w-[620px] space-y-7">
+  return <div className="max-w-[640px] space-y-6">
     <div className="grid gap-x-8 sm:grid-cols-2"><Field label="Name"><input className={formControl} value={name} onChange={(event) => { setName(event.target.value); save.reset() }} /></Field></div>
     <DetailList>
       <Detail label="Email">{profile.email}</Detail>

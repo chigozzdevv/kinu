@@ -15,12 +15,14 @@ export function IntegrationsSettings() {
   const [selected, setSelected] = useState<Integration | null>(null)
   if (settings.isLoading) return <Loading />
   if (settings.error) return <Failure error={settings.error} />
-  return <div className="max-w-[480px]">
+  return <div className="max-w-[640px]">
     <div className="divide-y divide-[var(--border-soft)]">
-      {settings.data?.integrations.map((item) => <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 sm:grid-cols-[140px_120px_auto]">
-        <span className="text-[13px] font-medium">{item.name}</span>
-        <Badge className="justify-self-start whitespace-nowrap" variant={item.configured ? "healthy" : "neutral"}>{item.fields.length === 0 ? "No app setup" : item.configured ? "Configured" : "Setup required"}</Badge>
-        {settings.data.editable && item.fields.length > 0 && <Button className="col-span-2 w-fit sm:col-span-1" variant="secondary" onClick={() => setSelected(item)}>Configure</Button>}
+      {settings.data?.integrations.map((item) => <div key={item.id} className="flex min-h-[72px] items-center justify-between gap-4 py-4">
+        <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-8">
+          <span className="text-[11px] font-medium sm:w-32 sm:shrink-0">{item.name}</span>
+          <Badge className="whitespace-nowrap" variant={item.configured ? "healthy" : "neutral"}>{item.fields.length === 0 ? "No app setup" : item.configured ? "Configured" : "Setup required"}</Badge>
+        </div>
+        {settings.data.editable && item.fields.length > 0 && <Button className="shrink-0" variant="secondary" onClick={() => setSelected(item)}>Configure</Button>}
       </div>)}
     </div>
     {selected && <Configure key={selected.id} integration={selected} onClose={() => setSelected(null)} />}

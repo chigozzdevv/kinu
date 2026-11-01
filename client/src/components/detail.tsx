@@ -2,8 +2,8 @@ import { Pencil } from "lucide-react"
 import type { ReactNode } from "react"
 
 export function DetailTabs<T extends string>({ items, value, onChange }: { items: ReadonlyArray<{ id: T; label: string }>; value: T; onChange: (value: T) => void }) {
-  return <div className="mb-6 flex gap-1">
-    {items.map((item) => <button key={item.id} className={`focus-ring border-b-2 px-4 py-3 text-[11px] font-semibold ${value === item.id ? "border-[var(--ink)] text-[var(--ink)]" : "border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]"}`} onClick={() => onChange(item.id)}>{item.label}</button>)}
+  return <div className="mb-6 flex gap-1 overflow-x-auto">
+    {items.map((item) => <button key={item.id} className={`focus-ring shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-[11px] font-semibold ${value === item.id ? "border-[var(--ink)] text-[var(--ink)]" : "border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]"}`} onClick={() => onChange(item.id)}>{item.label}</button>)}
   </div>
 }
 

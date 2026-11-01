@@ -8,6 +8,7 @@ import { BUILDER_DEFAULT_MODEL, BUILDER_SUPPORTED_MODELS } from "@agent-native/c
 import type { AuthSession } from "@agent-native/core/server"
 import { HTTPError } from "h3"
 import { decrypt, encrypt, hash } from "./storage"
+import { dailyUsage } from "./usage"
 
 export const resource = "https://api.builder.io"
 export const scope = "builder:ai:invoke"
@@ -25,9 +26,9 @@ export async function connection(db: Db, orgId: string): Promise<Connection | nu
 }
 
 export async function status(db: Db, orgId: string) {
-  const current = await connection(db, orgId)
+  const [current, usage] = await Promise.all([connection(db, orgId), dailyUsage(db, orgId)])
   return { connected: Boolean(current && !current.reconnect), model: current?.model ?? BUILDER_DEFAULT_MODEL,
-    verified_at: current?.verified_at ?? null, models: [...BUILDER_SUPPORTED_MODELS].filter((model) => model !== "auto") }
+    verified_at: current?.verified_at ?? null, models: [...BUILDER_SUPPORTED_MODELS].filter((model) => model !== "auto"), usage }
 }
 
 export async function begin(db: Db, session: AuthSession, cookie: string, origin: string): Promise<string> {

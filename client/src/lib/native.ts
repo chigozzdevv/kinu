@@ -1,6 +1,6 @@
 import { sessionFetch } from "./auth"
 
-export interface BuilderStatus { connected: boolean, model: string, verified_at: number | null, models: string[] }
+export interface BuilderStatus { connected: boolean, model: string, verified_at: number | null, models: string[], usage: { calls: number; limit: number } }
 
 export async function nativeRequest<T>(workspace: string, path: string, body?: unknown): Promise<T> {
   const method = body === undefined ? "GET" : "POST"
