@@ -7,6 +7,7 @@ import { Failure, Loading, Notice } from "../components/state"
 import { Button } from "../components/ui/button"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
+import { incidentReason } from "../lib/incident"
 import type { NavItem } from "../lib/navigation"
 import type { RotationRun } from "../types"
 
@@ -18,7 +19,7 @@ function failureTask(run: RotationRun) {
 
 function activityLabel(run: RotationRun) {
   if (run.status === "completed") return "Rotation completed"
-  if (run.status === "compensated") return "Recovery completed"
+  if (run.status === "compensated") return run.recovery_mode === "rollback" ? "Rotation rolled back" : "Rotation recovered"
   if (run.status === "cancelled") return "Rotation cancelled"
   if (run.status === "recovering") return "Recovery started"
   if (run.status === "pending") return "Rotation queued"
@@ -121,10 +122,10 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
       const item = credential(candidateId)
       return {
         id: `incident:${incident.id}`,
-        task: incident.credential_id ? "Start incident rotation" : "Confirm affected credential",
+        task: incident.credential_id ? "Review incident" : "Confirm affected credential",
         resource: item?.display_name ?? incident.resource.service ?? incident.resource.repository ?? "Affected resource",
         provider: item?.provider ?? incident.resource.provider ?? "kinu",
-        reason: `${titleCase(incident.source)} reported a credential exposure.`,
+        reason: incidentReason(incident.kind),
         action: "Review",
         open: () => onNavigateIncident(incident.id),
       }

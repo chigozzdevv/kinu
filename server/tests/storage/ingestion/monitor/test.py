@@ -3,9 +3,12 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from contracts import Confidence, Incident, IncidentStatus, Severity, SourceResource
 from core.auth import AuthenticatedIdentity
+from core.errors import ResourceConflictError
 from core.inventory.store import InventoryStore
 from core.storage.database import Database
+from core.storage.records import Records
 from core.storage.runs import RunStore
 from hosting.proof import Proof
 from ingestion.runtime import RuntimeInspector
@@ -15,6 +18,119 @@ from tests.storage.hosting.rotation.fixture import Platform
 from tests.storage.hosting.rotation.test import setup
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_fresh_metadata_resolves_only_stale_alerts_for_the_observed_generation(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    platform = Platform()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(platform.response)) as http:
+        hosts, versions, provider, credential = await setup(database, identity, http)
+        org = credential.organisation_id
+        inventory = InventoryStore(database)
+        now = datetime.now(UTC)
+        credential = await inventory.replace_credential(
+            credential.model_copy(
+                update={
+                    "last_observed_at": now - timedelta(days=3),
+                    "revision": credential.revision + 1,
+                }
+            ),
+            credential.revision,
+        )
+        variants = [
+            (
+                "stale",
+                "credential-metadata-stale",
+                credential.active_generation_id,
+                IncidentStatus.ACTION,
+            ),
+            (
+                "exposure",
+                "credential-exposure-detected",
+                credential.active_generation_id,
+                IncidentStatus.ACTION,
+            ),
+            ("old", "credential-metadata-stale", "generation_other", IncidentStatus.ACTION),
+            (
+                "rotating",
+                "credential-metadata-stale",
+                credential.active_generation_id,
+                IncidentStatus.ROTATING,
+            ),
+            (
+                "future",
+                "credential-metadata-stale",
+                credential.active_generation_id,
+                IncidentStatus.ACTION,
+            ),
+        ]
+        async with Records(database).write(org) as rows:
+            for suffix, kind, generation_id, status in variants:
+                created = (
+                    now + timedelta(days=1) if suffix == "future" else now - timedelta(minutes=1)
+                )
+                await rows.add(
+                    Incident(
+                        id=f"incident_{suffix}",
+                        organisation_id=org,
+                        event_id=f"event_{suffix}",
+                        source="detection",
+                        source_event_id=f"observation_{suffix}",
+                        kind=kind,
+                        severity=Severity.HIGH,
+                        confidence=Confidence.VERIFIED,
+                        status=status,
+                        resource=SourceResource(
+                            credential_id=credential.id, generation_id=generation_id
+                        ),
+                        credential_id=credential.id,
+                        created_at=created,
+                        updated_at=created,
+                    ),
+                    org,
+                )
+        with pytest.raises(ResourceConflictError):
+            await inventory.record_observation(
+                org,
+                credential.id,
+                credential.active_generation_id or "",
+                credential.revision - 1,
+                now,
+                None,
+                None,
+                "a" * 64,
+            )
+        async with Records(database).read() as rows:
+            assert (await rows.get(Incident, org, "incident_stale")).status is IncidentStatus.ACTION
+        jobs = Mock(spec=TaskQueue)
+        jobs.rotation = AsyncMock()
+        monitor = Monitor(
+            database,
+            provider,
+            RuntimeInspector(database, hosts, versions, Proof(http)),
+            Dispatcher(database, jobs),
+            "global",
+        )
+        await monitor.poll()
+        observed = await inventory.get_credential(org, credential.id)
+        assert observed.last_observed_at and observed.last_observed_at >= now
+        async with Records(database).read() as rows:
+            resolved = await rows.get(Incident, org, "incident_stale")
+            assert resolved.status is IncidentStatus.RESOLVED
+            assert resolved.resolution_observed_at == observed.last_observed_at
+            for suffix, _, _, status in variants[1:]:
+                assert (await rows.get(Incident, org, f"incident_{suffix}")).status is status
+        with pytest.raises(ValueError, match="metadata resolution"):
+            Incident.model_validate(
+                resolved.model_dump() | {"kind": "credential-exposure-detected"}
+            )
+        assert len(
+            await database.collection("inventory")
+            .find({"organisation_id": org, "kind": "incident"})
+            .to_list()
+        ) == len(variants)
+        jobs.rotation.assert_not_awaited()
 
 
 @pytest.mark.parametrize("expiry", [True, False])

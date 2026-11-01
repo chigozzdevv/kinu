@@ -1,6 +1,20 @@
 import type { Incident, InventoryGraph } from "../types"
 import { titleCase } from "./format.ts"
 
+export function incidentReason(kind: string): string {
+  const reasons: Record<string, string> = {
+    "credential-exposure-detected": "Credential exposure detected",
+    "credential-metadata-stale": "Metadata needs verification",
+    "credential-disabled": "Credential disabled or missing",
+    "credential-provider-drift": "Provider settings changed",
+    "credential-inventory-drift": "Inventory mapping changed",
+    "credential-runtime-drift": "Runtime binding changed",
+    "credential-expiring": "Credential nearing expiry",
+    "credential-rotation-due": "Rotation due",
+  }
+  return reasons[kind] ?? titleCase(kind)
+}
+
 export function affectedResource(incident: Incident, graph?: InventoryGraph): { name: string; detail: string | null } {
   const resource = incident.resource
   const reported = resource.service || resource.repository || resource.project

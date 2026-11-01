@@ -19,6 +19,7 @@ from core.errors import ResourceConflictError
 from core.inventory.relations import check_references
 from core.inventory.repository import InventoryResource
 from core.storage.database import Database
+from core.storage.incidents import resolve_metadata_incidents
 from core.storage.records import Records
 
 
@@ -344,7 +345,7 @@ class InventoryStore:
                 )
             ):
                 raise ResourceConflictError("Credential changed during monitoring")
-            return await rows.replace(
+            observed = await rows.replace(
                 current.model_copy(
                     update={
                         "last_observed_at": observed_at,
@@ -357,6 +358,8 @@ class InventoryStore:
                 ),
                 current.revision,
             )
+            await resolve_metadata_incidents(rows, observed, observed_at)
+            return observed
 
     async def _get[T: Contract](self, model: type[T], org: str, resource_id: str) -> T:
         async with self._records.read() as rows:

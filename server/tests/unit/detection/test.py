@@ -117,6 +117,81 @@ async def test_detection_uses_stored_metadata_for_browser_managed_credentials() 
     assert inventory.observation is None
 
 
+@pytest.mark.anyio
+async def test_fresh_provider_metadata_does_not_raise_a_stale_alert_after_a_monitoring_gap() -> (
+    None
+):
+    inventory = Inventory(include_binding=False)
+    inventory.credential = inventory.credential.model_copy(
+        update={"created_at": NOW - timedelta(days=3), "last_observed_at": NOW - timedelta(days=2)}
+    )
+    provider = Provider(({"provider_id": "provider-key-one", "scopes": ["mail.send"]},))
+    service = DetectionService(
+        inventory, Controls(require_runtime_alignment=False), provider, {}, lambda: NOW
+    )
+    assert await service.detect("org_one") == ()
+    assert inventory.observation is not None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        {"organisation_id": "org_other"},
+        {"platform": "other-provider"},
+        {"roles": frozenset({ConnectionRole.RUNTIME})},
+        {"status": ConnectionStatus.DEGRADED},
+        {"archived_at": NOW},
+        {"authorization_expires_at": NOW},
+        {"interface": ConnectionInterface.BROWSER},
+    ],
+)
+async def test_browser_metadata_uses_only_its_live_authorized_api_verifier(
+    changes: dict[str, Any],
+) -> None:
+    inventory = Inventory(include_binding=False)
+    inventory.credential = inventory.credential.model_copy(
+        update={
+            "connection_id": "browser_one",
+            "provider": "resend",
+            "created_at": NOW - timedelta(days=3),
+            "last_observed_at": NOW - timedelta(days=2),
+        }
+    )
+    api = (await inventory.connections("org_one"))[0].model_copy(update={"platform": "resend"})
+    browser = Connection.model_validate(
+        api.model_dump()
+        | {
+            "id": "browser_one",
+            "interface": ConnectionInterface.BROWSER,
+            "authorization": ConnectionAuthorization.BROWSER_SESSION,
+            "playbook_id": "playbook_one",
+            "playbook_version_id": "version_one",
+            "verification_connection_id": api.id,
+            "http": None,
+        }
+    )
+
+    async def connections(organisation_id: str) -> tuple[Connection, ...]:
+        return browser, api.model_copy(update=changes)
+
+    inventory.connections = connections  # type: ignore[method-assign]
+    provider = Provider(({"provider_id": "provider-key-one", "scopes": ["mail.send"]},))
+    service = DetectionService(
+        inventory, Controls(require_runtime_alignment=False), provider, {}, lambda: NOW
+    )
+    events = await service.detect("org_one")
+    if changes:
+        assert [event.kind for event in events] == ["credential-metadata-stale"]
+        assert provider.connections == []
+        assert inventory.observation is None
+    else:
+        assert events == ()
+        assert provider.connections == [api.id]
+        assert inventory.observation is not None
+
+
 class Inventory:
     def __init__(self, include_binding: bool = True) -> None:
         self.include_binding = include_binding
@@ -224,8 +299,10 @@ class Inventory:
 class Provider:
     def __init__(self, metadata: tuple[dict[str, Any], ...]) -> None:
         self.value = metadata
+        self.connections: list[str] = []
 
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
+        self.connections.append(connection.id)
         return self.value
 
 

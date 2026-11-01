@@ -80,6 +80,7 @@ class Incident(Contract):
     credential_id: Identifier | None = None
     run_id: Identifier | None = None
     resolution_run_id: Identifier | None = None
+    resolution_observed_at: AwareDatetime | None = None
     dismissal_reason: str | None = Field(default=None, max_length=1024)
     created_at: AwareDatetime
     updated_at: AwareDatetime
@@ -91,8 +92,20 @@ class Incident(Contract):
             raise ValueError("a dismissed incident requires a reason")
         if self.status is IncidentStatus.CONTAINED and not self.run_id:
             raise ValueError("a contained incident requires a run")
-        if self.status is IncidentStatus.RESOLVED and not (self.resolution_run_id or self.run_id):
-            raise ValueError("a resolved incident requires a resolution run")
+        if self.resolution_observed_at is not None and (
+            self.status is not IncidentStatus.RESOLVED
+            or self.kind != "credential-metadata-stale"
+            or self.credential_id is None
+            or self.resource.generation_id is None
+            or not self.created_at <= self.resolution_observed_at <= self.updated_at
+        ):
+            raise ValueError("metadata resolution requires a current verified observation")
+        if self.status is IncidentStatus.RESOLVED and not (
+            self.resolution_run_id or self.run_id or self.resolution_observed_at
+        ):
+            raise ValueError(
+                "a resolved incident requires a resolution run or metadata observation"
+            )
         if self.resolution_run_id and self.status is not IncidentStatus.RESOLVED:
             raise ValueError("a resolution run requires a resolved incident")
         return self

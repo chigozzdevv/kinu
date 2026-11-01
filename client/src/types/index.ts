@@ -303,6 +303,7 @@ export interface Incident {
   credential_id: Identifier | null
   run_id: Identifier | null
   resolution_run_id: Identifier | null
+  resolution_observed_at?: string | null
   dismissal_reason: string | null
   created_at: string
   updated_at: string

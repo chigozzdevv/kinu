@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from contracts import (
     CredentialGeneration,
     GenerationState,
     Incident,
     IncidentStatus,
+    ManagedCredential,
     RecoveryMode,
     RotationRun,
     RunStatus,
@@ -19,6 +22,32 @@ _ROTATION_INCIDENTS = {
     "credential-expiring",
     "credential-rotation-due",
 }
+
+
+async def resolve_metadata_incidents(
+    rows: RecordTransaction, credential: ManagedCredential, observed_at: datetime
+) -> None:
+    for incident in await rows.match(
+        Incident, credential.organisation_id, {"credential_id": credential.id}
+    ):
+        if (
+            incident.kind == "credential-metadata-stale"
+            and incident.status is IncidentStatus.ACTION
+            and incident.resource.generation_id == credential.active_generation_id
+            and incident.created_at <= observed_at
+        ):
+            await rows.replace(
+                Incident.model_validate(
+                    incident.model_dump()
+                    | {
+                        "status": IncidentStatus.RESOLVED,
+                        "resolution_observed_at": observed_at,
+                        "updated_at": max(incident.updated_at, observed_at),
+                        "revision": incident.revision + 1,
+                    }
+                ),
+                incident.revision,
+            )
 
 
 async def sync_incidents(

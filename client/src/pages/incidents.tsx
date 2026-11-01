@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Field, SelectControl } from "../components/workspace"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
-import { affectedResource } from "../lib/incident"
+import { affectedResource, incidentReason } from "../lib/incident"
 import type { Incident } from "../types"
 
 const dismissalReasons = [
@@ -54,7 +54,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
     return (incidents.data ?? []).filter((item) => {
       const open = !["resolved", "dismissed"].includes(item.status)
       const matchesStatus = status === "all" || (status === "open" ? open : item.status === status)
-      const haystack = `${item.source} ${item.source_event_id} ${item.resource.repository} ${item.resource.service} ${affectedResource(item, graph.data).name}`.toLowerCase()
+      const haystack = `${item.source} ${item.source_event_id} ${incidentReason(item.kind)} ${item.resource.repository} ${item.resource.service} ${affectedResource(item, graph.data).name}`.toLowerCase()
       return matchesStatus && (!term || haystack.includes(term))
     })
   }, [incidents.data, graph.data, search, status])
@@ -138,7 +138,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <PageHeader eyebrow="Operations / Incidents" title={titleCase(selected.source)} onBack={() => { setSelectedId(""); onSelectIncident("") }} actions={actions} />
       {(resolve.error || dismiss.error) && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{(resolve.error ?? dismiss.error)?.message}</div>}
       <DetailCard>
-        <DetailList><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Status">{titleCase(selected.status)}</Detail><Detail label="Reference">{selected.source_event_id}</Detail>{selected.resolution_run_id && selected.run_id && selected.resolution_run_id !== selected.run_id && <Detail label="Previous attempt"><button type="button" className="focus-ring rounded hover:underline" onClick={() => onNavigateRotation(selected.run_id!)}>View rotation</button></Detail>}{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
+        <DetailList><Detail label="Reason">{incidentReason(selected.kind)}</Detail><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Status">{titleCase(selected.status)}</Detail><Detail label="Reference">{selected.source_event_id}</Detail>{selected.resolution_run_id && selected.run_id && selected.resolution_run_id !== selected.run_id && <Detail label="Previous attempt"><button type="button" className="focus-ring rounded hover:underline" onClick={() => onNavigateRotation(selected.run_id!)}>View rotation</button></Detail>}{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
         {requiresCredentialChoice && <section className="mt-6 border-t border-[var(--border-soft)] pt-5"><h3 className="eyebrow mb-2">Credential</h3><div className="divide-y divide-[var(--border-soft)] border-y border-[var(--border-soft)]">
           {selected.candidates.map((candidate) => {
             const item = credential(candidate.credential_id)
@@ -166,7 +166,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <TableBody columns={6} emptyMessage={search.trim() ? "No matching incidents." : "No incidents in this view."}>{rows.map((incident) => {
         const resource = affectedResource(incident, graph.data)
         return <TableRow key={incident.id}>
-          <TableCell primary><div className="font-medium">{titleCase(incident.source)}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incident.source_event_id}</div></TableCell>
+          <TableCell primary><div className="font-medium">{titleCase(incident.source)}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incidentReason(incident.kind)}</div></TableCell>
           <TableCell label="Affected resource" wide><div>{resource.name}</div>{resource.detail && <div className="mt-1 max-w-[340px] truncate text-[9px] text-[var(--ink-muted)]" title={resource.detail}>{resource.detail}</div>}</TableCell>
           <TableCell label="Credential" wide>{credential(incident.credential_id)?.display_name ?? "Unconfirmed"}</TableCell>
           <TableCell label="Severity"><Badge variant={severityVariant(incident.severity)}>{incident.severity}</Badge></TableCell>

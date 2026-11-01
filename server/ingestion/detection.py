@@ -139,10 +139,11 @@ class DetectionService:
             controls = await self._controls.get_control_version(
                 organisation_id, credential.id, credential.control_version
             )
-            if connection.interface is ConnectionInterface.API:
-                if connection.id not in provider_cache:
+            metadata_connection = _metadata_connection(connection, connections, observed_at)
+            if metadata_connection is not None:
+                if metadata_connection.id not in provider_cache:
                     indexed: dict[str, dict[str, Any]] = {}
-                    for metadata in await self._provider.metadata(connection):
+                    for metadata in await self._provider.metadata(metadata_connection):
                         provider_id = metadata.get("provider_id")
                         if not isinstance(provider_id, str):
                             continue
@@ -151,8 +152,8 @@ class DetectionService:
                                 "provider returned duplicate credential metadata identifiers"
                             )
                         indexed[provider_id] = metadata
-                    provider_cache[connection.id] = indexed
-                item = provider_cache[connection.id].get(credential.provider_id or "")
+                    provider_cache[metadata_connection.id] = indexed
+                item = provider_cache[metadata_connection.id].get(credential.provider_id or "")
                 events.extend(
                     await self._credential_events(
                         credential,
@@ -236,19 +237,6 @@ class DetectionService:
             metadata_digest,
         )
         events: list[IngestionEvent] = []
-        previous_observation = credential.last_observed_at or credential.created_at
-        if (
-            observed_at - previous_observation
-        ).total_seconds() > policy.definition.maximum_metadata_age_seconds:
-            events.append(
-                _event(
-                    credential,
-                    "credential-metadata-stale",
-                    previous_observation.isoformat(),
-                    Severity.HIGH,
-                    observed_at,
-                )
-            )
         status = str(metadata.get("status", "")).lower()
         if metadata.get("disabled") is True or status in {
             "deleted",
@@ -288,6 +276,29 @@ class DetectionService:
                 )
             )
         return tuple(events)
+
+
+def _metadata_connection(
+    connection: Connection, connections: Mapping[str, Connection], observed_at: datetime
+) -> Connection | None:
+    if connection.interface is ConnectionInterface.API:
+        return connection
+    verifier = connections.get(connection.verification_connection_id or "")
+    if (
+        verifier is not None
+        and verifier.organisation_id == connection.organisation_id
+        and verifier.platform == connection.platform
+        and ConnectionRole.PROVIDER in verifier.roles
+        and verifier.interface is ConnectionInterface.API
+        and verifier.status is ConnectionStatus.READY
+        and verifier.archived_at is None
+        and (
+            verifier.authorization_expires_at is None
+            or verifier.authorization_expires_at > observed_at
+        )
+    ):
+        return verifier
+    return None
 
 
 def _stored_events(

@@ -39,6 +39,7 @@ function latestActivity(history: RotationHistory | undefined, stage: StageName):
 function triggerName(source: string) {
   if (["schedule", "scheduler"].includes(source)) return "Scheduled rotation"
   if (["manual", "console", "dashboard"].includes(source)) return "Manual rotation"
+  if (source === "agent-native") return "Agent request"
   return titleCase(source)
 }
 
@@ -119,7 +120,7 @@ function RunStatus({ run }: { run: RotationRun }) {
   const moving = run.status === "running" || run.status === "recovering"
   return <Badge variant={variant(run)} className="gap-1.5">
     {moving && <LoaderCircle className="size-3 animate-spin" aria-hidden="true" />}
-    {titleCase(run.status)}
+    {run.status === "compensated" ? run.recovery_mode === "rollback" ? "Rolled back" : "Recovered" : titleCase(run.status)}
   </Badge>
 }
 
@@ -231,7 +232,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <DetailCard>
         <div>
           {selected.failure && <p role="status" className="mb-5 text-[11px] leading-5 text-[var(--red)]">{selected.failure.message}</p>}
-          {selected.status === "compensated" && <p className="mb-5 text-[11px] text-[var(--ink-soft)]">Recovery completed · {titleCase(selected.recovery_mode ?? "recovery")}</p>}
+          {selected.status === "compensated" && <p className="mb-5 text-[11px] text-[var(--ink-soft)]">{selected.recovery_mode === "rollback" ? "Recovery completed · previous key restored" : "Recovery completed · replacement key active"}</p>}
           <div className="space-y-1" aria-label={`Rotation is at ${titleCase(selected.stage)}`}>
           {stages.map((stage, index) => {
             const activity = latestActivity(history.data, stage.id)
