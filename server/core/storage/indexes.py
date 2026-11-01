@@ -42,6 +42,10 @@ async def ensure_indexes(database: Database) -> None:
                 [("organisation_id", 1), ("connection_id", 1), ("reference", 1)], unique=True
             ),
         ],
+        "playbook_sources": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("organisation_id", 1), ("playbook_id", 1)]),
+        ],
         "browser_locks": [IndexModel([("organisation_id", 1), ("connection_id", 1)], unique=True)],
         "browser_sessions": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
         "browser_actions": [

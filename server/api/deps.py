@@ -48,6 +48,7 @@ class ApiServices:
     incidents: IncidentService | None = None
     browsers: BrowserAccessService | None = None
     agents: AgentRuntimeService | None = None
+    playbook_builder: AgentRuntimeService | None = None
     agent_repository: AgentRepository | None = None
     agent_continuity: AgentContinuityService | None = None
     walkthroughs: WalkthroughService | None = None

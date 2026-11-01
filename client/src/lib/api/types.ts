@@ -51,20 +51,19 @@ export interface PlaybookDefinition {
 export interface PreparePlaybookInput {
   playbook_id: Identifier
   version_id: Identifier
-  source: {
+  sources: Array<{
     id: Identifier
-    kind: "text" | "video"
+    kind: "text" | "link"
     text?: string
-    file?: File
     resource?: string
-  }
+  }>
   objective: string
 }
 
 export interface PreparedPlaybook {
   playbook_id: Identifier
   version_id: Identifier
-  source_id: Identifier
+  source_ids: Identifier[]
   definition: PlaybookDefinition
 }
 
@@ -72,11 +71,6 @@ export interface WalkthroughSource {
   id: Identifier
   status: "uploading" | "analysing" | "ready" | "failed"
   failure?: string | null
-}
-
-export interface BeginWalkthroughResponse {
-  source: WalkthroughSource
-  upload_url: string
 }
 
 export interface ControlDefinition {

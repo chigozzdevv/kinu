@@ -2,7 +2,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from connectors.base.errors import ConnectorError
-from core.errors import ResourceConflictError
+from contracts import AgentKind, AgentResult, AgentTask, PlaybookDraft, WalkthroughAnalysis
+from core.errors import PlaybookError, ResourceConflictError
 from core.private import PrivateClient
 
 from agents.decision import Decision, DecisionInput
@@ -11,6 +12,44 @@ from agents.decision import Decision, DecisionInput
 class NativeAgent:
     def __init__(self, client: PrivateClient) -> None:
         self.client = client
+
+    async def build(self, task: AgentTask) -> AgentResult:
+        if task.agent is not AgentKind.PLAYBOOK or task.skill != "build_playbook":
+            raise PlaybookError("Choose a playbook generation task")
+        sources = [
+            WalkthroughAnalysis.model_validate(value)
+            for value in task.context.get("walkthroughs", ())
+        ]
+        result = await self.client.call(
+            "/_internal/playbooks",
+            {
+                "organisation_id": task.organisation_id,
+                "input": {
+                    "id": task.id,
+                    "objective": task.objective,
+                    "sources": [
+                        {
+                            "id": source.source_id,
+                            "text": "\n".join(
+                                item.text for item in (*source.transcript, *source.screen_text)
+                            ),
+                        }
+                        for source in sources
+                    ],
+                    "schema": PlaybookDraft.model_json_schema(),
+                },
+            },
+            timeout=150,
+        )
+        return AgentResult.model_validate(
+            {
+                "task_id": task.id,
+                "agent": task.agent,
+                "skill": task.skill,
+                "evidence_ids": task.evidence_ids,
+            }
+            | result
+        )
 
     async def navigate(
         self,

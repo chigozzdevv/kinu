@@ -5,6 +5,7 @@ import { MongoMemoryReplSet } from "mongodb-memory-server"
 import { access, pendingOrg, status, disconnect, validateScopes } from "../server/grant"
 import { decrypt, encrypt, hash } from "../server/storage"
 import { builderEngine } from "../server/engine"
+import { generate } from "../server/playbooks"
 
 process.env.KINU_NATIVE_KEY = "native-test-encryption-material-32bytes"
 let mongo: MongoMemoryReplSet, client: MongoClient, db: Db
@@ -96,4 +97,39 @@ test("Agent-Native sends Mongo-backed OAuth to Builder without SQL or key creden
   assert.equal(calls, 1)
   assert.equal(result.some((event) => event.type === "text-delta" && event.text === "hello"), true, JSON.stringify(result))
   assert.equal(JSON.stringify(result).includes("oauth-private"), false)
+})
+
+test("playbook generation shares the workspace Builder grant, model and daily allowance", async () => {
+  const org = "org_playbooks", input = { id: "task_one", objective: "Create a scoped key", sources: [{ id: "source_one", text: "Open issuer settings." }], schema: { type: "object" } }
+  await db.collection("connections").insertOne({ organisation_id: org, owner_id: "user_one", model: "gpt-6-luna", grant: encrypt(grant, org), revision: 0 })
+  let calls = 0
+  const request: typeof fetch = async (value) => {
+    calls++
+    const request = value as Request
+    assert.equal(request.headers.get("authorization"), "Bearer test-access-private")
+    const body = await request.json() as { model: string; max_tokens: number; messages: unknown }
+    assert.equal(body.model, "gpt-6-luna")
+    assert.equal(body.max_tokens, 12288)
+    assert.equal(JSON.stringify(body).includes("test-access-private"), false)
+    return new Response([
+      { type: "text-delta", text: JSON.stringify({ playbook_draft: { name: "Generated issuer procedure", platform: "issuer" } }) },
+      { type: "stop", reason: "end_turn" },
+    ].map((value) => JSON.stringify(value) + "\n").join(""), { headers: { "content-type": "application/x-ndjson" } })
+  }
+  const result = await generate(db, org, input, request)
+  assert.equal(result.succeeded, true)
+  assert.deepEqual(await generate(db, org, input, request), result)
+  assert.equal(calls, 1)
+  assert.equal((await db.collection("usage").findOne({ organisation_id: org }))?.calls, 1)
+  const saved = await db.collection<{ _id: string; result: string }>("playbook_generations").findOne({ _id: `${org}:playbook:task_one` })
+  assert.ok(saved?.result && !JSON.stringify(saved).includes("Generated issuer procedure"))
+  assert.throws(() => decrypt(saved.result, "org_other:playbook:task_one"))
+  const foreign = await generate(db, "org_other", input, request)
+  assert.equal(foreign.succeeded, false)
+  assert.equal(calls, 1)
+  await db.collection("usage").updateOne({ organisation_id: org }, { $set: { limit: 1 } })
+  const exhausted = await generate(db, org, { ...input, id: "task_two" }, request)
+  assert.equal(exhausted.succeeded, false)
+  assert.ok(!exhausted.succeeded && exhausted.error.includes("daily limit"))
+  assert.equal(calls, 1)
 })

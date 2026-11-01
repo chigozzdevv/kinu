@@ -13,8 +13,9 @@ from contracts import (
     PlaybookVersion,
 )
 from core.auth import Permission
-from core.errors import PlaybookError
-from core.playbook import validate_definition
+from core.errors import PlaybookError, ResourceNotFoundError
+from core.playbook.generation import validate_generated
+from core.playbook.walkthrough import sanitise_source_text
 from fastapi import APIRouter, Query, Request, status
 from pydantic import Field
 
@@ -40,7 +41,7 @@ class VersionResponse(Contract):
 class BuildVersionRequest(Contract):
     version_id: Identifier
     objective: str = Field(min_length=1, max_length=2048)
-    source_ids: tuple[Identifier, ...] = Field(min_length=1)
+    source_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=6)
 
 
 class BuildVersionResponse(VersionResponse):
@@ -49,7 +50,7 @@ class BuildVersionResponse(VersionResponse):
 
 class GenerateDraftRequest(Contract):
     objective: str = Field(min_length=1, max_length=2048)
-    source_ids: tuple[Identifier, ...] = Field(min_length=1)
+    source_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=6)
 
 
 class GenerateDraftResponse(Contract):
@@ -251,7 +252,7 @@ async def _generate_definition(
     api: ApiServices,
     organisation_id: str,
     playbook_id: str,
-    _objective: str,
+    objective: str,
     source_ids: tuple[str, ...],
     identity: Identity,
     key: str,
@@ -261,18 +262,30 @@ async def _generate_definition(
         playbook_id,
         source_ids,
     )
+    if sum(source.size for source in sources) > 100_000:
+        raise PlaybookError("Use shorter instructions or fewer links")
+    objective, _ = sanitise_source_text(objective)
+    playbooks = required(api.playbooks, "playbooks")
+    try:
+        existing = await playbooks.get(organisation_id, playbook_id)
+    except ResourceNotFoundError:
+        existing = None
+    if existing:
+        if existing.archived_at:
+            raise PlaybookError("Choose an active playbook")
+        objective = (
+            f"Build the next credential rotation procedure. Keep the name {existing.name!r} "
+            f"and platform {existing.platform!r}."
+        )
     task_id = command_id(identity, organisation_id, key).replace("cmd_", "task_", 1)
-    result = await required(api.agents, "agents").execute(
+    result = await required(api.playbook_builder, "playbook generation").execute(
         AgentTask(
             id=task_id,
             organisation_id=organisation_id,
             run_id=f"run_{task_id.removeprefix('task_')}",
             agent=AgentKind.PLAYBOOK,
             skill="build_playbook",
-            objective=(
-                f"Credential rotation procedure. Playbook ID: {playbook_id}. "
-                f"Sanitised walkthrough source IDs: {', '.join(source_ids)}."
-            ),
+            objective=objective,
             evidence_ids=source_ids,
             context={
                 "playbook_id": playbook_id,
@@ -286,13 +299,17 @@ async def _generate_definition(
         )
     )
     if not result.succeeded:
-        raise PlaybookError(result.error or "Playbook Builder Agent failed")
+        raise PlaybookError(result.error or "Could not generate the playbook")
     candidate = result.output.get("playbook_draft", result.output)
     try:
         definition = PlaybookDraft.model_validate(candidate)
     except ValueError as error:
-        raise PlaybookError("Playbook Builder Agent returned an invalid definition") from error
-    validate_definition(definition)
+        raise PlaybookError(
+            "Could not build a usable procedure. Add more details and try again."
+        ) from error
+    validate_generated(definition)
+    if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
+        raise PlaybookError("The new version must keep the playbook's name and provider")
     return definition, result
 
 

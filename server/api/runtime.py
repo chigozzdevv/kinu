@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import httpx
 from agents.memory import AgentMemoryService
+from agents.playbooks import PlaybookBuilder
 from agents.store import AgentStore
 from browser.bridge import Bridge as BrowserBridge
 from core.account import AccountService
@@ -28,7 +29,8 @@ from core.inventory.store import InventoryStore
 from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.overview import OverviewService
 from core.overview.store import OverviewStore
-from core.playbook import PlaybookService
+from core.playbook import PlaybookService, WalkthroughService
+from core.playbook.sources import Sources
 from core.playbook.store import PlaybookStore
 from core.private import PrivateClient
 from core.storage.factory import application_database
@@ -107,6 +109,8 @@ async def runtime(
                     else None,
                     workflow=workflow,
                     playbooks=PlaybookService(PlaybookStore(database), _now, inventory),
+                    walkthroughs=WalkthroughService(Sources(database), _now),
+                    playbook_builder=PlaybookBuilder(private) if private else None,
                     approvals=ApprovalService(ApprovalStore(database), _now, notifications, audit),
                     probes=ProbeService(ProbeStore(database), _now),
                     overview=OverviewService(counts, counts, counts, counts, _now),

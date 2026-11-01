@@ -174,7 +174,9 @@ own encrypted grant database. Generic chat, terminals and MCP proxy routes are d
 Rotation preserves the old key during deployment and observation. Retirement requires current
 verification evidence. An interrupted mutation is held for evidence review rather than replayed
 blindly. The Chromium smoke test verifies capture barriers, private transfer and context disposal.
-Browser providers use a published playbook imported under **Playbooks → Add playbook**.
+Create a playbook from instructions and public documentation links under **Playbooks → Add playbook**,
+using the workspace's Builder account and selected model. Review the generated draft, then publish it.
+Existing JSON definitions can also be imported.
 Definitions declare exact public hostnames, checked page controls, private capture fields and a
 fixed read-only issuer identity probe or a supported private receipt verifier. Sign in through the
 connection's private browser once.
@@ -184,8 +186,8 @@ login state. Creation closes that browser context after encrypted capture. Each 
 can use several AI calls within the shared daily limit.
 
 Browser rotation currently requires a readable predecessor, overlapping issuer keys and registered
-hosting consumers. Imported procedures require review; automatic playbook generation and live
-rotation takeover are unavailable. Expired provider sessions require reconnecting the connection.
+hosting consumers. Procedures require review before publishing. Expired provider sessions require
+reconnecting the connection.
 
 ## Development
 

@@ -24,7 +24,7 @@ export function builderEngine(accessToken: string, request: typeof fetch = fetch
         }),
       }))
       const requested = options.maxOutputTokens ?? 256
-      if (!Number.isInteger(requested) || requested <= 0 || requested > 2048) throw new Error("Builder output budget is invalid")
+      if (!Number.isInteger(requested) || requested <= 0 || requested > 16384) throw new Error("Builder output budget is invalid")
       const body = JSON.stringify({ model: options.model, messages, system: options.systemPrompt,
         max_tokens: Math.max(256, requested),
       })
