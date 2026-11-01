@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, ChevronRight } from "lucide-react"
-import { Detail, DetailCard, DetailList } from "../components/detail"
+import { Detail, DetailCard, DetailList, DetailPage } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
 import { Failure, Loading } from "../components/state"
@@ -113,7 +113,7 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
 
   if (selected) {
     const actionable = selected.decision === "pending" && !isExpired(selected, now)
-    return <div className="page">
+    return <DetailPage>
       <PageHeader eyebrow="Operations / Approvals" title={approvalName(selected)} titlePrefix={selectedCredential ? <Provider value={selectedCredential.provider} label={false} /> : undefined} onBack={() => { setSelectedId(""); onSelectApproval(""); setConfirming(null); decide.reset() }} actions={<>{selectedRun && <Button variant="secondary" onClick={() => onNavigateRotation(selectedRun.id)}>Open rotation <ArrowUpRight className="size-3.5" /></Button>}{actionable && <><Button variant="danger" disabled={decide.isPending} onClick={() => setConfirming("rejected")}>Reject</Button><Button disabled={decide.isPending} onClick={() => setConfirming("approved")}>Approve</Button></>}</>} />
       {decide.error && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{decide.error.message}</div>}
       <DetailCard>
@@ -129,25 +129,25 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
       <Modal isOpen={Boolean(confirming)} onClose={() => setConfirming(null)} title={confirming === "approved" ? "Approve revocation?" : "Reject revocation?"} actions={<Button variant={confirming === "approved" ? "primary" : "danger"} disabled={decide.isPending} onClick={() => confirming && decide.mutate(confirming)}>{decide.isPending ? "Saving…" : confirming === "approved" ? "Approve" : "Reject"}</Button>}>
         <DetailList><Detail label="Credential">{selectedCredential?.display_name ?? "Credential"}</Detail><Detail label="Action">Revoke previous credential</Detail></DetailList>
       </Modal>
-    </div>
+    </DetailPage>
   }
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Approvals" />
     <Toolbar value={search} onChange={setSearch} placeholder="Search approvals or credentials" onClear={() => { setSearch(""); setStatus("pending") }} filters={[{ label: "Status", value: status, defaultValue: "pending", onChange: (event) => setStatus(event.target.value), children: <><option value="pending">Action required</option><option value="all">All approvals</option><option value="expired">Expired</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="more-evidence">Evidence requested</option><option value="extend-observation">Verification extended</option></> }]} />
-    <Table>
+    <Table responsive>
       <TableHeader><TableRow><TableHead>Requested action</TableHead><TableHead>Credential</TableHead><TableHead>Stage</TableHead><TableHead>Requested</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{rows.map((approval) => {
+      <TableBody columns={6} emptyMessage={search.trim() ? "No matching approvals." : "No approvals in this view."}>{rows.map((approval) => {
         const run = runs.data!.find((item) => item.id === approval.run_id)
         const credential = graph.data!.credentials.find((item) => item.id === run?.credential_id)
         const presentation = approvalStatus(approval, now)
         return <TableRow key={approval.id}>
-          <TableCell><button className="focus-ring rounded-lg text-left font-medium hover:underline" onClick={() => openApproval(approval.id)}>{approvalName(approval)}</button></TableCell>
-          <TableCell>{credential?.display_name ?? "Credential"}</TableCell>
-          <TableCell>{titleCase(run?.stage ?? "unknown")}</TableCell>
-          <TableCell className="text-[10px] text-[var(--ink-soft)]">{formatDate(approval.created_at)}</TableCell>
-          <TableCell><Badge variant={presentation.variant}>{presentation.label}</Badge></TableCell>
-          <TableCell className="pr-0"><div className="flex justify-end"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{approval.decision === "pending" && !isExpired(approval, now) ? "Review" : "View details"} <ChevronRight className="size-3.5" /></Button></div></TableCell>
+          <TableCell primary><button className="focus-ring rounded-lg text-left font-medium hover:underline" onClick={() => openApproval(approval.id)}>{approvalName(approval)}</button></TableCell>
+          <TableCell label="Credential">{credential?.display_name ?? "Credential"}</TableCell>
+          <TableCell label="Stage">{titleCase(run?.stage ?? "unknown")}</TableCell>
+          <TableCell label="Requested" className="text-[10px] text-[var(--ink-soft)]">{formatDate(approval.created_at)}</TableCell>
+          <TableCell label="Status"><Badge variant={presentation.variant}>{presentation.label}</Badge></TableCell>
+          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{approval.decision === "pending" && !isExpired(approval, now) ? "Review" : "View details"} <ChevronRight className="size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

@@ -5,7 +5,6 @@ import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
 import { Failure, Loading, Notice } from "../components/state"
 import { Button } from "../components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 import type { NavItem } from "../lib/navigation"
@@ -164,7 +163,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     {approvals.error && <Notice>Approvals are currently unavailable.</Notice>}
     {playbooks.error && <Notice>Computer Use playbooks are currently unavailable.</Notice>}
 
-    <section aria-label="Inventory" className="mb-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Inventory" className="mb-10 grid grid-cols-2 gap-3 xl:grid-cols-4">
       {metrics.map((metric) => <button
         key={metric.label}
         className="focus-ring group flex min-h-24 items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-5 text-left transition hover:border-[#cfd2d4]"
@@ -181,29 +180,21 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.8fr)]">
       <section>
         <h2 className="mb-4 text-[15px] font-semibold tracking-[-0.025em] text-[var(--ink)]">Needs attention</h2>
-        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
-          <Table className="min-w-full table-fixed">
-            <TableHeader><TableRow><TableHead className="w-[47%]">Item</TableHead><TableHead className="w-[36%]">Resource</TableHead><TableHead className="w-[17%]" aria-label="Action" /></TableRow></TableHeader>
-            <TableBody>
-              {visibleActionRows.map((item) => <TableRow key={item.id}>
-                <TableCell>
-                  <div className="font-medium">{item.task}</div>
-                  <div className="mt-1 max-w-[350px] text-[10px] leading-4 text-[var(--ink-muted)]">{item.reason}</div>
-                </TableCell>
-                <TableCell><div className="flex items-center gap-3"><Provider value={item.provider} label={false} /><span className="font-medium">{item.resource}</span></div></TableCell>
-                <TableCell className="pr-3"><div className="flex justify-end"><Button variant="ghost" size="sm" className="pr-1" onClick={item.open}>{item.action} <ChevronRight className="size-3.5" /></Button></div></TableCell>
-              </TableRow>)}
-              {!actionRows.length && <TableRow><TableCell colSpan={3} className="py-16 text-center text-[11px] text-[var(--ink-muted)]">Nothing needs attention.</TableCell></TableRow>}
-              {actionRows.length > 2 && <TableRow>
-                <TableCell colSpan={3} className="px-3 py-2">
-                  <button className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-semibold text-[var(--ink-soft)] transition hover:text-[var(--ink)]" onClick={() => setShowAllAttention((value) => !value)}>
-                    {showAllAttention ? "Show less" : "View all"}
-                    {showAllAttention ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ArrowUpRight className="size-3.5" aria-hidden="true" />}
-                  </button>
-                </TableCell>
-              </TableRow>}
-            </TableBody>
-          </Table>
+        <div className="attention-panel overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
+          <ul className="divide-y divide-[var(--border-soft)]">
+            {visibleActionRows.map((item) => <li key={item.id} className="attention-row">
+              <div className="attention-task min-w-0"><div className="text-[12px] font-medium">{item.task}</div><div className="mt-1 text-[10px] leading-4 text-[var(--ink-muted)]">{item.reason}</div></div>
+              <div className="attention-resource flex min-w-0 items-center gap-3"><Provider value={item.provider} label={false} /><span className="min-w-0 break-words text-[11px] font-medium">{item.resource}</span></div>
+              <Button variant="ghost" size="sm" className="attention-action" onClick={item.open}>{item.action} <ChevronRight className="size-3.5" /></Button>
+            </li>)}
+            {!actionRows.length && <li className="py-12 text-center text-[11px] text-[var(--ink-muted)]">Nothing needs attention.</li>}
+          </ul>
+          {actionRows.length > 2 && <div className="border-t border-[var(--border-soft)] px-3 py-2">
+            <button className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-semibold text-[var(--ink-soft)] transition hover:text-[var(--ink)]" onClick={() => setShowAllAttention((value) => !value)}>
+              {showAllAttention ? "Show less" : "View all"}
+              {showAllAttention ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ArrowUpRight className="size-3.5" aria-hidden="true" />}
+            </button>
+          </div>}
         </div>
       </section>
 

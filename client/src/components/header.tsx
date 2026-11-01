@@ -29,8 +29,8 @@ export function PageHeader({ section, eyebrow, title, titlePrefix, description, 
   }, [])
 
   return (
-    <header className="mb-8 flex flex-col items-start justify-between gap-6 sm:flex-row">
-      <div className="min-w-0">
+    <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <div className="min-w-0 flex-1 basis-64">
         <div className="mb-4 flex items-center gap-2 text-[10px] font-medium text-[var(--ink-muted)]">
           {onBack && <button className="focus-ring -ml-2 grid size-7 place-items-center rounded-lg transition hover:bg-white hover:text-[var(--ink)]" aria-label="Back" onClick={onBack}><ArrowLeft className="size-3.5" /></button>}
           <div ref={organisationMenu} className="relative">
@@ -61,7 +61,7 @@ export function PageHeader({ section, eyebrow, title, titlePrefix, description, 
         <h1 className="m-0 flex items-center gap-3 text-[28px] font-semibold tracking-[-0.045em] text-[var(--ink)]">{titlePrefix && <span className="shrink-0">{titlePrefix}</span>}{resolvedTitle}</h1>
         {description && <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[var(--ink-soft)]">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2 pt-0 sm:pt-9">{actions}</div>}
+      {actions && <div className="flex max-w-full flex-wrap items-center gap-2 sm:pt-9">{actions}</div>}
     </header>
   )
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, Pause, Plus, X } from "lucide-react"
 import { RunActivity } from "../components/activity"
-import { DetailCard } from "../components/detail"
+import { DetailCard, DetailPage } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
 import { Failure, Loading } from "../components/state"
@@ -223,7 +223,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   if (selected) {
     const credential = graph.data!.credentials.find((item) => item.id === selected.credential_id)
     const stageIndex = stages.findIndex((stage) => stage.id === selected.stage)
-    return <div className="page">
+    return <DetailPage>
       <PageHeader eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={<>
         {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
         {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
@@ -286,24 +286,24 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
         <p className="text-[12px] leading-6 text-[var(--ink-soft)]">Kinu will check the recorded provider and deployment state, then restore the previous key or finish a verified rotation. Unresolved actions stay held for review.</p>
         {recover.error && <p role="alert" className="mt-4 text-[11px] text-[var(--red)]">{recover.error.message}</p>}
       </Modal>
-    </div>
+    </DetailPage>
   }
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Rotations" actions={<Button onClick={openCreate} disabled={!availableCredentials.length}><Plus className="size-3.5" /> Start rotation</Button>} />
     <Toolbar value={search} onChange={setSearch} placeholder="Search rotations" onClear={() => { setSearch(""); setFilter("all") }} filters={[{ label: "Status", value: filter, defaultValue: "all", onChange: (event) => setFilter(event.target.value), children: <><option value="all">All statuses</option><option value="active">Active</option><option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="failed">Failed</option></> }]} />
-    <Table>
+    <Table responsive>
       <TableHeader><TableRow><TableHead>Credential</TableHead><TableHead>Stage</TableHead><TableHead>Status</TableHead><TableHead>Trigger</TableHead><TableHead>Updated</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{filtered.map((run) => {
+      <TableBody columns={6} emptyMessage={search.trim() || filter !== "all" ? "No matching rotations." : "No rotations yet."}>{filtered.map((run) => {
         const credential = graph.data!.credentials.find((item) => item.id === run.credential_id)
         const needsApproval = run.status === "paused" && run.stage === "approval"
         return <TableRow key={run.id}>
-          <TableCell><button className="focus-ring flex items-center gap-3 rounded-lg text-left font-medium hover:underline" onClick={() => { setSelectedId(run.id); onSelectRotation(run.id) }}><Provider value={credential?.provider ?? "kinu"} label={false} />{credential?.display_name ?? "Credential"}</button></TableCell>
-          <TableCell>{titleCase(run.stage)}</TableCell>
-          <TableCell><RunStatus run={run} /></TableCell>
-          <TableCell className="text-[var(--ink-soft)]">{triggerName(run.trigger.source)}</TableCell>
-          <TableCell className="text-[10px] text-[var(--ink-soft)]">{formatDate(run.updated_at)}</TableCell>
-          <TableCell className="pr-0"><div className="flex justify-end"><Button className="pr-1" variant="ghost" size="sm" onClick={() => { if (needsApproval) onNavigateApproval(); else { setSelectedId(run.id); onSelectRotation(run.id) } }}>{needsApproval ? "Review approval" : "View details"} <ChevronRight className="size-3.5" /></Button></div></TableCell>
+          <TableCell primary><button className="focus-ring flex items-center gap-3 rounded-lg text-left font-medium hover:underline" onClick={() => { setSelectedId(run.id); onSelectRotation(run.id) }}><Provider value={credential?.provider ?? "kinu"} label={false} />{credential?.display_name ?? "Credential"}</button></TableCell>
+          <TableCell label="Stage">{titleCase(run.stage)}</TableCell>
+          <TableCell label="Status"><RunStatus run={run} /></TableCell>
+          <TableCell label="Trigger" className="text-[var(--ink-soft)]">{triggerName(run.trigger.source)}</TableCell>
+          <TableCell label="Updated" className="text-[10px] text-[var(--ink-soft)]">{formatDate(run.updated_at)}</TableCell>
+          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => { if (needsApproval) onNavigateApproval(); else { setSelectedId(run.id); onSelectRotation(run.id) } }}>{needsApproval ? "Review approval" : "View details"} <ChevronRight className="size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

@@ -68,7 +68,7 @@ export function SettingsPage() {
   return <div className="page">
     <div className="max-w-[640px]">
       <PageHeader title="Settings" />
-      <DetailTabs items={tabs} value={tab} onChange={setTab} className="mb-0 border-b border-[var(--border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" />
+      <DetailTabs items={tabs} value={tab} onChange={setTab} className="mb-0" />
       <div className="px-4 pb-4 pt-2">
         {actions && <div className="flex justify-end py-4">{actions}</div>}
         {tab === "profile" && <ProfileSettings profile={profile.data!} />}
@@ -121,13 +121,13 @@ function TeamSettings({ members, currentId, onEdit }: { members: TeamMember[]; c
   })
   return <>
     {cancel.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{cancel.error.message}</div>}
-    <Table className="min-w-[520px] [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+    <Table responsive="compact" className="min-w-[520px]">
       <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{members.map((member) => <TableRow key={member.id}>
-        <TableCell><div className="font-medium">{member.display_name ?? member.email}</div>{member.display_name && <div className="mt-1 text-[10px] text-[var(--ink-muted)]">{member.email}</div>}</TableCell>
-        <TableCell>{titleCase(member.role)}</TableCell>
-        <TableCell><Badge variant={member.status === "active" ? "healthy" : "neutral"}>{titleCase(member.status)}</Badge></TableCell>
-        <TableCell className="pr-0"><div className="flex justify-end">{member.status === "pending" ? <Button variant="ghost" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(member)}>Cancel</Button> : member.id !== currentId ? <Button variant="ghost" size="sm" onClick={() => onEdit(member)}>Edit</Button> : null}</div></TableCell>
+      <TableBody columns={4} emptyMessage="No team members.">{members.map((member) => <TableRow key={member.id}>
+        <TableCell primary><div className="font-medium">{member.display_name ?? member.email}</div>{member.display_name && <div className="mt-1 text-[10px] text-[var(--ink-muted)]">{member.email}</div>}</TableCell>
+        <TableCell label="Role">{titleCase(member.role)}</TableCell>
+        <TableCell label="Status"><Badge variant={member.status === "active" ? "healthy" : "neutral"}>{titleCase(member.status)}</Badge></TableCell>
+        <TableCell action className="pr-0">{member.status === "pending" ? <Button variant="ghost" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(member)}>Cancel</Button> : member.id !== currentId ? <Button variant="ghost" size="sm" onClick={() => onEdit(member)}>Edit</Button> : null}</TableCell>
       </TableRow>)}</TableBody>
     </Table>
   </>
@@ -170,16 +170,15 @@ function EditMemberModal({ member, onClose }: { member: TeamMember; onClose: () 
 function EmailSettings({ endpoints, topics }: { endpoints: EmailNotificationEndpoint[]; topics: NotificationTopic[] }) {
   const queryClient = useQueryClient()
   const setEnabled = useMutation({ mutationFn: (endpoint: EmailNotificationEndpoint) => api.setNotificationEndpointEnabled(endpoint.id, endpoint.revision, !endpoint.enabled), onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["notification-endpoints"] }) })
-  if (!endpoints.length) return <div className="py-12 text-center text-[11px] text-[var(--ink-muted)]">No email destinations.</div>
   return <>
     {setEnabled.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{setEnabled.error.message}</div>}
-    <Table className="min-w-[520px] [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
+    <Table responsive="compact" className="min-w-[520px]">
       <TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Notifies</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{endpoints.map((endpoint) => <TableRow key={endpoint.id}>
-        <TableCell><div className="font-medium">{endpoint.email_address}</div></TableCell>
-        <TableCell>{topicLabels(endpoint, topics)}</TableCell>
-        <TableCell><Badge variant={endpoint.enabled ? "healthy" : "neutral"}>{endpoint.enabled ? "On" : "Paused"}</Badge></TableCell>
-        <TableCell className="pr-0"><div className="flex justify-end"><Button variant="ghost" size="sm" disabled={setEnabled.isPending} onClick={() => setEnabled.mutate(endpoint)}>{endpoint.enabled ? "Pause" : "Enable"}</Button></div></TableCell>
+      <TableBody columns={4} emptyMessage="No email destinations.">{endpoints.map((endpoint) => <TableRow key={endpoint.id}>
+        <TableCell primary><div className="font-medium">{endpoint.email_address}</div></TableCell>
+        <TableCell label="Notifies" wide>{topicLabels(endpoint, topics)}</TableCell>
+        <TableCell label="Status"><Badge variant={endpoint.enabled ? "healthy" : "neutral"}>{endpoint.enabled ? "On" : "Paused"}</Badge></TableCell>
+        <TableCell action className="pr-0"><Button variant="ghost" size="sm" disabled={setEnabled.isPending} onClick={() => setEnabled.mutate(endpoint)}>{endpoint.enabled ? "Pause" : "Enable"}</Button></TableCell>
       </TableRow>)}</TableBody>
     </Table>
   </>

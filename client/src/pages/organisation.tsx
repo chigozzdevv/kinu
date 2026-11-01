@@ -1,5 +1,5 @@
 import { useState } from "react"
-import kinuLogo from "../assets/kinu-logo.svg"
+import { AuthHeader } from "../components/auth-header"
 import { Button } from "../components/ui/button"
 import { formControl } from "../components/workspace"
 import { api } from "../lib/api"
@@ -29,11 +29,7 @@ export function OrganisationSetupPage({
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6 py-12">
       <section className="w-full max-w-[440px] rounded-[22px] border border-[var(--border)] bg-white px-8 py-10 shadow-[0_14px_40px_rgba(25,27,30,0.05)] sm:px-10">
-        <h1 className="flex items-center justify-center gap-4 text-[20px] font-semibold tracking-[-0.035em] text-[var(--ink)]">
-          <img className="h-auto w-[132px]" src={kinuLogo} alt="Kinu" />
-          <span className="h-7 w-px bg-[var(--border)]" aria-hidden="true" />
-          <span>Set up</span>
-        </h1>
+        <AuthHeader title="Set up" />
         <form className="mt-8" onSubmit={(event) => { event.preventDefault(); void submit() }}>
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)]">Organization name</span>

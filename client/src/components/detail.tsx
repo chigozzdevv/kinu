@@ -3,14 +3,18 @@ import type { ReactNode } from "react"
 import { cn } from "../lib/utils"
 
 export function DetailTabs<T extends string>({ items, value, onChange, className }: { items: ReadonlyArray<{ id: T; label: string }>; value: T; onChange: (value: T) => void; className?: string }) {
-  return <div className={cn("mb-6 flex gap-1 overflow-x-auto", className)}>
+  return <div className={cn("mb-4 flex gap-1 overflow-x-auto border-b border-[var(--border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
     {items.map((item) => <button key={item.id} className={`focus-ring shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-[11px] font-semibold ${value === item.id ? "border-[var(--ink)] text-[var(--ink)]" : "border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]"}`} onClick={() => onChange(item.id)}>{item.label}</button>)}
   </div>
 }
 
+export function DetailPage({ children }: { children: ReactNode }) {
+  return <div className="page"><div className="max-w-[640px]">{children}</div></div>
+}
+
 export function DetailCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-[var(--border)] bg-white p-6">
+    <section className="rounded-2xl border border-[var(--border)] bg-white p-4">
       {title && <h3 className="eyebrow mb-4">{title}</h3>}
       {children}
     </section>

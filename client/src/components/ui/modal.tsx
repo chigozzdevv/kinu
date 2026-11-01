@@ -74,10 +74,12 @@ export function Modal({ isOpen, onClose, title, description, subtitle, children,
           {showClose && <button className="focus-ring ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]" aria-label="Close" onClick={onClose}><X className="size-4" /></button>}
         </header>
         {children !== undefined && children !== null && <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">{children}</div>}
-        {(actions || footerStart) && <footer className="flex shrink-0 items-center gap-3 bg-white px-6 py-4">
-          <div className="min-w-0 flex-1">{footerStart}</div>
-          {cancelLabel && <Button variant="secondary" onClick={onClose}>{cancelLabel}</Button>}
-          {actions}
+        {(actions || footerStart) && <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 bg-white px-6 py-4">
+          {footerStart && <div className="min-w-0">{footerStart}</div>}
+          <div className="ml-auto flex max-w-full flex-wrap justify-end gap-3">
+            {cancelLabel && <Button variant="secondary" onClick={onClose}>{cancelLabel}</Button>}
+            {actions}
+          </div>
         </footer>}
       </section>
     </div>

@@ -2,6 +2,9 @@ import { ChevronDown, X } from "lucide-react"
 import { useEffect, useState, type ReactNode, type SelectHTMLAttributes } from "react"
 import { PageHeader } from "./header"
 import { Button } from "./ui/button"
+import { cn } from "../lib/utils"
+
+const setupContent = "mx-auto w-full max-w-[760px] px-6 sm:px-8"
 
 function useTransientError(error?: string) {
   const [visible, setVisible] = useState(error)
@@ -47,16 +50,18 @@ export function SetupPage({
     <div className="page max-w-[960px]">
       <PageHeader eyebrow={eyebrow} title={title} description={description} onBack={onExit ?? onCancel} />
       <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
-        <div className="mx-auto flex w-full max-w-[760px] items-center justify-between px-6 pt-6 sm:px-8">
+        <div className={cn(setupContent, "flex items-center justify-between pt-6")}>
           <span className="text-[11px] font-semibold text-[var(--ink)]">{steps[current]}</span>
           <span className="text-[10px] font-medium text-[var(--ink-muted)]">Step {current + 1} of {steps.length}</span>
         </div>
-        <div className="mx-auto min-h-[360px] w-full max-w-[760px] px-6 py-7 sm:px-8">{children}</div>
-        {visibleError && <div role="alert" className="mx-6 mb-5 rounded-xl border border-[#ebcfd3] bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)] sm:mx-8">{visibleError}</div>}
-        <footer className="flex items-center gap-3 bg-white px-6 py-4 sm:px-8">
-          <div className="flex-1">{current > 0 && <Button variant="ghost" onClick={onBack}>Back</Button>}</div>
-          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          {primary}
+        <div className={cn(setupContent, "min-h-[360px] py-7")}>{children}</div>
+        {visibleError && <div className={cn(setupContent, "pb-5")}><div role="alert" className="rounded-xl border border-[#ebcfd3] bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{visibleError}</div></div>}
+        <footer className={cn(setupContent, "flex flex-wrap items-center justify-between gap-3 bg-white py-4")}>
+          {current > 0 && <Button variant="ghost" onClick={onBack}>Back</Button>}
+          <div className="ml-auto flex max-w-full flex-wrap justify-end gap-3">
+            <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+            {primary}
+          </div>
         </footer>
       </section>
     </div>
@@ -110,11 +115,14 @@ export function Field({ label, hint, children, wide = false }: { label: string; 
   return <label className={wide ? "block sm:col-span-2" : "block"}><span className="mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)]">{label}</span>{children}{hint && <span className="mt-1.5 block text-[9px] leading-4 text-[var(--ink-muted)]">{hint}</span>}</label>
 }
 
-export function ResourceSelect({ label, value, onChange, addLabel, onAdd, children, className = formControl, wide = false }: { label: string; value: string; onChange: (value: string) => void; addLabel: string; onAdd: () => void; children: ReactNode; className?: string; wide?: boolean }) {
+type SelectSize = "sm" | "md"
+type SelectWidth = "compact" | "full"
+
+export function ResourceSelect({ label, value, onChange, addLabel, onAdd, children, className, wide = false, size = "md", width = "full" }: { label: string; value: string; onChange: (value: string) => void; addLabel: string; onAdd: () => void; children: ReactNode; className?: string; wide?: boolean; size?: SelectSize; width?: SelectWidth }) {
   return <label className={wide ? "block sm:col-span-2" : "block"}>
     <span className="mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)]">{label}</span>
-    <div className="relative">
-      <select className={`${className} appearance-none pr-10`} value={value} onChange={(event) => {
+    <div className={cn("relative", width === "compact" && "w-52 max-w-full")}>
+      <select className={cn(size === "sm" ? compactControl : formControl, "appearance-none pr-10", className)} value={value} onChange={(event) => {
         if (event.target.value === "__add_resource__") onAdd()
         else onChange(event.target.value)
       }}>
@@ -126,9 +134,9 @@ export function ResourceSelect({ label, value, onChange, addLabel, onAdd, childr
   </label>
 }
 
-export function SelectControl({ children, className = formControl, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <div className="relative">
-    <select className={`${className} appearance-none pr-10`} {...props}>{children}</select>
+export function SelectControl({ children, className, size = "md", width = "full", ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: SelectSize; width?: SelectWidth }) {
+  return <div className={cn("relative", width === "compact" && "w-52 max-w-full")}>
+    <select className={cn(size === "sm" ? compactControl : formControl, "appearance-none pr-10", className)} {...props}>{children}</select>
     <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
   </div>
 }
@@ -138,3 +146,4 @@ export function Fieldset({ label, hint, children, wide = false }: { label: strin
 }
 
 export const formControl = "focus-ring block h-11 w-full min-w-0 rounded-xl border border-[var(--border)] bg-white px-3.5 text-[11px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"
+const compactControl = cn(formControl, "h-9 rounded-lg")

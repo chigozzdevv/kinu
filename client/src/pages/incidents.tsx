@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, ChevronRight } from "lucide-react"
-import { Detail, DetailCard, DetailList } from "../components/detail"
+import { Detail, DetailCard, DetailList, DetailPage } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { DemoAlert } from "../components/demo"
 import { Provider } from "../components/provider"
@@ -134,7 +134,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
         ? <>{canDismiss && <Button variant="secondary" onClick={() => setDismissing(true)}>Dismiss</Button>}{canResolve && <Button disabled={resolve.isPending || !selectedCandidateId} onClick={() => resolve.mutate()}>{resolve.isPending ? "Starting…" : selected.credential_id ? "Start rotation" : "Confirm and rotate"}</Button>}</>
         : undefined
 
-    return <div className="page">
+    return <DetailPage>
       <PageHeader eyebrow="Operations / Incidents" title={titleCase(selected.source)} onBack={() => { setSelectedId(""); onSelectIncident("") }} actions={actions} />
       {(resolve.error || dismiss.error) && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{(resolve.error ?? dismiss.error)?.message}</div>}
       <DetailCard>
@@ -154,24 +154,24 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <Modal isOpen={dismissing} onClose={() => setDismissing(false)} title="Dismiss incident?" actions={<Button variant="danger" disabled={dismiss.isPending} onClick={() => dismiss.mutate()}>{dismiss.isPending ? "Dismissing…" : "Dismiss incident"}</Button>}>
         <Field label="Reason"><SelectControl value={dismissalReason} onChange={(event) => setDismissalReason(event.target.value)}>{dismissalReasons.map((reason) => <option key={reason}>{reason}</option>)}</SelectControl></Field>
       </Modal>
-    </div>
+    </DetailPage>
   }
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Incidents" />
     <DemoAlert />
     <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("open") }} filters={[{ label: "Status", value: status, defaultValue: "open", onChange: (event) => setStatus(event.target.value), children: <><option value="open">Open incidents</option><option value="all">All incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
-    <Table>
+    <Table responsive>
       <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Affected resource</TableHead><TableHead>Credential</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
-      <TableBody>{rows.map((incident) => {
+      <TableBody columns={6} emptyMessage={search.trim() ? "No matching incidents." : "No incidents in this view."}>{rows.map((incident) => {
         const resource = affectedResource(incident, graph.data)
         return <TableRow key={incident.id}>
-          <TableCell><div className="font-medium">{titleCase(incident.source)}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incident.source_event_id}</div></TableCell>
-          <TableCell><div>{resource.name}</div>{resource.detail && <div className="mt-1 max-w-[340px] truncate text-[9px] text-[var(--ink-muted)]" title={resource.detail}>{resource.detail}</div>}</TableCell>
-          <TableCell>{credential(incident.credential_id)?.display_name ?? "Unconfirmed"}</TableCell>
-          <TableCell><Badge variant={severityVariant(incident.severity)}>{incident.severity}</Badge></TableCell>
-          <TableCell><Badge variant={statusVariant(incident.status)}>{titleCase(incident.status)}</Badge></TableCell>
-          <TableCell className="pr-0"><div className="flex justify-end"><Button variant="ghost" size="sm" className="pr-1" onClick={() => openIncident(incident)}>View details <ChevronRight className="size-3.5" /></Button></div></TableCell>
+          <TableCell primary><div className="font-medium">{titleCase(incident.source)}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{incident.source_event_id}</div></TableCell>
+          <TableCell label="Affected resource" wide><div>{resource.name}</div>{resource.detail && <div className="mt-1 max-w-[340px] truncate text-[9px] text-[var(--ink-muted)]" title={resource.detail}>{resource.detail}</div>}</TableCell>
+          <TableCell label="Credential" wide>{credential(incident.credential_id)?.display_name ?? "Unconfirmed"}</TableCell>
+          <TableCell label="Severity"><Badge variant={severityVariant(incident.severity)}>{incident.severity}</Badge></TableCell>
+          <TableCell label="Status"><Badge variant={statusVariant(incident.status)}>{titleCase(incident.status)}</Badge></TableCell>
+          <TableCell action className="pr-0"><Button variant="ghost" size="sm" className="pr-1" onClick={() => openIncident(incident)}>View details <ChevronRight className="size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

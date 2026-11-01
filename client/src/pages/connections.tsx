@@ -2,7 +2,7 @@ import { useFeatures } from "../lib/features"
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronRight, PlugZap, Plus, Upload } from "lucide-react"
-import { Detail, DetailCard, DetailList, DetailTabs, Section } from "../components/detail"
+import { Detail, DetailCard, DetailList, DetailPage, DetailTabs, Section } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { IntegrationGrid, IntegrationMark, type IntegrationKind } from "../components/integration"
 import { ManageResourceModal } from "../components/manage"
@@ -14,7 +14,7 @@ import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import { ConnectPage, Field, FormGrid, ResourceSelect, SetupPage, SuccessPage, formControl } from "../components/workspace"
+import { ConnectPage, Field, FormGrid, ResourceSelect, SelectControl, SetupPage, SuccessPage, formControl } from "../components/workspace"
 import type { Connection, ConnectionRole, HttpProviderApi, Playbook } from "../types"
 import { activeOrganisationId, ApiError, api, type BrowserSetupResponse, type CreateConnectionInput, type GitHubDiscoveryResponse, type GitHubOnboardingResponse } from "../lib/api"
 import { parseProviderAdapter } from "../lib/adapter"
@@ -66,7 +66,7 @@ function browserSetupCapability(connection: Connection, setup: BrowserSetupRespo
 }
 
 function BrowserSetupModal({ connection, setup, onClose, onComplete }: { connection: Connection; setup: BrowserSetupResponse; onClose: () => void; onComplete: () => void }) {
-  return <Modal isOpen onClose={onClose} title={`Connect ${connection.display_name}`} size="wide" showClose={false} footerStart={<span />} cancelLabel="Close">
+  return <Modal isOpen onClose={onClose} title={`Connect ${connection.display_name}`} size="wide" showClose={false} actions={<Button variant="secondary" onClick={onClose}>Close</Button>} cancelLabel={false}>
     <BrowserSetupSession capability={browserSetupCapability(connection, setup)} onComplete={onComplete} />
   </Modal>
 }
@@ -212,7 +212,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     setCreatingPlaybook(false)
   }} />
 
-  if (currentSelected) return <div className="page">
+  if (currentSelected) return <DetailPage>
     {playbookNotice}
     <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.platform === "resend" && currentSelected.interface === "api" && currentSelected.status === "ready" && <Button variant="secondary" onClick={() => useBrowser.mutate(currentSelected.id)} disabled={useBrowser.isPending}>{useBrowser.isPending ? "Preparing…" : "Use browser"}</Button>}{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, ...(["vercel", "railway", "render"].includes(currentSelected.platform) ? [{ id: "credentials" as const, label: "Credentials" }] : []), { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
@@ -237,17 +237,17 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
       void queryClient.invalidateQueries({ queryKey: ["connections"] })
       void queryClient.invalidateQueries({ queryKey: ["connections", currentSelected.id] })
     }} />}
-  </div>
+  </DetailPage>
 
   return <div className="page">
     <PageHeader eyebrow="Inventory" title="Connections" actions={<Button onClick={() => { setSetupIntegration(null); setCreating(true) }}><Plus className="size-3.5" /> Add connection</Button>} />
     {playbookNotice}
     <Toolbar value={search} onChange={setSearch} placeholder="Search connections or platforms" onClear={() => { setSearch(""); setRole("all") }} filters={[{ label: "Role", value: role, defaultValue: "all", onChange: (event) => setRole(event.target.value), children: <><option value="all">All roles</option>{[...new Set(connections.data!.flatMap((item) => item.roles))].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}</> }]} />
-    <Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Platform</TableHead><TableHead>Role</TableHead><TableHead>Interface</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody>{rows.map((connection) => {
+    <Table responsive><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Platform</TableHead><TableHead>Role</TableHead><TableHead>Interface</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody columns={6} emptyMessage={search.trim() || role !== "all" ? "No matching connections." : "No connections yet."}>{rows.map((connection) => {
       const status = connectionStatus(connection.status)
       const openDetails = () => { setSelected(connection); setTab("overview"); onSelectConnection(connection.id) }
       const openAction = openDetails
-      return <TableRow key={connection.id}><TableCell><button className="focus-ring flex items-center gap-3 rounded-lg text-left font-medium hover:underline" onClick={openDetails}><Marker icon={PlugZap} />{connection.display_name}</button></TableCell><TableCell><Provider value={connection.platform} /></TableCell><TableCell className="text-[var(--ink-soft)]">{roleLabel(connection)}</TableCell><TableCell>{titleCase(connection.interface)}</TableCell><TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell><TableCell className="pr-0"><div className="flex justify-end"><Button className="pr-1" variant="ghost" size="sm" onClick={openAction}>{connectionAction(connection.status)} <ChevronRight className="size-3.5" /></Button></div></TableCell></TableRow>
+      return <TableRow key={connection.id}><TableCell primary><button className="focus-ring flex items-center gap-3 rounded-lg text-left font-medium hover:underline" onClick={openDetails}><Marker icon={PlugZap} />{connection.display_name}</button></TableCell><TableCell label="Platform"><Provider value={connection.platform} /></TableCell><TableCell label="Role" className="text-[var(--ink-soft)]">{roleLabel(connection)}</TableCell><TableCell label="Interface">{titleCase(connection.interface)}</TableCell><TableCell label="Status"><Badge variant={status.variant}>{status.label}</Badge></TableCell><TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={openAction}>{connectionAction(connection.status)} <ChevronRight className="size-3.5" /></Button></TableCell></TableRow>
     })}</TableBody></Table>
   </div>
 }
@@ -429,7 +429,7 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks, co
 
   const canContinue = Boolean(playbookVersion && definition?.allowed_domains.length && (!needsReceipt || verification))
   return <SetupPage eyebrow="Inventory / Connections" title="Computer Use" steps={["Setup", "Review"]} current={step} onBack={() => setStep((value) => value - 1)} onExit={onBack} onCancel={onClose} error={create.error?.message || playbookDetail.error?.message} primary={step === 0 ? <Button onClick={() => setStep(1)} disabled={!canContinue}>Continue</Button> : <Button onClick={submit} disabled={create.isPending}>{create.isPending ? "Creating…" : "Create connection"}</Button>}>
-    {step === 0 && <div className="space-y-5"><p className="text-[10px] leading-5 text-[var(--ink-muted)]">Rotate keys through the provider dashboard.</p><ResourceSelect label="Playbook" value={playbookVersion} onChange={setPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{playbooks.filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect>{needsReceipt && <Field label="Verify with"><select className={formControl} value={verification} onChange={(event) => setVerification(event.target.value)}><option value="">Select Resend connection</option>{verifiers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></Field>}</div>}
+    {step === 0 && <div className="space-y-5"><p className="text-[10px] leading-5 text-[var(--ink-muted)]">Rotate keys through the provider dashboard.</p><ResourceSelect label="Playbook" size="sm" width="compact" value={playbookVersion} onChange={setPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{playbooks.filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect>{needsReceipt && <Field label="Verify with"><SelectControl size="sm" width="compact" value={verification} onChange={(event) => setVerification(event.target.value)}><option value="">Select Resend connection</option>{verifiers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field>}</div>}
     {step === 1 && <Section title="Computer Use" onEdit={() => setStep(0)}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Platform"><Provider value={chosenPlaybook?.platform ?? ""} /></Detail><Detail label="Access">Secure browser</Detail></DetailList></Section>}
   </SetupPage>
 }

@@ -62,10 +62,10 @@ export function HostKeys({ connection, connections }: { connection: Connection; 
   })
   if (projects.isLoading || mapped.isLoading) return <Loading />
   if (projects.error || mapped.error) return <Failure error={(projects.error ?? mapped.error)!} />
-  return <div className="max-w-[872px] space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Project"><SelectControl value={project} onChange={(event) => { setProject(event.target.value); setChoices({}); setHealth({}); save.reset() }}><option value="">Select project</option>{projects.data?.projects.filter((item) => projects.data.selected.includes(item.id)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectControl></Field>
-      <Field label="Provider"><SelectControl value={provider} onChange={(event) => { setProvider(event.target.value); setChoices({}); save.reset() }}><option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field>
+  return <div className="max-w-[640px] space-y-5">
+    <div className="flex flex-wrap items-start gap-4">
+      <Field label="Project"><SelectControl size="sm" width="compact" value={project} onChange={(event) => { setProject(event.target.value); setChoices({}); setHealth({}); save.reset() }}><option value="">Select project</option>{projects.data?.projects.filter((item) => projects.data.selected.includes(item.id)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectControl></Field>
+      <Field label="Provider"><SelectControl size="sm" width="compact" value={provider} onChange={(event) => { setProvider(event.target.value); setChoices({}); save.reset() }}><option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field>
     </div>
     {!providers.length && <Notice>Connect a credential provider first.</Notice>}
     {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Only variables scoped to production are supported.</p>}
@@ -76,15 +76,15 @@ export function HostKeys({ connection, connections }: { connection: Connection; 
         const setup = setups.data?.find((item) => item.reference === variable.reference)
         const canCreate = !managed && !setups.isLoading && !setups.error && variable.readable && selectedProvider?.interface === "api" && selectedProvider.http?.supports_overlap && (!setup || setup.phase === "cancelled")
         return <div key={variable.reference} className="space-y-3 py-4">
-          <div className="flex items-center gap-3"><span className="text-[12px] font-semibold">{variable.name}</span><span className="flex-1 text-[10px] text-[var(--ink-muted)]">{[variable.environment_name ?? variable.environment, variable.service_name].filter(Boolean).join(" / ")}</span>{managed && <Badge variant="healthy">Managed</Badge>}</div>
+          <div className="flex flex-wrap items-center gap-3"><span className="break-all text-[12px] font-semibold">{variable.name}</span><span className="min-w-0 flex-1 text-[10px] text-[var(--ink-muted)]">{[variable.environment_name ?? variable.environment, variable.service_name].filter(Boolean).join(" / ")}</span>{managed && <Badge variant="healthy">Managed</Badge>}</div>
           {!managed && <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Credential"><SelectControl value={choices[variable.reference] ?? ""} disabled={!provider} onChange={(event) => setChoices({ ...choices, [variable.reference]: event.target.value })}><option value="">Skip</option>{keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")).map((key) => <option key={key.provider_id} value={key.provider_id}>{key.name ?? key.provider_id}</option>)}</SelectControl></Field>
+            <Field label="Credential"><SelectControl width="compact" value={choices[variable.reference] ?? ""} disabled={!provider} onChange={(event) => setChoices({ ...choices, [variable.reference]: event.target.value })}><option value="">Skip</option>{keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")).map((key) => <option key={key.provider_id} value={key.provider_id}>{key.name ?? key.provider_id}</option>)}</SelectControl></Field>
             <Field label="Health URL"><input className={formControl} type="url" value={health[variable.reference] ?? ""} placeholder="https://app.example.com/health" onChange={(event) => setHealth({ ...health, [variable.reference]: event.target.value })} /></Field>
           </div>}
           {canCreate && <Button variant="secondary" onClick={() => { create.reset(); setScopes(""); setRequestId(crypto.randomUUID()); setCreating(variable) }}>Create managed key</Button>}
           {setup && !managed && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]"><p>{titleCase(setup.phase)}</p>{setup.message && <p role="status">{setup.message}</p>}{setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}</div>}
-          {mapping && <div className="flex max-w-[620px] items-end gap-3">
-            <div className="flex-1"><Field label="Health URL"><input className={formControl} type="url" value={health[variable.reference] ?? mapping.service.endpoint ?? ""} placeholder="https://app.example.com/health" onChange={(event) => setHealth({ ...health, [variable.reference]: event.target.value })} /></Field></div>
+          {mapping && <div className="flex max-w-[620px] flex-wrap items-end gap-3">
+            <div className="min-w-0 flex-1 basis-64"><Field label="Health URL"><input className={formControl} type="url" value={health[variable.reference] ?? mapping.service.endpoint ?? ""} placeholder="https://app.example.com/health" onChange={(event) => setHealth({ ...health, [variable.reference]: event.target.value })} /></Field></div>
             <Button variant="secondary" onClick={() => updateHealth.mutate({ mapping, endpoint: health[variable.reference].trim() })} disabled={updateHealth.isPending || !health[variable.reference]?.trim() || health[variable.reference]?.trim() === mapping.service.endpoint}>Save URL</Button>
           </div>}
         </div>

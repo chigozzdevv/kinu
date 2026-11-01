@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { SettingsFooter, SettingsRow } from "./settings"
-import { SelectControl, formControl } from "./workspace"
+import { SelectControl } from "./workspace"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Loading, Failure } from "./state"
 import { nativeRequest, type BuilderStatus } from "../lib/native"
 import { useOrganisation } from "../lib/useorganisation"
-import { cn } from "../lib/utils"
 
 export function AiSettings({ administrator }: { administrator: boolean }) {
   const cache = useQueryClient()
@@ -25,7 +24,7 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
   return <div>
     <dl className="divide-y divide-[var(--border-soft)]">
       <SettingsRow label="Builder.io"><Badge variant={current.connected ? "healthy" : "neutral"}>{current.connected ? "Connected" : "Not connected"}</Badge></SettingsRow>
-      <SettingsRow label="Model" htmlFor="builder-model"><div className="w-52 max-w-full"><SelectControl id="builder-model" className={cn(formControl, "h-9 rounded-lg")} disabled={!administrator || !current.connected || action.isPending} value={current.model} onChange={(event) => action.mutate({ name: "model", model: event.target.value })}>{current.models.map((model) => <option key={model} value={model}>{model}</option>)}</SelectControl></div></SettingsRow>
+      <SettingsRow label="Model" htmlFor="builder-model"><SelectControl id="builder-model" size="sm" width="compact" disabled={!administrator || !current.connected || action.isPending} value={current.model} onChange={(event) => action.mutate({ name: "model", model: event.target.value })}>{current.models.map((model) => <option key={model} value={model}>{model}</option>)}</SelectControl></SettingsRow>
       <SettingsRow label="AI calls today">{current.usage.calls} / {current.usage.limit}</SettingsRow>
       <SettingsRow label="Last verified">{current.verified_at ? new Date(current.verified_at).toLocaleString() : "Not verified yet"}</SettingsRow>
     </dl>

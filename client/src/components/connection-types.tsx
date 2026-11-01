@@ -1,4 +1,4 @@
-import { Activity, ChevronRight, Inbox, KeyRound, LockKeyhole, Server } from "lucide-react"
+import { ChevronRight, Inbox, KeyRound, LockKeyhole, Server } from "lucide-react"
 import type { ConnectionRole } from "../types"
 
 const types = [
@@ -6,7 +6,6 @@ const types = [
   { id: "provider", name: "Providers", icon: KeyRound },
   { id: "incident", name: "Incident sources", icon: Inbox },
   { id: "secret-store", name: "Secret stores", icon: LockKeyhole },
-  { id: "telemetry", name: "Telemetry", icon: Activity },
 ] as const
 
 export function ConnectionTypes({ onSelect }: { onSelect: (role: ConnectionRole) => void }) {

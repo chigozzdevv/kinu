@@ -134,6 +134,149 @@
   }
 }
 
+.resource-table-container {
+  container-type: inline-size;
+  container-name: resource-list;
+  width: 100%;
+}
+
+.resource-table-compact {
+  container-name: compact-list;
+}
+
+.resource-table th:first-child,
+.resource-table td:first-child {
+  padding-left: 0;
+}
+
+.resource-cell-label {
+  display: none;
+}
+
+.resource-table td {
+  overflow-wrap: anywhere;
+}
+
+.attention-panel {
+  container-type: inline-size;
+}
+
+.attention-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+@container (max-width: 519px) {
+  .attention-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+  }
+
+  .attention-task {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .attention-action {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .attention-resource {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@utility resource-cards {
+  display: block;
+  min-width: 0;
+
+  & thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  & tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  & tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 16px;
+  }
+
+  & td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    font-size: 11px;
+  }
+
+  & td[data-primary],
+  & td[data-wide],
+  & td[data-action],
+  & tr[data-empty] td {
+    grid-column: 1 / -1;
+  }
+
+  & td[data-primary] {
+    font-size: 12px;
+  }
+
+  & td[data-action] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 8px;
+  }
+
+  & td[data-action]:empty {
+    display: none;
+  }
+
+  & .resource-cell-label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--ink-muted);
+    font-size: 9px;
+    font-weight: 500;
+  }
+
+  & tr[data-empty] {
+    padding-block: 24px;
+  }
+}
+
+@container resource-list (max-width: 719px) {
+  .resource-table {
+    @apply resource-cards;
+  }
+}
+
+@container compact-list (max-width: 519px) {
+  .resource-table {
+    @apply resource-cards;
+  }
+}
+
 @media (max-width: 1023px) {
   .app-shell {
     padding: 0;
