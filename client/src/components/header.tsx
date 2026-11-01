@@ -32,10 +32,10 @@ export function PageHeader({ section, eyebrow, title, titlePrefix, description, 
     <header className="mb-8 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
       <div className="min-w-0 flex-1 basis-64">
         <div className="mb-4 flex items-center gap-2 text-[10px] font-medium text-[var(--ink-muted)]">
-          {onBack && <button className="focus-ring -ml-2 grid size-7 place-items-center rounded-lg transition hover:bg-white hover:text-[var(--ink)]" aria-label="Back" onClick={onBack}><ArrowLeft className="size-3.5" /></button>}
+          {onBack && <button className="focus-ring -ml-2 grid size-7 place-items-center rounded-lg transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]" aria-label="Back" onClick={onBack}><ArrowLeft className="size-3.5" /></button>}
           <div ref={organisationMenu} className="relative">
           <button
-            className="focus-ring flex items-center gap-1 rounded-lg px-2 py-1.5 transition hover:bg-white hover:text-[var(--ink)]"
+            className="focus-ring flex items-center gap-1 rounded-lg px-2 py-1.5 transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]"
             aria-expanded={organisationsOpen}
             aria-haspopup="menu"
             onClick={() => setOrganisationsOpen((open) => !open)}

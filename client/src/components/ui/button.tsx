@@ -12,7 +12,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       primary: "border-[var(--accent)] bg-[var(--accent)] text-white hover:bg-[#111315]",
       secondary: "border-[var(--border)] bg-white text-[var(--ink)] hover:bg-[var(--surface-soft)]",
       danger: "border-[#dfb8bd] bg-[var(--red-soft)] text-[var(--red)] hover:bg-[#f2dadd]",
-      ghost: "border-transparent bg-transparent text-[var(--ink-soft)] hover:bg-white/70 hover:text-[var(--ink)]",
+      ghost: "border-transparent bg-transparent text-[var(--ink-soft)] hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]",
     }
     const sizes = { sm: "h-8 px-3 text-[11px]", md: "h-10 px-4 text-[12px]" }
 

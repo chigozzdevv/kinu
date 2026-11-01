@@ -92,7 +92,7 @@ export function ConnectPage({
       eyebrow={eyebrow}
       title={title}
       onBack={onBack}
-      actions={<button className="focus-ring grid size-8 place-items-center rounded-lg text-[var(--ink-muted)] transition hover:bg-white hover:text-[var(--ink)]" aria-label="Close" onClick={onClose}><X className="size-4" /></button>}
+      actions={<button className="focus-ring grid size-8 place-items-center rounded-lg text-[var(--ink-muted)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]" aria-label="Close" onClick={onClose}><X className="size-4" /></button>}
     />
     <section className="rounded-2xl border border-[var(--border)] bg-white">
       <div className="flex min-h-[420px] items-center justify-center px-6 py-12">

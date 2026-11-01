@@ -139,6 +139,27 @@
   }
 }
 
+.content-hover,
+.resource-table tbody > tr:not([data-empty]) {
+  transition: background-color 150ms var(--default-transition-timing-function, ease);
+}
+
+.content-chevron {
+  transition: transform 150ms var(--default-transition-timing-function, ease);
+}
+
+@media (hover: hover) {
+  .content-hover:not(:disabled):hover,
+  .resource-table tbody > tr:not([data-empty]):hover {
+    background-color: var(--surface-soft);
+  }
+
+  .content-hover:not(:disabled):hover .content-chevron,
+  .resource-table tbody > tr:not([data-empty]):hover .content-chevron {
+    transform: translateX(2px);
+  }
+}
+
 .resource-table-container {
   container-type: inline-size;
   container-name: resource-list;

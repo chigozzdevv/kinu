@@ -65,7 +65,7 @@ export function IntegrationGrid({
         key={integration.id}
         type="button"
         disabled={!available[integration.id]}
-        className="focus-ring group disabled:cursor-not-allowed disabled:opacity-60 flex min-h-48 flex-col rounded-2xl border border-[var(--border)] bg-white p-5 text-left transition hover:border-[var(--ink-muted)]"
+        className="focus-ring content-hover group disabled:cursor-not-allowed disabled:opacity-60 flex min-h-48 flex-col rounded-2xl border border-[var(--border)] bg-white p-5 text-left"
         onClick={() => onSelect(integration.id)}
       >
         <IntegrationLogo integration={integration} />
@@ -73,7 +73,7 @@ export function IntegrationGrid({
         <span className="mt-1 text-[10px] text-[var(--ink-muted)]">{integration.description}</span>
         <span className="mt-auto flex items-center pt-5 text-[10px] font-semibold text-[var(--ink-soft)] group-hover:text-[var(--ink)]">
           {!available[integration.id] ? "Unavailable" : isConnected && integration.id === "github" ? "Disconnect" : isConnected ? "Add another" : integration.action}
-          <ChevronRight className="ml-auto size-3.5" />
+          <ChevronRight className="content-chevron ml-auto size-3.5" />
         </span>
       </button>
     })}

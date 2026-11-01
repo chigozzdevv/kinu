@@ -4,7 +4,7 @@ import { cn } from "../lib/utils"
 
 export function DetailTabs<T extends string>({ items, value, onChange, className }: { items: ReadonlyArray<{ id: T; label: string }>; value: T; onChange: (value: T) => void; className?: string }) {
   return <div className={cn("mb-4 flex gap-1 overflow-x-auto border-b border-[var(--border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)}>
-    {items.map((item) => <button key={item.id} className={`focus-ring shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-[11px] font-semibold ${value === item.id ? "border-[var(--ink)] text-[var(--ink)]" : "border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]"}`} onClick={() => onChange(item.id)}>{item.label}</button>)}
+    {items.map((item) => <button key={item.id} className={`focus-ring content-hover shrink-0 whitespace-nowrap border-b-2 px-4 py-3 text-[11px] font-semibold ${value === item.id ? "border-[var(--ink)] text-[var(--ink)]" : "border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]"}`} onClick={() => onChange(item.id)}>{item.label}</button>)}
   </div>
 }
 

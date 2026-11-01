@@ -148,7 +148,7 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
           <TableCell label="Stage">{titleCase(run?.stage ?? "unknown")}</TableCell>
           <TableCell label="Requested" className="text-[10px] text-[var(--ink-soft)]">{formatDate(approval.created_at)}</TableCell>
           <TableCell label="Status"><Badge variant={presentation.variant}>{presentation.label}</Badge></TableCell>
-          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{approval.decision === "pending" && !isExpired(approval, now) ? "Review" : "View details"} <ChevronRight className="size-3.5" /></Button></TableCell>
+          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{approval.decision === "pending" && !isExpired(approval, now) ? "Review" : "View details"} <ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

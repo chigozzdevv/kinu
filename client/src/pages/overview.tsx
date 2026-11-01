@@ -52,12 +52,12 @@ function QuickStart({ steps, onNavigate }: { steps: QuickStartStep[]; onNavigate
             <Check className="size-3.5" aria-hidden="true" />
           </div>
           : <button
-            className="focus-ring group inline-grid grid-cols-[20px_auto_14px] items-center gap-x-3 rounded-lg text-left text-[11px] font-medium text-[var(--ink)]"
+            className="focus-ring content-hover inline-grid grid-cols-[20px_auto_14px] items-center gap-x-3 rounded-lg text-left text-[11px] font-medium text-[var(--ink)]"
             onClick={() => onNavigate(step.target)}
           >
             <span className="text-center font-semibold tabular-nums text-[var(--ink-muted)]">{index + 1}</span>
             <span>{step.label}</span>
-            <ChevronRight className="size-3.5 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            <ChevronRight className="content-chevron size-3.5 text-[var(--ink-muted)]" aria-hidden="true" />
           </button>}
       </li>)}
     </ol>
@@ -167,14 +167,14 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     <section aria-label="Inventory" className="mb-10 grid grid-cols-2 gap-3 xl:grid-cols-4">
       {metrics.map((metric) => <button
         key={metric.label}
-        className="focus-ring group flex min-h-24 items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-5 text-left transition hover:border-[#cfd2d4]"
+        className="focus-ring content-hover flex min-h-24 items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-5 text-left"
         onClick={() => onNavigate(metric.target)}
       >
         <span>
           <span className="block text-[11px] font-medium text-[var(--ink-soft)]">{metric.label}</span>
           <span className="mt-2 block text-[28px] font-semibold leading-none tracking-[-0.05em] text-[var(--ink)]">{metric.value ?? "—"}</span>
         </span>
-        <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+        <ChevronRight className="content-chevron size-4 text-[var(--ink-muted)]" aria-hidden="true" />
       </button>)}
     </section>
 
@@ -183,15 +183,15 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
         <h2 className="mb-4 text-[15px] font-semibold tracking-[-0.025em] text-[var(--ink)]">Needs attention</h2>
         <div className="attention-panel overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
           <ul className="divide-y divide-[var(--border-soft)]">
-            {visibleActionRows.map((item) => <li key={item.id} className="attention-row">
+            {visibleActionRows.map((item) => <li key={item.id} className="attention-row content-hover">
               <div className="attention-task min-w-0"><div className="text-[12px] font-medium">{item.task}</div><div className="mt-1 text-[10px] leading-4 text-[var(--ink-muted)]">{item.reason}</div></div>
               <div className="attention-resource flex min-w-0 items-center gap-3"><Provider value={item.provider} label={false} /><span className="min-w-0 break-words text-[11px] font-medium">{item.resource}</span></div>
-              <Button variant="ghost" size="sm" className="attention-action" onClick={item.open}>{item.action} <ChevronRight className="size-3.5" /></Button>
+              <Button variant="ghost" size="sm" className="attention-action" onClick={item.open}>{item.action} <ChevronRight className="content-chevron size-3.5" /></Button>
             </li>)}
             {!actionRows.length && <li className="py-12 text-center text-[11px] text-[var(--ink-muted)]">Nothing needs attention.</li>}
           </ul>
-          {actionRows.length > 2 && <div className="border-t border-[var(--border-soft)] px-3 py-2">
-            <button className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-semibold text-[var(--ink-soft)] transition hover:text-[var(--ink)]" onClick={() => setShowAllAttention((value) => !value)}>
+          {actionRows.length > 2 && <div className="border-t border-[var(--border-soft)]">
+            <button className="focus-ring content-hover flex w-full items-center justify-center gap-2 px-5 py-4 text-[11px] font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => setShowAllAttention((value) => !value)}>
               {showAllAttention ? "Show less" : "View all"}
               {showAllAttention ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ArrowUpRight className="size-3.5" aria-hidden="true" />}
             </button>
@@ -205,16 +205,16 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
           {recentRuns.length ? <div className="divide-y divide-[var(--border-soft)]">
             {visibleRecentRuns.map((run) => {
               const item = credential(run.credential_id)
-              return <button key={run.id} className="focus-ring group flex w-full items-center gap-3 px-5 py-[18px] text-left transition hover:bg-[var(--surface-soft)]" onClick={() => onNavigateRotation(run.id)}>
+              return <button key={run.id} className="focus-ring content-hover flex w-full items-center gap-3 px-5 py-[18px] text-left" onClick={() => onNavigateRotation(run.id)}>
                 <Provider value={item?.provider ?? "kinu"} label={false} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-[var(--ink)]">{activityLabel(run)}</span>
                   <span className="mt-1 block truncate text-[10px] text-[var(--ink-muted)]">{item?.display_name ?? "Credential"}</span>
                 </span>
-                <ChevronRight className="size-4 shrink-0 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                <ChevronRight className="content-chevron size-4 shrink-0 text-[var(--ink-muted)]" aria-hidden="true" />
               </button>
             })}
-            {recentRuns.length > 3 && <button className="focus-ring flex w-full items-center justify-center gap-2 px-5 py-4 text-[11px] font-semibold text-[var(--ink-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]" onClick={() => setShowAllActivities((value) => !value)}>
+            {recentRuns.length > 3 && <button className="focus-ring content-hover flex w-full items-center justify-center gap-2 px-5 py-4 text-[11px] font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => setShowAllActivities((value) => !value)}>
               {showAllActivities ? "Show less" : "View all"}
               {showAllActivities ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ArrowUpRight className="size-3.5" aria-hidden="true" />}
             </button>}

@@ -18,7 +18,7 @@ export function TableBody({ className, children, columns = 1, emptyMessage = "No
 }
 
 export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("transition-colors hover:bg-white/35", className)} {...props} />
+  return <tr className={cn("transition-colors", className)} {...props} />
 }
 
 export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {

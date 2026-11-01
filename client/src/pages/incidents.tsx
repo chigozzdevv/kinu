@@ -146,7 +146,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
             const content = <><Provider value={item?.provider ?? selected.resource.provider ?? "kinu"} label={false} /><span className="min-w-0 flex-1"><span className="text-[11px] font-semibold">{item?.display_name ?? "Credential"}</span><span className="mt-1 block text-[9px] leading-4 text-[var(--ink-muted)]">{candidate.reasons.join(" · ")}</span></span>{selected.candidates.length > 1 && <span className={`text-[9px] font-semibold ${chosen ? "text-[var(--ink)]" : "text-[var(--ink-muted)]"}`}>{chosen ? "Selected" : "Select"}</span>}</>
             return selected.candidates.length === 1
               ? <div key={candidate.credential_id} className="flex items-start gap-3 py-4">{content}</div>
-              : <button key={candidate.credential_id} type="button" aria-pressed={chosen} onClick={() => setSelectedCandidateId(candidate.credential_id)} className="focus-ring flex w-full items-start gap-3 rounded-lg py-4 text-left">{content}</button>
+              : <button key={candidate.credential_id} type="button" aria-pressed={chosen} onClick={() => setSelectedCandidateId(candidate.credential_id)} className="focus-ring content-hover flex w-full items-start gap-3 rounded-lg py-4 text-left">{content}</button>
           })}
           {selected.candidates.length === 0 && <div className="py-5 text-[10px] text-[var(--ink-muted)]">No managed credential matches this incident.</div>}
         </div></section>}
@@ -171,7 +171,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
           <TableCell label="Credential" wide>{credential(incident.credential_id)?.display_name ?? "Unconfirmed"}</TableCell>
           <TableCell label="Severity"><Badge variant={severityVariant(incident.severity)}>{incident.severity}</Badge></TableCell>
           <TableCell label="Status"><Badge variant={statusVariant(incident.status)}>{titleCase(incident.status)}</Badge></TableCell>
-          <TableCell action className="pr-0"><Button variant="ghost" size="sm" className="pr-1" onClick={() => openIncident(incident)}>View details <ChevronRight className="size-3.5" /></Button></TableCell>
+          <TableCell action className="pr-0"><Button variant="ghost" size="sm" className="pr-1" onClick={() => openIncident(incident)}>View details <ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

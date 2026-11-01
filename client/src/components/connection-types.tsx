@@ -11,9 +11,9 @@ const types = [
 export function ConnectionTypes({ onSelect }: { onSelect: (role: ConnectionRole) => void }) {
   return <div className="grid gap-3 sm:grid-cols-2">
     {types.map(({ id, name, icon: Icon }) => <button key={id} type="button" onClick={() => onSelect(id)}
-      className="focus-ring flex items-center gap-4 rounded-xl border border-[var(--border)] bg-white p-5 text-left hover:border-[var(--ink-muted)]">
+      className="focus-ring content-hover flex items-center gap-4 rounded-xl border border-[var(--border)] bg-white p-5 text-left">
       <Icon className="size-5 text-[var(--ink-soft)]" strokeWidth={1.6} />
-      <span className="flex-1 text-[13px] font-medium">{name}</span><ChevronRight className="size-4 text-[var(--ink-muted)]" />
+      <span className="flex-1 text-[13px] font-medium">{name}</span><ChevronRight className="content-chevron size-4 text-[var(--ink-muted)]" />
     </button>)}
   </div>
 }

@@ -212,8 +212,8 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     return <div className="page"><PageHeader eyebrow="Inventory / Credentials" title="Add credentials" onBack={host ? () => setSource("") : close} />
       {host ? <HostKeys connection={host} connections={connections.data!} /> : <div className="max-w-[620px] space-y-3">
         <p className="mb-5 text-[12px] text-[var(--ink-muted)]">Choose where your application uses its keys.</p>
-        {hosts.map((item) => <button key={item.id} className="focus-ring flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource(item.id)}>{item.display_name}<ChevronRight className="size-4" /></button>)}
-        <button className="focus-ring flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource("aws")}>AWS Secrets Manager<ChevronRight className="size-4" /></button>
+        {hosts.map((item) => <button key={item.id} className="focus-ring content-hover flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource(item.id)}>{item.display_name}<ChevronRight className="content-chevron size-4" /></button>)}
+        <button className="focus-ring content-hover flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource("aws")}>AWS Secrets Manager<ChevronRight className="content-chevron size-4" /></button>
         <Button variant="secondary" onClick={() => onNavigate("connections")}>Connect hosting</Button>
       </div>}
     </div>
@@ -301,7 +301,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
                   <TableCell label="Consumer" wide><div>{service?.display_name ?? "Unmapped"}</div><div className="mt-1 text-[9px] text-[var(--ink-muted)]">{item.consumer_ids.length} binding{item.consumer_ids.length === 1 ? "" : "s"}</div></TableCell>
                   <TableCell label="Status"><Badge variant={status.variant} className="gap-1.5">{status.moving && <LoaderCircle className="size-3 animate-spin" aria-hidden="true" />}{status.label}</Badge></TableCell>
                   <TableCell label="Updated" className="text-[10px] text-[var(--ink-soft)]">{formatDate(item.updated_at)}</TableCell>
-                  <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => performAction(item)}>{actionFor(item).label}<ChevronRight className="size-3.5" /></Button></TableCell>
+                  <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => performAction(item)}>{actionFor(item).label}<ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
                 </TableRow>
               )
             })}

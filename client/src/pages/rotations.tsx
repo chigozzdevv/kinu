@@ -249,7 +249,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const needsConnectionRecovery = current && selected.failure?.code === "provider-authentication-expired" && credential?.connection_id
             return <section key={stage.id} className="relative">
               {index < stages.length - 1 && <span aria-hidden="true" className="pointer-events-none absolute bottom-[-14px] left-[17.5px] top-[30px] w-px bg-[var(--border)]" />}
-              <button type="button" onClick={() => expandable && setSelectedStage(expanded ? null : stage.id)} aria-expanded={expanded} className={`focus-ring relative grid w-full grid-cols-[20px_minmax(0,1fr)_20px] items-start gap-3 rounded-lg px-2 py-2.5 text-left focus-visible:outline-[var(--border)] focus-visible:outline-offset-0 ${expandable ? "cursor-pointer" : "cursor-default"}`}>
+              <button type="button" onClick={() => expandable && setSelectedStage(expanded ? null : stage.id)} aria-expanded={expanded} className={`focus-ring relative grid w-full grid-cols-[20px_minmax(0,1fr)_20px] items-start gap-3 rounded-lg px-2 py-2.5 text-left focus-visible:outline-[var(--border)] focus-visible:outline-offset-0 ${expandable ? "content-hover cursor-pointer" : "cursor-default"}`}>
                 <StageMarker completed={completed} current={current} failed={failed} paused={paused} />
                 <span className="min-w-0">
                   <span className={`block text-[11px] font-semibold ${current || completed ? "text-[var(--ink)]" : "text-[var(--ink-muted)]"}`}>{stage.label}</span>
@@ -300,7 +300,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
           <TableCell label="Status"><RunStatus run={run} /></TableCell>
           <TableCell label="Trigger" className="text-[var(--ink-soft)]">{rotationTrigger(run.trigger)}</TableCell>
           <TableCell label="Updated" className="text-[10px] text-[var(--ink-soft)]">{formatDate(run.updated_at)}</TableCell>
-          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => { if (needsApproval) onNavigateApproval(); else { setSelectedId(run.id); onSelectRotation(run.id) } }}>{needsApproval ? "Review approval" : "View details"} <ChevronRight className="size-3.5" /></Button></TableCell>
+          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => { if (needsApproval) onNavigateApproval(); else { setSelectedId(run.id); onSelectRotation(run.id) } }}>{needsApproval ? "Review approval" : "View details"} <ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>
