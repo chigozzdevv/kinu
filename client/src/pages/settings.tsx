@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
 import { IntegrationsSettings } from "./integrations"
 import { AiSettings } from "../components/ai"
-import { Detail, DetailList, DetailTabs } from "../components/detail"
+import { DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { Failure, Loading } from "../components/state"
+import { SettingsFooter, SettingsRow } from "../components/settings"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
@@ -13,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Field, Fieldset, SelectControl, formControl } from "../components/workspace"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
+import { cn } from "../lib/utils"
 import type { EmailNotificationEndpoint, MemberRole, NotificationTopic, TeamMember } from "../types"
 
 type Tab = "profile" | "team" | "notifications" | "ai" | "integrations"
@@ -53,9 +55,9 @@ export function SettingsPage() {
     ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
     : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
   const actions = tab === "team"
-    ? <Button onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
+    ? <Button size="sm" onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
     : tab === "notifications"
-      ? <Button disabled={!delivery.data?.email_enabled} onClick={() => setAddingEmail(true)}><Plus className="size-3.5" /> Add email</Button>
+      ? <Button size="sm" disabled={!delivery.data?.email_enabled} onClick={() => setAddingEmail(true)}><Plus className="size-3.5" /> Add email</Button>
       : undefined
 
   const activeLoading = profile.isLoading || (tab === "team" && team.isLoading) || (tab === "notifications" && (delivery.isLoading || endpoints.isLoading || topics.isLoading))
@@ -64,16 +66,21 @@ export function SettingsPage() {
   if (error) return <div className="page"><Failure error={error} /></div>
 
   return <div className="page">
-    <PageHeader title="Settings" actions={actions} />
-    <DetailTabs items={tabs} value={tab} onChange={setTab} />
-    {tab === "profile" && <ProfileSettings profile={profile.data!} />}
-    {tab === "integrations" && <IntegrationsSettings />}
-    {tab === "ai" && <AiSettings administrator={administrator} />}
-    {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
-    {tab === "notifications" && <>
-      {!delivery.data?.email_enabled && <p role="status" className="mb-6 text-[11px] text-[var(--ink-muted)]">Email notifications are not enabled yet.</p>}
-      <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />
-    </>}
+    <div className="max-w-[640px]">
+      <PageHeader title="Settings" />
+      <DetailTabs items={tabs} value={tab} onChange={setTab} className="mb-0 border-b border-[var(--border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" />
+      <div className="px-4 pb-4 pt-2">
+        {actions && <div className="flex justify-end py-4">{actions}</div>}
+        {tab === "profile" && <ProfileSettings profile={profile.data!} />}
+        {tab === "integrations" && <IntegrationsSettings />}
+        {tab === "ai" && <AiSettings administrator={administrator} />}
+        {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
+        {tab === "notifications" && <>
+          {!delivery.data?.email_enabled && <p role="status" className="mb-6 text-[11px] text-[var(--ink-muted)]">Email notifications are not enabled yet.</p>}
+          <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />
+        </>}
+      </div>
+    </div>
     {inviting && <InviteMemberModal onClose={() => setInviting(false)} />}
     {editingMember && <EditMemberModal key={editingMember.id} member={editingMember} onClose={() => setEditingMember(null)} />}
     {addingEmail && <EmailModal onClose={() => setAddingEmail(false)} defaultEmail={profile.data!.email} topics={topics.data!} />}
@@ -93,14 +100,16 @@ function ProfileSettings({ profile }: { profile: Awaited<ReturnType<typeof api.g
       ])
     },
   })
-  return <div className="max-w-[640px] space-y-6">
-    <div className="grid gap-x-8 sm:grid-cols-2"><Field label="Name"><input className={formControl} value={name} onChange={(event) => { setName(event.target.value); save.reset() }} /></Field></div>
-    <DetailList>
-      <Detail label="Email">{profile.email}</Detail>
-      <Detail label="Connected via">{profile.connected_via}</Detail>
-    </DetailList>
-    {save.error && <div role="alert" className="text-[10px] text-[var(--red)]">{save.error.message}</div>}
-    <Button disabled={!name.trim() || name.trim() === profile.display_name || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save changes"}</Button>
+  return <div>
+    <dl className="divide-y divide-[var(--border-soft)]">
+      <SettingsRow label="Name" htmlFor="profile-name"><input id="profile-name" className={cn(formControl, "h-9 w-64 max-w-full rounded-lg")} value={name} onChange={(event) => { setName(event.target.value); save.reset() }} /></SettingsRow>
+      <SettingsRow label="Email">{profile.email}</SettingsRow>
+      <SettingsRow label="Connected via">{profile.connected_via}</SettingsRow>
+    </dl>
+    <SettingsFooter>
+      {save.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{save.error.message}</div>}
+      <Button size="sm" disabled={!name.trim() || name.trim() === profile.display_name || save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save changes"}</Button>
+    </SettingsFooter>
   </div>
 }
 
@@ -112,7 +121,7 @@ function TeamSettings({ members, currentId, onEdit }: { members: TeamMember[]; c
   })
   return <>
     {cancel.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{cancel.error.message}</div>}
-    <Table>
+    <Table className="min-w-[520px] [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
       <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
       <TableBody>{members.map((member) => <TableRow key={member.id}>
         <TableCell><div className="font-medium">{member.display_name ?? member.email}</div>{member.display_name && <div className="mt-1 text-[10px] text-[var(--ink-muted)]">{member.email}</div>}</TableCell>
@@ -164,7 +173,7 @@ function EmailSettings({ endpoints, topics }: { endpoints: EmailNotificationEndp
   if (!endpoints.length) return <div className="py-12 text-center text-[11px] text-[var(--ink-muted)]">No email destinations.</div>
   return <>
     {setEnabled.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{setEnabled.error.message}</div>}
-    <Table>
+    <Table className="min-w-[520px] [&_td:first-child]:pl-0 [&_th:first-child]:pl-0">
       <TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Notifies</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
       <TableBody>{endpoints.map((endpoint) => <TableRow key={endpoint.id}>
         <TableCell><div className="font-medium">{endpoint.email_address}</div></TableCell>

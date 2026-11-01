@@ -4,6 +4,7 @@ import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { Failure, Loading } from "../components/state"
+import { SettingsRow } from "../components/settings"
 import { Field, formControl } from "../components/workspace"
 import { api } from "../lib/api"
 import type { Integration } from "../lib/api/integrations"
@@ -15,18 +16,17 @@ export function IntegrationsSettings() {
   const [selected, setSelected] = useState<Integration | null>(null)
   if (settings.isLoading) return <Loading />
   if (settings.error) return <Failure error={settings.error} />
-  return <div className="max-w-[640px]">
-    <div className="divide-y divide-[var(--border-soft)]">
-      {settings.data?.integrations.map((item) => <div key={item.id} className="flex min-h-[72px] items-center justify-between gap-4 py-4">
-        <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-8">
-          <span className="text-[11px] font-medium sm:w-32 sm:shrink-0">{item.name}</span>
+  return <>
+    <dl className="divide-y divide-[var(--border-soft)]">
+      {settings.data?.integrations.map((item) => <SettingsRow key={item.id} label={item.name}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Badge className="whitespace-nowrap" variant={item.configured ? "healthy" : "neutral"}>{item.fields.length === 0 ? "No app setup" : item.configured ? "Configured" : "Setup required"}</Badge>
+          {settings.data.editable && item.fields.length > 0 && <Button size="sm" className="shrink-0" variant="secondary" onClick={() => setSelected(item)}>Configure</Button>}
         </div>
-        {settings.data.editable && item.fields.length > 0 && <Button className="shrink-0" variant="secondary" onClick={() => setSelected(item)}>Configure</Button>}
-      </div>)}
-    </div>
+      </SettingsRow>)}
+    </dl>
     {selected && <Configure key={selected.id} integration={selected} onClose={() => setSelected(null)} />}
-  </div>
+  </>
 }
 
 function Configure({ integration, onClose }: { integration: Integration, onClose: () => void }) {
