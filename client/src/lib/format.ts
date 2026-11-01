@@ -1,4 +1,4 @@
-import type { ConnectionStatus } from "../types"
+import type { ConnectionStatus, RotationRun } from "../types"
 
 export function titleCase(value: string): string {
   const terms: Record<string, string> = {
@@ -22,6 +22,16 @@ export function formatDate(value: string, withTime = false): string {
     year: "numeric",
     ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   }).format(new Date(value))
+}
+
+export function rotationTrigger(trigger: RotationRun["trigger"]): string {
+  if (trigger.kind === "manual") return "Manual rotation"
+  if (["credential-expiring", "credential-rotation-due"].includes(trigger.kind)) return "Scheduled rotation"
+  if (trigger.kind === "credential-exposure-detected") return "Verified exposure"
+  if (["credential-inventory-drift", "credential-provider-drift", "credential-runtime-drift"].includes(trigger.kind)) return "Configuration drift"
+  if (["manual", "console", "dashboard"].includes(trigger.source)) return "Manual rotation"
+  if (["schedule", "scheduler"].includes(trigger.source)) return "Scheduled rotation"
+  return titleCase(trigger.kind)
 }
 
 export function shortId(value: string | null, size = 14): string {

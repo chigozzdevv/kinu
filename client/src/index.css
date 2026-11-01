@@ -132,6 +132,11 @@
     outline: 2px solid var(--ink-muted);
     outline-offset: 2px;
   }
+
+  .resource-toolbar select.focus-ring:focus-visible {
+    outline-width: 1px;
+    outline-offset: -1px;
+  }
 }
 
 .resource-table-container {

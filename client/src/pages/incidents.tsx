@@ -39,7 +39,7 @@ function statusVariant(status: Incident["status"]) {
 export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavigateRotation }: { initialIncidentId?: string; onSelectIncident: (incidentId: string) => void; onNavigateRotation: (runId: string) => void }) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
-  const [status, setStatus] = useState("open")
+  const [status, setStatus] = useState("all")
   const [selectedId, setSelectedId] = useState(initialIncidentId)
   const [selectedCandidateId, setSelectedCandidateId] = useState("")
   const [dismissing, setDismissing] = useState(false)
@@ -160,7 +160,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Incidents" />
     <DemoAlert />
-    <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("open") }} filters={[{ label: "Status", value: status, defaultValue: "open", onChange: (event) => setStatus(event.target.value), children: <><option value="open">Open incidents</option><option value="all">All incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
+    <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("all") }} filters={[{ label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All incidents</option><option value="open">Open incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
     <Table responsive>
       <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Affected resource</TableHead><TableHead>Credential</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
       <TableBody columns={6} emptyMessage={search.trim() ? "No matching incidents." : "No incidents in this view."}>{rows.map((incident) => {

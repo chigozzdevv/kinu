@@ -51,7 +51,7 @@ function evidenceItems(snapshot: ApprovalEvidenceSnapshot) {
 export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavigateRotation }: { initialApprovalId?: string; onSelectApproval: (approvalId: string) => void; onNavigateRotation: (runId: string) => void }) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
-  const [status, setStatus] = useState("pending")
+  const [status, setStatus] = useState("all")
   const [selectedId, setSelectedId] = useState(initialApprovalId)
   const [confirming, setConfirming] = useState<ApprovalDecision | null>(null)
   const [now, setNow] = useState(Date.now())
@@ -113,11 +113,12 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
 
   if (selected) {
     const actionable = selected.decision === "pending" && !isExpired(selected, now)
+    const presentation = approvalStatus(selected, now)
     return <DetailPage>
       <PageHeader eyebrow="Operations / Approvals" title={approvalName(selected)} titlePrefix={selectedCredential ? <Provider value={selectedCredential.provider} label={false} /> : undefined} onBack={() => { setSelectedId(""); onSelectApproval(""); setConfirming(null); decide.reset() }} actions={<>{selectedRun && <Button variant="secondary" onClick={() => onNavigateRotation(selectedRun.id)}>Open rotation <ArrowUpRight className="size-3.5" /></Button>}{actionable && <><Button variant="danger" disabled={decide.isPending} onClick={() => setConfirming("rejected")}>Reject</Button><Button disabled={decide.isPending} onClick={() => setConfirming("approved")}>Approve</Button></>}</>} />
       {decide.error && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{decide.error.message}</div>}
       <DetailCard>
-        <DetailList><Detail label="Credential">{selectedCredential?.display_name ?? "Credential"}</Detail><Detail label="Requested">{formatDate(selected.created_at, true)}</Detail><Detail label="Expires">{formatDate(selected.expires_at, true)}</Detail><Detail label="Requested by">{titleCase(selected.requested_by.replace(/^actor_/, ""))}</Detail>{selected.decided_at && <Detail label="Decided">{formatDate(selected.decided_at, true)}</Detail>}</DetailList>
+        <DetailList><Detail label="Credential">{selectedCredential?.display_name ?? "Credential"}</Detail><Detail label="Status"><Badge variant={presentation.variant}>{presentation.label}</Badge></Detail><Detail label="Requested">{formatDate(selected.created_at, true)}</Detail><Detail label="Expires">{formatDate(selected.expires_at, true)}</Detail><Detail label="Requested by">{titleCase(selected.requested_by.replace(/^actor_/, ""))}</Detail>{selected.decided_at && <Detail label="Decided">{formatDate(selected.decided_at, true)}</Detail>}</DetailList>
         <section className="mt-7">
           {evidence.isLoading ? <Loading /> : evidence.error ? <Failure error={evidence.error} /> : evidence.data ? <>
             <h3 className="mb-4 text-[11px] font-semibold">Verification</h3>
@@ -134,7 +135,7 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Approvals" />
-    <Toolbar value={search} onChange={setSearch} placeholder="Search approvals or credentials" onClear={() => { setSearch(""); setStatus("pending") }} filters={[{ label: "Status", value: status, defaultValue: "pending", onChange: (event) => setStatus(event.target.value), children: <><option value="pending">Action required</option><option value="all">All approvals</option><option value="expired">Expired</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="more-evidence">Evidence requested</option><option value="extend-observation">Verification extended</option></> }]} />
+    <Toolbar value={search} onChange={setSearch} placeholder="Search approvals or credentials" onClear={() => { setSearch(""); setStatus("all") }} filters={[{ label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All approvals</option><option value="pending">Action required</option><option value="expired">Expired</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="more-evidence">Evidence requested</option><option value="extend-observation">Verification extended</option></> }]} />
     <Table responsive>
       <TableHeader><TableRow><TableHead>Requested action</TableHead><TableHead>Credential</TableHead><TableHead>Stage</TableHead><TableHead>Requested</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
       <TableBody columns={6} emptyMessage={search.trim() ? "No matching approvals." : "No approvals in this view."}>{rows.map((approval) => {

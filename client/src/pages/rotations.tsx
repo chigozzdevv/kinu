@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Field, SelectControl, formControl } from "../components/workspace"
 import type { RotationHistory, RotationRun, RunStageActivity, StageName } from "../types"
 import { api } from "../lib/api"
-import { formatDate, titleCase } from "../lib/format"
+import { formatDate, rotationTrigger, titleCase } from "../lib/format"
 import { useOrganisation } from "../lib/useorganisation"
 
 const stages: Array<{ id: StageName; label: string }> = [
@@ -34,13 +34,6 @@ const stages: Array<{ id: StageName; label: string }> = [
 
 function latestActivity(history: RotationHistory | undefined, stage: StageName): RunStageActivity | undefined {
   return history?.stages.filter((item) => item.stage === stage).at(-1)
-}
-
-function triggerName(source: string) {
-  if (["schedule", "scheduler"].includes(source)) return "Scheduled rotation"
-  if (["manual", "console", "dashboard"].includes(source)) return "Manual rotation"
-  if (source === "agent-native") return "Agent request"
-  return titleCase(source)
 }
 
 function activeStageSummary(stage: StageName, status: RotationRun["status"]) {
@@ -238,7 +231,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const activity = latestActivity(history.data, stage.id)
             const computerUse = history.data?.computer_use.filter((item) => item.stage === stage.id) ?? []
             const hasFrame = computerUse.some((item) => Boolean(item.image_reference))
-            const details = activity?.details.filter((detail) => !(hasFrame && detail.label === "Method" && detail.value === "Browser")) ?? []
+            const details = activity?.details.filter((detail) =>
+              !(hasFrame && detail.label === "Method" && detail.value === "Browser")
+              && !(stage.id === "trigger" && detail.label === "Source" && selected.trigger.source === "agent-native")
+            ) ?? []
             const attempts = history.data?.stages.filter((item) => item.stage === stage.id) ?? []
             const recovered = selected.status === "compensated" && selected.recovery_stage === stage.id && selected.recovery_evidence_ids.length > 0
             const completed = recovered || Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
@@ -267,7 +263,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                 {activity.reason && <p className={`mb-4 text-[11px] leading-5 ${recovered ? "text-[var(--ink-soft)]" : "text-[var(--red)]"}`}>{recovered ? "This step stopped earlier; recovery is complete." : activity.reason}</p>}
                 {needsConnectionRecovery && <Button size="sm" variant="secondary" className="mb-5" onClick={() => onNavigateConnection(needsConnectionRecovery)}>Open connection <ArrowUpRight className="size-3.5" /></Button>}
                 {details.length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{details.map((detail) => {
-                  const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && !["manual", "console", "dashboard"].includes(selected.trigger.source)
+                  const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && rotationTrigger(selected.trigger) !== "Manual rotation"
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
@@ -302,7 +298,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
           <TableCell primary><button className="focus-ring flex items-center gap-3 rounded-lg text-left font-medium hover:underline" onClick={() => { setSelectedId(run.id); onSelectRotation(run.id) }}><Provider value={credential?.provider ?? "kinu"} label={false} />{credential?.display_name ?? "Credential"}</button></TableCell>
           <TableCell label="Stage">{titleCase(run.stage)}</TableCell>
           <TableCell label="Status"><RunStatus run={run} /></TableCell>
-          <TableCell label="Trigger" className="text-[var(--ink-soft)]">{triggerName(run.trigger.source)}</TableCell>
+          <TableCell label="Trigger" className="text-[var(--ink-soft)]">{rotationTrigger(run.trigger)}</TableCell>
           <TableCell label="Updated" className="text-[10px] text-[var(--ink-soft)]">{formatDate(run.updated_at)}</TableCell>
           <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => { if (needsApproval) onNavigateApproval(); else { setSelectedId(run.id); onSelectRotation(run.id) } }}>{needsApproval ? "Review approval" : "View details"} <ChevronRight className="size-3.5" /></Button></TableCell>
         </TableRow>
