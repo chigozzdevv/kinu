@@ -62,8 +62,8 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const [graph, runs, incidents, connections, environments, playbooks] = useQueries({
     queries: [
       { queryKey: ["graph"], queryFn: () => api.getGraph() },
-      { queryKey: ["rotations"], queryFn: () => api.getRotations(), retry: false },
-      { queryKey: ["incidents"], queryFn: () => api.getIncidents(), retry: false },
+      { queryKey: ["rotations"], queryFn: () => api.getRotations(), retry: false, refetchInterval: 5_000 },
+      { queryKey: ["incidents"], queryFn: () => api.getIncidents(), retry: false, refetchInterval: 10_000 },
       { queryKey: ["connections"], queryFn: () => api.getConnections() },
       { queryKey: ["environments"], queryFn: () => api.getEnvironments() },
       { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },

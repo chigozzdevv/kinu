@@ -71,6 +71,35 @@ async def test_detection_treats_missing_provider_identifier_as_disabled() -> Non
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("include_binding", "runtime_generation", "require_alignment", "observed"),
+    [
+        (True, "generation_one", True, True),
+        (True, "generation_old", True, False),
+        (True, None, True, False),
+        (False, "generation_one", True, False),
+        (True, "generation_one", False, False),
+    ],
+)
+async def test_runtime_recovery_requires_an_enabled_and_aligned_consumer(
+    include_binding: bool,
+    runtime_generation: str | None,
+    require_alignment: bool,
+    observed: bool,
+) -> None:
+    inventory = Inventory(include_binding=include_binding)
+    service = DetectionService(
+        inventory,
+        Controls(require_runtime_alignment=require_alignment),
+        Provider(({"provider_id": "provider-key-one", "scopes": ["mail.send"]},)),
+        {"runtime-service": Runtime(runtime_generation)} if runtime_generation else {},
+        lambda: NOW,
+    )
+    await service.detect("org_one")
+    assert (inventory.runtime_observation is not None) is observed
+
+
+@pytest.mark.anyio
 async def test_detection_uses_stored_metadata_for_browser_managed_credentials() -> None:
     inventory = Inventory(include_binding=False)
     inventory.credential = inventory.credential.model_copy(
@@ -196,6 +225,7 @@ class Inventory:
     def __init__(self, include_binding: bool = True) -> None:
         self.include_binding = include_binding
         self.observation: dict[str, Any] | None = None
+        self.runtime_observation: tuple[ConsumerBinding, ...] | None = None
         self.credential = ManagedCredential(
             id="credential_one",
             organisation_id="org_one",
@@ -294,6 +324,19 @@ class Inventory:
     async def record_observation(self, *args: Any, **kwargs: Any) -> ManagedCredential:
         self.observation = kwargs or {"expires_at": args[5], "metadata_digest": args[7]}
         return self.credential
+
+    async def record_runtime_observation(
+        self,
+        credential: ManagedCredential,
+        bindings: tuple[ConsumerBinding, ...],
+        observed_at: datetime,
+    ) -> None:
+        self.runtime_observation = bindings
+
+    async def runtime_recovery_at(
+        self, organisation_id: str, credential_id: str, generation_id: str
+    ) -> datetime | None:
+        return None
 
 
 class Provider:

@@ -94,17 +94,17 @@ class Incident(Contract):
             raise ValueError("a contained incident requires a run")
         if self.resolution_observed_at is not None and (
             self.status is not IncidentStatus.RESOLVED
-            or self.kind != "credential-metadata-stale"
+            or self.kind not in {"credential-metadata-stale", "credential-runtime-drift"}
             or self.credential_id is None
             or self.resource.generation_id is None
             or not self.created_at <= self.resolution_observed_at <= self.updated_at
         ):
-            raise ValueError("metadata resolution requires a current verified observation")
+            raise ValueError("incident resolution requires a current verified observation")
         if self.status is IncidentStatus.RESOLVED and not (
             self.resolution_run_id or self.run_id or self.resolution_observed_at
         ):
             raise ValueError(
-                "a resolved incident requires a resolution run or metadata observation"
+                "a resolved incident requires a resolution run or verified observation"
             )
         if self.resolution_run_id and self.status is not IncidentStatus.RESOLVED:
             raise ValueError("a resolution run requires a resolved incident")

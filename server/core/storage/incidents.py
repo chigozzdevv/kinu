@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from contracts import (
     CredentialGeneration,
@@ -24,14 +25,18 @@ _ROTATION_INCIDENTS = {
 }
 
 
-async def resolve_metadata_incidents(
-    rows: RecordTransaction, credential: ManagedCredential, observed_at: datetime
+async def resolve_observed_incidents(
+    rows: RecordTransaction,
+    credential: ManagedCredential,
+    observed_at: datetime,
+    *,
+    kind: Literal["credential-metadata-stale", "credential-runtime-drift"],
 ) -> None:
     for incident in await rows.match(
         Incident, credential.organisation_id, {"credential_id": credential.id}
     ):
         if (
-            incident.kind == "credential-metadata-stale"
+            incident.kind == kind
             and incident.status is IncidentStatus.ACTION
             and incident.resource.generation_id == credential.active_generation_id
             and incident.created_at <= observed_at

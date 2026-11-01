@@ -42,6 +42,17 @@ class DetectionInventory(Protocol):
         metadata_digest: str,
     ) -> ManagedCredential: ...
 
+    async def record_runtime_observation(
+        self,
+        credential: ManagedCredential,
+        bindings: tuple[ConsumerBinding, ...],
+        observed_at: datetime,
+    ) -> None: ...
+
+    async def runtime_recovery_at(
+        self, organisation_id: str, credential_id: str, generation_id: str
+    ) -> datetime | None: ...
+
 
 class DetectionControls(Protocol):
     async def get_control_version(
@@ -166,7 +177,13 @@ class DetectionService:
             else:
                 events.extend(_stored_events(credential, generation, controls, observed_at))
             if controls.definition.require_runtime_alignment:
-                for binding in bindings.get(credential.id, []):
+                credential_bindings = tuple(bindings.get(credential.id, []))
+                runtime_aligned = bool(credential_bindings)
+                recovered_at = await self._inventory.runtime_recovery_at(
+                    organisation_id, credential.id, generation.id
+                )
+                recovery_marker = f":{recovered_at.isoformat()}" if recovered_at else ""
+                for binding in credential_bindings:
                     runtime_connection = connections.get(binding.runtime_connection_id)
                     inspector = (
                         self._runtimes.get(runtime_connection.platform)
@@ -177,11 +194,12 @@ class DetectionService:
                         else None
                     )
                     if inspector is None:
+                        runtime_aligned = False
                         events.append(
                             _event(
                                 credential,
                                 "credential-runtime-drift",
-                                f"{binding.id}:runtime-inspector-missing",
+                                f"{binding.id}:runtime-inspector-missing{recovery_marker}",
                                 Severity.HIGH,
                                 observed_at,
                             )
@@ -190,15 +208,20 @@ class DetectionService:
                     assert runtime_connection is not None
                     runtime = await inspector.inspect(runtime_connection, binding.runtime_resource)
                     if not _runtime_aligned(runtime, binding, generation):
+                        runtime_aligned = False
                         events.append(
                             _event(
                                 credential,
                                 "credential-runtime-drift",
-                                f"{binding.id}:{_digest(runtime)}",
+                                f"{binding.id}:{_digest(runtime)}{recovery_marker}",
                                 Severity.HIGH,
                                 observed_at,
                             )
                         )
+                if runtime_aligned:
+                    await self._inventory.record_runtime_observation(
+                        credential, credential_bindings, observed_at
+                    )
         return tuple(events)
 
     async def _credential_events(

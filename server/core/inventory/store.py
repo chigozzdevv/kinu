@@ -10,6 +10,8 @@ from contracts import (
     ControlVersion,
     CredentialGeneration,
     Environment,
+    Incident,
+    IncidentStatus,
     ManagedCredential,
     PlaybookVersion,
     ProbeVersion,
@@ -19,7 +21,7 @@ from core.errors import ResourceConflictError
 from core.inventory.relations import check_references
 from core.inventory.repository import InventoryResource
 from core.storage.database import Database
-from core.storage.incidents import resolve_metadata_incidents
+from core.storage.incidents import resolve_observed_incidents
 from core.storage.records import Records
 
 
@@ -358,8 +360,60 @@ class InventoryStore:
                 ),
                 current.revision,
             )
-            await resolve_metadata_incidents(rows, observed, observed_at)
+            await resolve_observed_incidents(
+                rows, observed, observed_at, kind="credential-metadata-stale"
+            )
             return observed
+
+    async def record_runtime_observation(
+        self,
+        credential: ManagedCredential,
+        bindings: tuple[ConsumerBinding, ...],
+        observed_at: datetime,
+    ) -> None:
+        org = credential.organisation_id
+        async with self._records.write(org) as rows:
+            current = await rows.get(ManagedCredential, org, credential.id)
+            current_bindings = await rows.match(
+                ConsumerBinding, org, {"credential_id": credential.id}
+            )
+            if (
+                not bindings
+                or current.archived_at
+                or current.active_generation_id != credential.active_generation_id
+                or current.secret_reference != credential.secret_reference
+                or current.control_version != credential.control_version
+                or {item.id: item for item in current_bindings}
+                != {item.id: item for item in bindings}
+                or await rows.database.collection("run_locks").find_one(
+                    {"organisation_id": org, "credential_id": credential.id},
+                    session=rows.session,
+                )
+            ):
+                raise ResourceConflictError("Credential changed during runtime monitoring")
+            await resolve_observed_incidents(
+                rows, current, observed_at, kind="credential-runtime-drift"
+            )
+
+    async def runtime_recovery_at(
+        self, organisation_id: str, credential_id: str, generation_id: str
+    ) -> datetime | None:
+        async with self._records.read() as rows:
+            incidents = await rows.match(
+                Incident,
+                organisation_id,
+                {"credential_id": credential_id, "kind": "credential-runtime-drift"},
+            )
+        return max(
+            (
+                incident.resolution_observed_at
+                for incident in incidents
+                if incident.status is IncidentStatus.RESOLVED
+                and incident.resource.generation_id == generation_id
+                and incident.resolution_observed_at is not None
+            ),
+            default=None,
+        )
 
     async def _get[T: Contract](self, model: type[T], org: str, resource_id: str) -> T:
         async with self._records.read() as rows:

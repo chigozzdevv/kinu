@@ -26,7 +26,6 @@ export function AiSettings({ administrator }: { administrator: boolean }) {
       <SettingsRow label="Builder.io"><Badge variant={current.connected ? "healthy" : "neutral"}>{current.connected ? "Connected" : "Not connected"}</Badge></SettingsRow>
       <SettingsRow label="Model" htmlFor="builder-model"><SelectControl id="builder-model" size="sm" width="compact" disabled={!administrator || !current.connected || action.isPending} value={current.model} onChange={(event) => action.mutate({ name: "model", model: event.target.value })}>{current.models.map((model) => <option key={model} value={model}>{model}</option>)}</SelectControl></SettingsRow>
       <SettingsRow label="AI calls today">{current.usage.calls} / {current.usage.limit}</SettingsRow>
-      <SettingsRow label="Last verified">{current.verified_at ? new Date(current.verified_at).toLocaleString() : "Not verified yet"}</SettingsRow>
     </dl>
     {administrator && <SettingsFooter>
       <div className="flex flex-wrap gap-2">
