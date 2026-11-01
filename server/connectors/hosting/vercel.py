@@ -37,7 +37,7 @@ class Vercel:
             if len(targets) != 1:
                 continue
             for environment in targets:
-                if environment not in {"production", "preview"} or item.get("type") == "system":
+                if environment != "production" or item.get("type") == "system":
                     continue
                 result.append(
                     Variable(

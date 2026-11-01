@@ -72,12 +72,11 @@ class RunWorkflow:
         organisation_id: str,
         statuses: frozenset[RunStatus] | None = None,
         limit: int = 100,
+        before: str | None = None,
     ) -> tuple[RotationRun, ...]:
-        runs = await self._repository.list_runs(organisation_id, _LIST_SCAN_LIMIT)
-        if statuses is not None:
-            runs = tuple(run for run in runs if run.status in statuses)
-        ordered = sorted(runs, key=lambda run: (run.created_at, run.id), reverse=True)
-        return tuple(ordered[:limit])
+        return await self._repository.list_runs(
+            organisation_id, limit, before=before, statuses=statuses
+        )
 
     async def start(self, command: StartRunCommand) -> MutationResult:
         now = self._clock()

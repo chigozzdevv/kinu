@@ -186,6 +186,23 @@ class Effects:
         _healthy(result, created["provider_id"], created["secret_reference"])
         return result
 
+    async def verify_current(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> None:
+        await self.verify(state, created, deployment)
+        _healthy(
+            await self.health(state, "live"), created["provider_id"], created["secret_reference"]
+        )
+        current = await self.runtime.current(state.single.runtime, self.config.consumer_function)
+        versions = await self.secrets.versions_for(state.store, state.credential.secret_resource)
+        if current["version"] != deployment["deployments"][state.single.binding.id][
+            "candidate_revision"
+        ] or not any(
+            item["name"] == created["secret_reference"] and "AWSCURRENT" in item["stages"]
+            for item in versions
+        ):
+            raise ConnectorError("demo-rollout-changed", "The active demo generation changed")
+
     async def observe(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
         old = await self.metadata(state.current.provider_id or "")
         for _ in range(3):

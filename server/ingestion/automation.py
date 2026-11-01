@@ -9,8 +9,9 @@ from contracts import (
     IngestionEvent,
     ManagedCredential,
 )
-from core.errors import ResourceConflictError
+from core.errors import ActiveRunConflictError, ResourceConflictError
 from core.incident import IncidentService
+from core.workflow.dispatch import RunDispatcher
 
 
 class CredentialReader(Protocol):
@@ -29,15 +30,19 @@ class IncidentAutomation:
         incidents: IncidentService,
         inventory: CredentialReader,
         controls: ControlReader,
+        dispatcher: RunDispatcher | None = None,
     ) -> None:
         self._incidents = incidents
         self._inventory = inventory
         self._controls = controls
+        self._dispatcher = dispatcher
 
     async def ingest(self, event: IngestionEvent) -> tuple[Incident, bool]:
         incident_id = _identifier("incident", event.id)
         incident, applied = await self._incidents.ingest(incident_id, event)
         if incident.status is IncidentStatus.ROTATING:
+            if self._dispatcher and incident.run_id:
+                await self._dispatcher.submit(event.organisation_id, incident.run_id)
             return incident, applied
         if incident.status is IncidentStatus.CORRELATING and len(incident.candidates) == 1:
             candidate = incident.candidates[0]
@@ -63,6 +68,8 @@ class IncidentAutomation:
         urgency = "emergency" if event.kind in controls.definition.emergency_triggers else "routine"
         command_id = _identifier("command", event.id)
         try:
+            if self._dispatcher:
+                await self._dispatcher.require_scope(event.organisation_id, credential.id)
             linked, _, _ = await self._incidents.start_rotation(
                 event.organisation_id,
                 incident.id,
@@ -73,11 +80,11 @@ class IncidentAutomation:
                 urgency,
                 event.observed_at,
             )
-        except ResourceConflictError:
+        except (ActiveRunConflictError, ResourceConflictError):
             current = await self._incidents.get(event.organisation_id, incident.id)
-            if current.status is IncidentStatus.ROTATING:
-                return current, applied
-            raise
+            return current, applied
+        if self._dispatcher and linked.run_id:
+            await self._dispatcher.submit(event.organisation_id, linked.run_id)
         return linked, applied
 
     def _automatic(

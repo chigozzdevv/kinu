@@ -18,7 +18,6 @@ CATALOG = (
     Integration("railway", "Railway", "runtime", "oauth", ("client_id", "client_secret")),
     Integration("render", "Render", "runtime", "api-key"),
     Integration("resend", "Resend", "provider", "api-key"),
-    Integration("doppler", "Doppler", "secret-store", "api-key"),
 )
 
 

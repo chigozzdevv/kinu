@@ -17,7 +17,10 @@ from core.inventory.store import InventoryStore
 from core.private import PrivateClient
 from core.storage.database import Database
 from hosting.mapping import Mappings
+from hosting.provision import Provisioning
 from hosting.service import Service as Hosts
+from ingestion.runtime import RuntimeInspector
+from ingestion.worker import Monitor
 from jobs.queue import Jobs
 from mail.assessment import Assessment
 from mail.google import Google
@@ -27,9 +30,11 @@ from mail.service import Service
 from mail.store import Store
 from mail.vault import Vault as MailVault
 from notification.worker import Worker as EmailWorker
+from rotation.approval import RevocationApprovals
 from rotation.effects import Effects
 from rotation.hosting import Effects as HostEffects
 from rotation.queue import Dispatcher
+from rotation.recovery import Recovery
 from rotation.rotate import Rotation
 from rotation.router import Router
 from rotation.snapshot import loader
@@ -81,6 +86,7 @@ class Runtime:
         )
         self.providers = Providers(self.authorizations, self.browser_worker, self.versions)
         self.mappings = Mappings(self.hosts, self.versions, self.providers)
+        self.provisioning = Provisioning(self.mappings, queue, region=config.aws_region)
         self.mail_store = Store(vault.database)
         self.rotation = Rotation(
             database,
@@ -91,7 +97,18 @@ class Runtime:
             loader(database),
             config.aws_region,
         )
+        self.rotation.approvals = RevocationApprovals(
+            database, vault, self.rotation.effects, self.rotation.audit
+        )
+        self.recovery = Recovery(database, self.rotation, queue, self.providers)
         self.dispatcher = Dispatcher(database, queue)
+        self.monitor = Monitor(
+            database,
+            self.providers,
+            RuntimeInspector(database, self.hosts, self.versions),
+            self.dispatcher,
+            config.aws_region,
+        )
         self.email = EmailWorker(
             database, http, config.resend_key, config.email_sender, config.public_url
         )
@@ -140,6 +157,7 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
             await service.versions.initialize()
             await service.browser_worker.images.initialize()
             await service.providers.receipts.initialize()
+            await service.provisioning.initialize()
 
             async def reap() -> None:
                 while True:

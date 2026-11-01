@@ -36,6 +36,38 @@ pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 10, 27, tzinfo=UTC)
 
 
+async def test_run_pages_cover_history_beyond_500_with_stable_ties_and_scoped_cursors(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    workflow, command = await setup(database, identity)
+    original = (await workflow.create(command)).run
+    records = []
+    for number in range(600):
+        run = original.model_copy(update={"id": f"run_{number:06d}"})
+        records.append(
+            {
+                "organisation_id": run.organisation_id,
+                "id": run.id,
+                "credential_id": run.credential_id,
+                "revision": run.revision,
+                "data": run.model_dump(mode="json"),
+            }
+        )
+    await database.collection("runs").insert_many(records)
+    seen: list[str] = []
+    before: str | None = None
+    while True:
+        page = await workflow.list_runs(original.organisation_id, limit=100, before=before)
+        if not page:
+            break
+        seen.extend(run.id for run in page)
+        before = page[-1].id
+    assert len(seen) == len(set(seen)) == 601
+    assert set(seen) == {original.id, *(record["id"] for record in records)}
+    with pytest.raises(RunNotFoundError):
+        await workflow.list_runs("org_other", before=seen[0])
+
+
 async def setup(
     database: Database, identity: AuthenticatedIdentity
 ) -> tuple[RunWorkflow, CreateRunCommand]:

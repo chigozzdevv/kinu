@@ -83,11 +83,7 @@ async def create_run(
     controls = await inventory.get_controls(
         organisation_id, body.credential_id, body.control_version
     )
-    if (
-        credential.archived_at
-        or credential.control_version != controls.id
-        or controls.definition.require_revoke_approval
-    ):
+    if credential.archived_at or credential.control_version != controls.id:
         raise ResourceConflictError(
             "credential mappings or automatic rotation controls require attention"
         )
@@ -120,11 +116,14 @@ async def list_runs(
     request: Request,
     run_status: Annotated[list[RunStatus] | None, Query(alias="status")] = None,
     limit: int = Query(default=100, ge=1, le=500),
+    before: Identifier | None = None,
 ) -> tuple[RotationRun, ...]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     statuses = frozenset(run_status) if run_status is not None else None
-    return await required(api.workflow, "workflow").list_runs(organisation_id, statuses, limit)
+    return await required(api.workflow, "workflow").list_runs(
+        organisation_id, statuses, limit, before
+    )
 
 
 @router.get("/{run_id}", response_model=RotationRun)
@@ -203,3 +202,28 @@ async def cancel_run(
         )
     )
     return _response(result)
+
+
+@router.post("/{run_id}/recover", response_model=RotationRun, status_code=202)
+async def recover_run(
+    organisation_id: OrganisationId,
+    run_id: RunId,
+    body: RevisionRequest,
+    identity: Identity,
+    key: IdempotencyKey,
+    request: Request,
+) -> RotationRun:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
+    await api.access.require(identity, organisation_id, Permission.APPROVAL_DECIDE)
+    result = await required(api.private, "private execution").call(
+        "/rotations/recover",
+        {
+            "organisation_id": organisation_id,
+            "run_id": run_id,
+            "expected_revision": body.expected_revision,
+            "actor_id": identity.actor_id,
+            "command_id": command_id(identity, organisation_id, key),
+        },
+    )
+    return RotationRun.model_validate(result)

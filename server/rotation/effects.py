@@ -12,6 +12,7 @@ from connectors.secrets.store import SecretReader
 from contracts import RotationRun, Stage
 from core.connection.roles import ConnectionRoles
 from core.connection.secrets import ConnectionSecrets
+from core.errors import ResourceNotFoundError
 from core.inventory.store import InventoryStore
 from core.storage.database import Database
 from core.storage.runs import RunStore
@@ -158,6 +159,23 @@ class Effects:
         _healthy(result, created["provider_id"], created["secret_reference"])
         return result
 
+    async def verify_current(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> None:
+        await self.verify(state, created, deployment)
+        await self.current_secret(state, created["secret_reference"])
+        current = await self.runtime.current(
+            state.single.runtime, state.single.binding.runtime_resource
+        )
+        if (
+            current["version"]
+            != deployment["deployments"][state.single.binding.id]["candidate_revision"]
+        ):
+            raise ConnectorError("runtime-current", "The active Lambda deployment changed")
+        _healthy(
+            await self.health(state, "live"), created["provider_id"], created["secret_reference"]
+        )
+
     async def observe(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
         seconds = state.controls.definition.maximum_observation_seconds
         samples = 3
@@ -279,9 +297,47 @@ class Effects:
             created["secret_reference"],
             state.credential.secret_reference,
         )
-        await self._revoke(state, created["provider_id"])
+        await retire_replacement(self.provider, self.secrets, state, created)
         await self.secrets.disable_for(state.store, created["secret_reference"])
         return True
+
+
+async def retire_replacement(
+    provider: HttpProviderConnector,
+    secrets: SecretReader,
+    state: Snapshot,
+    created: dict[str, Any],
+) -> None:
+    matches = [
+        item
+        for item in await provider.metadata(state.provider)
+        if item["provider_id"] == created["provider_id"]
+    ]
+    if len(matches) > 1:
+        raise ConnectorError("provider-identity", "Replacement identity is ambiguous")
+    if (
+        matches
+        and matches[0].get("disabled") is not True
+        and matches[0].get("status") not in {"disabled", "revoked", "inactive", "deleted"}
+    ):
+        _active(matches[0], state)
+        await provider.revoke_credential(state.provider, created["provider_id"])
+    try:
+        value = await secrets.access_for(state.store, created["secret_reference"])
+    except ResourceNotFoundError:
+        if any(
+            item["provider_id"] == created["provider_id"]
+            and item.get("disabled") is not True
+            and item.get("status") not in {"disabled", "revoked", "inactive", "deleted"}
+            for item in await provider.metadata(state.provider)
+        ):
+            raise ConnectorError(
+                "provider-retirement", "Replacement retirement is unverified"
+            ) from None
+        return
+    with value:
+        if await provider.test_credential(state.provider, value) not in {401, 403}:
+            raise ConnectorError("provider-retirement", "Replacement key is still accepted")
 
 
 def _context(state: Snapshot, run: RotationRun) -> ConnectorContext:

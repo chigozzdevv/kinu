@@ -34,8 +34,8 @@ export const workflow = {
     })
   },
 
-  async getRotations(): Promise<RotationRun[]> {
-    return request(`${workspacePath()}/runs`)
+  async getRotations(before?: string): Promise<RotationRun[]> {
+    return request(`${workspacePath()}/runs${before ? `?before=${encodeURIComponent(before)}` : ""}`)
   },
 
   async startRotation(input: StartRotationInput): Promise<RotationRun> {
@@ -53,6 +53,13 @@ export const workflow = {
 
   async getRotation(runId: string): Promise<RotationRun> {
     return request(`${workspacePath()}/runs/${runId}`)
+  },
+
+  async recoverRotation(runId: string, expectedRevision: number): Promise<RotationRun> {
+    return request(`${workspacePath()}/runs/${runId}/recover`, {
+      method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    })
   },
 
   async getRotationHistory(runId: string): Promise<RotationHistory> {

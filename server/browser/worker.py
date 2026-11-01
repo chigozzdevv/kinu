@@ -192,7 +192,10 @@ class Worker:
         now = datetime.now(UTC)
         session = await self.sessions.create(
             BrowserSession(
-                id=stable("browser", run.id + ":" + stage.value + ":" + (revoke_id or "")),
+                id=stable(
+                    "browser",
+                    f"{run.id}:{stage.value}:{revoke_id or ''}:{run.fencing_token}",
+                ),
                 organisation_id=org,
                 run_id=run.id,
                 playbook_id=version.playbook_id,

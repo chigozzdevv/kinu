@@ -23,14 +23,34 @@ class Proof:
         rejected: bool = False,
         provider_id: str | None = None,
     ) -> str:
-        if not service.endpoint:
+        return await self.endpoint(
+            service.endpoint,
+            variable,
+            fingerprint,
+            origin=origin,
+            rejected=rejected,
+            provider_id=provider_id,
+        )
+
+    async def endpoint(
+        self,
+        url: str | None,
+        variable: str,
+        fingerprint: str | None,
+        *,
+        origin: str | None = None,
+        rejected: bool = False,
+        provider_id: str | None = None,
+    ) -> str:
+        if not url:
             raise ConnectorError("host-proof", "Configure the workload health URL")
-        endpoint = urlsplit(service.endpoint)
+        endpoint = urlsplit(url)
         if (
             endpoint.scheme != "https"
             or not endpoint.hostname
             or endpoint.username
             or endpoint.password
+            or endpoint.fragment
         ):
             raise ConnectorError("host-proof", "Configure an HTTPS health URL without credentials")
         if origin:

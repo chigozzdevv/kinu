@@ -33,7 +33,7 @@ class Mappings:
         self.hosts, self.versions, self.provider = hosts, versions, provider
 
     async def save(
-        self, org: str, connection_id: str, actor: str, body: Import
+        self, org: str, connection_id: str, actor: str, body: Import, *, setup_id: str | None = None
     ) -> tuple[ManagedCredential, ...]:
         _, host = await self.hosts.account(org, connection_id)
         if not host or host.status is not ConnectionStatus.READY:
@@ -62,7 +62,9 @@ class Mappings:
             if await rows.get(Connection, org, host.id) != host:
                 raise ResourceConflictError("Hosting connection changed during discovery")
             for items in groups.values():
-                results.append(await self.group(rows, host, items, store, actor, project_name))
+                results.append(
+                    await self.group(rows, host, items, store, actor, project_name, setup_id)
+                )
         return tuple(results)
 
     async def group(
@@ -73,6 +75,7 @@ class Mappings:
         store: Connection,
         actor: str,
         project_name: str,
+        setup_id: str | None,
     ) -> ManagedCredential:
         org, now, first = host.organisation_id, datetime.now(UTC), items[0]
         key, provider, credential = first.credential_id, first.provider, first.existing
@@ -106,6 +109,16 @@ class Mappings:
             service = await workload(
                 rows, host, item.variable, project_name, item.choice.health_url
             )
+            setup = await rows.database.collection("provision_locks").find_one(
+                {
+                    "organisation_id": org,
+                    "connection_id": host.id,
+                    "resource": service.runtime_resource,
+                },
+                session=rows.session,
+            )
+            if setup and setup["request_id"] != setup_id:
+                raise ResourceConflictError("Finish this workload's key setup before importing")
             binding_id = identity("binding", host.id, item.variable.reference)
             if any(existing.id == binding_id for existing in bindings):
                 continue

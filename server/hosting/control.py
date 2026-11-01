@@ -11,13 +11,25 @@ from hosting.service import Service
 
 class Request(Contract):
     operation: Literal[
-        "begin", "owner", "finish", "projects", "save", "variables", "import", "mapped", "forget"
+        "begin",
+        "owner",
+        "finish",
+        "projects",
+        "save",
+        "variables",
+        "import",
+        "mapped",
+        "forget",
+        "provision",
+        "provision-list",
+        "provision-recover",
     ]
     organisation_id: Identifier | None = None
     actor_id: Identifier
     session: str = Field(pattern=r"^[a-f0-9]{64}$")
     platform: Platform | None = None
     connection_id: Identifier | None = None
+    request_id: Identifier | None = None
     project_id: str | None = Field(default=None, max_length=256)
     state: str = Field(default="", max_length=128)
     code: SecretStr | None = Field(default=None, max_length=4096)

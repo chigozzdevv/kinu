@@ -154,7 +154,9 @@ async def setup(
     return hosts, versions, provider, credential
 
 
-@pytest.mark.parametrize("failure", [None, "proof", "unknown"])
+@pytest.mark.parametrize(
+    "failure", [None, "proof", "unknown", "pending", "pending-unknown", "ready-not-live"]
+)
 async def test_rotation_updates_all_selected_consumers_or_keeps_old_key_safe(
     database: Database,
     identity: AuthenticatedIdentity,
@@ -189,12 +191,17 @@ async def test_rotation_updates_all_selected_consumers_or_keeps_old_key_safe(
             assert seconds == 20
 
         monkeypatch.setattr("rotation.hosting.sleep", sleep)
+
+        async def polling(seconds: float) -> None:
+            assert seconds == 2
+
+        monkeypatch.setattr("hosting.rollout.sleep", polling)
         result = await Rotation(
             database, Effects(hosts, versions, provider, Proof(http)), loader(database), "global"
         ).execute(org, run.id, "worker_one")
         expected = (
             RunStatus.CLEANUP
-            if failure == "unknown"
+            if failure in {"unknown", "pending", "pending-unknown", "ready-not-live"}
             else RunStatus.FAILED
             if failure
             else RunStatus.COMPLETED

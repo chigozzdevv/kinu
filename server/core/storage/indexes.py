@@ -52,10 +52,20 @@ async def ensure_indexes(database: Database) -> None:
         "runtime_locks": [
             IndexModel([("organisation_id", 1), ("connection_id", 1), ("resource", 1)], unique=True)
         ],
+        "provision_locks": [
+            IndexModel([("organisation_id", 1), ("connection_id", 1), ("resource", 1)], unique=True)
+        ],
+        "recovery_requests": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("organisation_id", 1), ("run_id", 1), ("fencing_token", 1)]),
+        ],
         "host_rollouts": [
             IndexModel([("organisation_id", 1), ("run_id", 1), ("binding_id", 1)], unique=True)
         ],
-        "runs": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
+        "runs": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("organisation_id", 1), ("data.created_at", -1), ("id", -1)]),
+        ],
         "run_locks": [IndexModel([("organisation_id", 1), ("credential_id", 1)], unique=True)],
         "commands": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
         "triggers": [
@@ -73,6 +83,10 @@ async def ensure_indexes(database: Database) -> None:
         ],
         "executions": [
             IndexModel([("organisation_id", 1), ("run_id", 1), ("stage", 1)], unique=True)
+        ],
+        "execution_reviews": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("organisation_id", 1), ("run_id", 1), ("stage", 1)]),
         ],
         "mail": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
         "users": [IndexModel("email", unique=True), IndexModel("id", unique=True)],

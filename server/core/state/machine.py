@@ -144,7 +144,8 @@ class RotationMachine:
         self._control(run, fencing_token, expected_revision, now)
         if run.status not in {RunStatus.RUNNING, RunStatus.RECOVERING}:
             raise TransitionRejectedError("only active work can pause")
-        return self._update(run, now, status=RunStatus.PAUSED)
+        lease = run.lease.model_copy(update={"expires_at": now}) if run.lease else None
+        return self._update(run, now, status=RunStatus.PAUSED, lease=lease)
 
     def resume(
         self,
@@ -157,8 +158,6 @@ class RotationMachine:
         self._revision(run, expected_revision)
         if run.status is not RunStatus.PAUSED:
             raise TransitionRejectedError("only a paused run can resume")
-        if run.lease and run.lease.expires_at > now and run.lease.owner_id != owner_id:
-            raise LeaseConflictError("an active lease belongs to another worker")
         self._future(expires_at, now)
         token = run.fencing_token + 1
         lease = Lease(owner_id=owner_id, fencing_token=token, expires_at=expires_at)
@@ -259,8 +258,6 @@ class RotationMachine:
         self._revision(run, expected_revision)
         if run.status not in {RunStatus.FAILED, RunStatus.CLEANUP}:
             raise TransitionRejectedError("only interrupted work can recover")
-        if run.lease and run.lease.expires_at > now and run.lease.owner_id != owner_id:
-            raise LeaseConflictError("an active lease belongs to another worker")
         self._future(expires_at, now)
         token = run.fencing_token + 1
         lease = Lease(owner_id=owner_id, fencing_token=token, expires_at=expires_at)

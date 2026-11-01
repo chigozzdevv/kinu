@@ -6,9 +6,17 @@ from core.auth import AuthenticatedIdentity, Permission
 from core.errors import AuthenticationError, KinuError
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
-from hosting.models import Begin, Import, Platform, Selection
+from hosting.models import Begin, Import, Platform, Provision, Selection
 
-from api.deps import Identity, browser_session, required, services, session_binding
+from api.deps import (
+    IdempotencyKey,
+    Identity,
+    browser_session,
+    command_id,
+    required,
+    services,
+    session_binding,
+)
 from api.inventory.shared import _audit_change
 
 router = APIRouter(tags=["connections"])
@@ -172,3 +180,50 @@ async def mapped(
     organisation_id: Identifier, connection_id: Identifier, identity: Identity, request: Request
 ) -> Any:
     return await call(request, identity, organisation_id, "mapped", connection_id=connection_id)
+
+
+@router.post(PREFIX + "/{connection_id}/key-setups", status_code=202)
+async def provision(
+    organisation_id: Identifier,
+    connection_id: Identifier,
+    body: Provision,
+    identity: Identity,
+    key: IdempotencyKey,
+    request: Request,
+) -> Any:
+    return await call(
+        request,
+        identity,
+        organisation_id,
+        "provision",
+        connection_id=connection_id,
+        request_id=command_id(identity, organisation_id, key),
+        data=body.model_dump(mode="json"),
+    )
+
+
+@router.get(PREFIX + "/{connection_id}/key-setups")
+async def key_setups(
+    organisation_id: Identifier, connection_id: Identifier, identity: Identity, request: Request
+) -> Any:
+    return await call(
+        request, identity, organisation_id, "provision-list", connection_id=connection_id
+    )
+
+
+@router.post(PREFIX + "/{connection_id}/key-setups/{setup_id}/recover", status_code=202)
+async def recover_key_setup(
+    organisation_id: Identifier,
+    connection_id: Identifier,
+    setup_id: Identifier,
+    identity: Identity,
+    request: Request,
+) -> Any:
+    return await call(
+        request,
+        identity,
+        organisation_id,
+        "provision-recover",
+        connection_id=connection_id,
+        request_id=setup_id,
+    )

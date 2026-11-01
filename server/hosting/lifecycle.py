@@ -5,6 +5,7 @@ from contracts import Connection, ConnectionStatus, ConsumerBinding
 from core.errors import ResourceConflictError
 from core.storage.database import Database
 from core.storage.records import Records
+from core.storage.runs import execution_locked
 
 from hosting.grants import Grants
 
@@ -26,10 +27,8 @@ class Lifecycle:
                 for binding in await rows.list(ConsumerBinding, org)
                 if binding.runtime_connection_id == identity
             }
-            if await self.database.collection("run_locks").find_one(
-                {"organisation_id": org, "credential_id": {"$in": sorted(credentials)}},
-                session=rows.session,
-            ):
+            assert rows.session is not None
+            if await execution_locked(self.database, org, credentials, rows.session):
                 raise ResourceConflictError("Finish this account's rotations before reconnecting")
             return await rows.replace(
                 connection.model_copy(

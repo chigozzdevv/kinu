@@ -33,6 +33,14 @@ class CreationRecords(Protocol):
 
 
 class Resend(HttpProviderConnector):
+    def creation_scopes(self, connection: Connection, requested: frozenset[str]) -> frozenset[str]:
+        self.validate(connection)
+        assert connection.http
+        configured = frozenset(scopes(connection.http))
+        if requested and requested != configured:
+            raise ConnectorError("resend-scope", "Use the connection's selected sending domain")
+        return configured
+
     def __init__(
         self,
         secrets: SecretReader,
@@ -225,6 +233,12 @@ class Resend(HttpProviderConnector):
             response.secret.clear()
             raise
         return response
+
+    async def create_credential(
+        self, connection: Connection, name: str, scopes: frozenset[str]
+    ) -> ConnectorResponse:
+        self.creation_scopes(connection, scopes)
+        return await self.issue(connection, name)
 
     async def revoke_credential(self, connection: Connection, provider_id: str) -> None:
         self.validate(connection)

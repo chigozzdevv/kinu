@@ -153,10 +153,11 @@ class Service:
                 "revision": box.revision + 1,
             }
         )
-        await self.store.save(pending, item["grant"], box.revision)
+        cursor = json.loads(item.get("cursor", "{}"))
+        await self.store.save(pending, item["grant"], box.revision, cursor=cursor)
         await save_connection(self.database, pending)
         ready = pending.model_copy(update={"status": "ready", "revision": pending.revision + 1})
-        await self.store.save(ready, item["grant"], pending.revision)
+        await self.store.save(ready, item["grant"], pending.revision, cursor=cursor)
         return ready
 
     async def disconnect(self, org: str, identity: str, revision: int) -> Mailbox:

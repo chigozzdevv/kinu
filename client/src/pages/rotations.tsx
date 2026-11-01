@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, Pause, Plus, X } from "lucide-react"
 import { RunActivity } from "../components/activity"
 import { DetailCard } from "../components/detail"
@@ -15,6 +15,7 @@ import { Field, SelectControl, formControl } from "../components/workspace"
 import type { RotationHistory, RotationRun, RunStageActivity, StageName } from "../types"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
+import { useOrganisation } from "../lib/useorganisation"
 
 const stages: Array<{ id: StageName; label: string }> = [
   { id: "trigger", label: "Trigger" },
@@ -124,19 +125,34 @@ function RunStatus({ run }: { run: RotationRun }) {
 
 export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApproval, onNavigateControls, onNavigateConnection }: { activeRunId?: string; onSelectRotation: (runId: string) => void; onNavigateApproval: () => void; onNavigateControls: (credentialId: string, controlVersionId: string) => void; onNavigateConnection: (connectionId: string) => void }) {
   const queryClient = useQueryClient()
+  const { active } = useOrganisation()
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState("all")
   const [selectedId, setSelectedId] = useState(activeRunId ?? "")
   const [selectedStage, setSelectedStage] = useState<StageName | null>("trigger")
   const [creating, setCreating] = useState(false)
+  const [confirmingRecovery, setConfirmingRecovery] = useState(false)
   const [credentialId, setCredentialId] = useState("")
   const [reason, setReason] = useState("Routine credential rotation")
   const [urgency, setUrgency] = useState<"routine" | "urgent" | "emergency">("routine")
-  const [runs, graph, history, connections] = useQueries({ queries: [
-    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: (): number | false => selectedId && finished(queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((run) => run.id === selectedId)?.status) ? false : 5_000 },
+  const runs = useInfiniteQuery({
+    queryKey: ["rotations", "pages"],
+    initialPageParam: "",
+    queryFn: ({ pageParam }) => api.getRotations(pageParam || undefined),
+    getNextPageParam: (page) => page.length === 100 ? page.at(-1)?.id : undefined,
+    refetchInterval: 5_000,
+  })
+  const records = useMemo(() => runs.data?.pages.flat() ?? [], [runs.data])
+  const selectedRun = useQuery({
+    queryKey: ["rotation", selectedId],
+    queryFn: () => api.getRotation(selectedId),
+    enabled: Boolean(selectedId),
+    refetchInterval: (query): number | false => query.state.data?.status === "cleanup-required" || !finished(query.state.data?.status) ? 5_000 : false,
+  })
+  const [graph, history, connections] = useQueries({ queries: [
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
     { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => {
-      const run = queryClient.getQueryData<RotationRun[]>(["rotations"])?.find((item) => item.id === selectedId)
+      const run = queryClient.getQueryData<RotationRun>(["rotation", selectedId])
       return finished(run?.status) ? false : run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
     } },
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
@@ -145,14 +161,24 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     const selectedCredential = graph.data!.credentials.find((item) => item.id === credentialId)!
     return api.startRotation({ credential_id: selectedCredential.id, control_version: selectedCredential.control_version, reason: reason.trim(), urgency })
   }, onSuccess: async (run) => {
+    queryClient.setQueryData(["rotation", run.id], run)
     await queryClient.invalidateQueries({ queryKey: ["rotations"] })
     setSelectedId(run.id)
     onSelectRotation(run.id)
     setCreating(false)
   } })
+  const recover = useMutation({
+    mutationFn: () => api.recoverRotation(selectedId, selectedRun.data!.revision),
+    onSuccess: async (run) => {
+      queryClient.setQueryData(["rotation", run.id], run)
+      setConfirmingRecovery(false)
+      await queryClient.invalidateQueries({ queryKey: ["rotations"] })
+      await queryClient.invalidateQueries({ queryKey: ["rotations", run.id, "history"] })
+    },
+  })
 
   useEffect(() => { if (activeRunId) setSelectedId(activeRunId) }, [activeRunId])
-  const liveSelection = runs.data?.find((run) => run.id === selectedId)
+  const liveSelection = selectedRun.data
   const liveStage = liveSelection?.stage
   const liveStatus = liveSelection?.status
   useEffect(() => {
@@ -165,7 +191,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return (runs.data ?? []).filter((run) => {
+    return records.filter((run) => {
       const credential = graph.data?.credentials.find((item) => item.id === run.credential_id)
       const matchesSearch = !term || `${credential?.display_name ?? ""} ${run.stage} ${run.status} ${run.trigger.source}`.toLowerCase().includes(term)
       if (!matchesSearch) return false
@@ -175,14 +201,16 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       if (filter === "failed") return ["failed", "cleanup-required"].includes(run.status)
       return true
     })
-  }, [filter, graph.data?.credentials, runs.data, search])
+  }, [filter, graph.data?.credentials, records, search])
 
   if ([runs, graph, connections].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = [runs, graph, connections].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
 
-  const selected = runs.data!.find((run) => run.id === selectedId)
-  const availableCredentials = graph.data!.credentials.filter((item) => !runs.data!.some((run) => run.credential_id === item.id && !["cancelled", "completed", "compensated", "failed", "cleanup-required"].includes(run.status)))
+  if (selectedId && selectedRun.isLoading) return <div className="page"><Loading /></div>
+  if (selectedId && selectedRun.error) return <div className="page"><PageHeader eyebrow="Operations" title="Rotation" onBack={() => { setSelectedId(""); onSelectRotation("") }} /><Failure error={selectedRun.error} /></div>
+  const selected = selectedRun.data
+  const availableCredentials = graph.data!.credentials.filter((item) => !records.some((run) => run.credential_id === item.id && !["cancelled", "completed", "compensated", "failed"].includes(run.status)))
 
   function openCreate() {
     setCredentialId(availableCredentials[0]?.id ?? "")
@@ -196,9 +224,13 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     const credential = graph.data!.credentials.find((item) => item.id === selected.credential_id)
     const stageIndex = stages.findIndex((stage) => stage.id === selected.stage)
     return <div className="page">
-      <PageHeader eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={selected.status === "paused" && selected.stage === "approval" ? <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button> : undefined} />
+      <PageHeader eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={<>
+        {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
+        {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
+      </>} />
       <DetailCard>
         <div>
+          {selected.failure && <p role="status" className="mb-5 text-[11px] leading-5 text-[var(--red)]">{selected.failure.message}</p>}
           {selected.status === "compensated" && <p className="mb-5 text-[11px] text-[var(--ink-soft)]">Recovery completed · {titleCase(selected.recovery_mode ?? "recovery")}</p>}
           <div className="space-y-1" aria-label={`Rotation is at ${titleCase(selected.stage)}`}>
           {stages.map((stage, index) => {
@@ -250,6 +282,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
           </div>
         </div>
       </DetailCard>
+      <Modal isOpen={confirmingRecovery} onClose={() => setConfirmingRecovery(false)} title="Recover rotation" actions={<Button disabled={recover.isPending} onClick={() => recover.mutate()}>{recover.isPending ? "Starting…" : "Check and recover"}</Button>}>
+        <p className="text-[12px] leading-6 text-[var(--ink-soft)]">Kinu will check the recorded provider and deployment state, then restore the previous key or finish a verified rotation. Unresolved actions stay held for review.</p>
+        {recover.error && <p role="alert" className="mt-4 text-[11px] text-[var(--red)]">{recover.error.message}</p>}
+      </Modal>
     </div>
   }
 
@@ -271,6 +307,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
         </TableRow>
       })}</TableBody>
     </Table>
+    {runs.hasNextPage && <div className="mt-5 flex justify-center"><Button variant="secondary" disabled={runs.isFetchingNextPage} onClick={() => { void runs.fetchNextPage() }}>{runs.isFetchingNextPage ? "Loading…" : "Load more"}</Button></div>}
     <Modal isOpen={creating} onClose={() => setCreating(false)} title="Start rotation" actions={<Button onClick={() => create.mutate()} disabled={!credentialId || !reason.trim() || create.isPending}>{create.isPending ? "Starting…" : "Start rotation"}</Button>}>
       <div className="space-y-4"><Field label="Credential"><SelectControl value={credentialId} onChange={(event) => setCredentialId(event.target.value)}>{availableCredentials.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field><Field label="Urgency"><SelectControl value={urgency} onChange={(event) => setUrgency(event.target.value as typeof urgency)}><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></SelectControl></Field><Field label="Reason"><textarea className={`${formControl} h-24 py-3`} value={reason} onChange={(event) => setReason(event.target.value)} /></Field>{create.error && <div role="alert" className="rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{create.error.message}</div>}</div>
     </Modal>

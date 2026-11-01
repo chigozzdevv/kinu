@@ -67,11 +67,13 @@ services:
     restart: unless-stopped
     environment:
       <<: *app
+      FORWARDED_ALLOW_IPS: ${KINU_TRUSTED_PROXIES:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
       KINU_MONGO_URL: mongodb://api:${KINU_MONGO_API_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_AUTH_SECRET_FILE: /run/secrets/auth
       KINU_EXECUTOR_TOKEN_FILE: /run/secrets/executor-token
       KINU_EXECUTOR_URL: http://executor:8002
       KINU_SETUP_TOKEN_FILE: /run/secrets/setup
+      KINU_CONNECTION_PRINCIPALS: ${KINU_CONNECTION_PRINCIPALS:-}
       KINU_RESEND_KEY: ${KINU_RESEND_KEY:-}
       KINU_EMAIL_SENDER: ${KINU_EMAIL_SENDER:-Kinu <noreply@example.com>}
     secrets: [auth, executor-token, setup]
@@ -144,6 +146,11 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     shm_size: 256mb
+    healthcheck:
+      test: ["CMD", "python", "-c", "from redis import Redis; from executor.config import ExecutorSettings; assert Redis.from_url(ExecutorSettings().redis_url.get_secret_value()).get('kinu:worker:heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks: [data, app, internet]
 
   web:

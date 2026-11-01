@@ -79,6 +79,7 @@ async def runtime(
                 queue = Jobs(config.redis_url.get_secret_value()) if config.executor_token else None
                 if queue:
                     stack.push_async_callback(queue.close)
+                app.state.queue = queue
                 private = (
                     PrivateClient(http, config.executor_url, config.executor_token)
                     if config.executor_token

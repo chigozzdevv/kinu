@@ -3,6 +3,7 @@ from contracts import (
     GenerationState,
     Incident,
     IncidentStatus,
+    RecoveryMode,
     RotationRun,
     RunStatus,
     Stage,
@@ -23,7 +24,9 @@ _ROTATION_INCIDENTS = {
 async def sync_incidents(
     database: Database, run: RotationRun, session: AsyncClientSession
 ) -> tuple[Incident, ...]:
-    if run.status is RunStatus.COMPLETED:
+    if run.status is RunStatus.COMPLETED or (
+        run.status is RunStatus.COMPENSATED and run.recovery_mode is RecoveryMode.ROLLFORWARD
+    ):
         status = IncidentStatus.RESOLVED
     elif run.status in {
         RunStatus.FAILED,

@@ -32,6 +32,12 @@ class HistoryStore:
             .sort([("data.started_at", 1), ("stage", 1)])
             .to_list()
         )
+        results.extend(
+            await self._database.collection("execution_reviews")
+            .find({"organisation_id": organisation_id, "run_id": run_id})
+            .to_list()
+        )
+        results.sort(key=lambda row: row["data"]["started_at"])
         async with Records(self._database).read() as rows:
             approvals = await rows.match(Approval, organisation_id, {"run_id": run_id})
         return RotationHistory(
@@ -95,17 +101,19 @@ class HistoryStore:
     ) -> ApprovalEvidenceSnapshot:
         async with Records(self._database).read() as rows:
             approval = await rows.get(Approval, organisation_id, approval_id)
-        results = (
-            await self._database.collection("executions")
-            .find(
-                {
-                    "organisation_id": organisation_id,
-                    "run_id": approval.run_id,
-                    "stage": {"$in": ["verify", "observe"]},
-                }
+        results = []
+        for collection in ("executions", "execution_reviews"):
+            results.extend(
+                await self._database.collection(collection)
+                .find(
+                    {
+                        "organisation_id": organisation_id,
+                        "run_id": approval.run_id,
+                        "stage": {"$in": ["verify", "observe"]},
+                    }
+                )
+                .to_list()
             )
-            .to_list()
-        )
         for row in results:
             evidence = StageExecutionResult.model_validate(row["data"])
             if digest(evidence) == approval.evidence_hash:

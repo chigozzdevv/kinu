@@ -47,6 +47,20 @@ class HttpProviderConnector:
     async def preflight(self, connection: Connection, run: RotationRun) -> None:
         return None
 
+    def creation_scopes(self, connection: Connection, requested: frozenset[str]) -> frozenset[str]:
+        _api(connection)
+        return requested
+
+    async def create_credential(
+        self, connection: Connection, name: str, scopes: frozenset[str]
+    ) -> ConnectorResponse:
+        api = _api(connection)
+        return await self._create(
+            api,
+            {"name": name, "scopes": sorted(self.creation_scopes(connection, scopes))},
+            await self._headers(connection, api.auth),
+        )
+
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         api = _api(connection)
         headers = await self._headers(connection, api.auth)

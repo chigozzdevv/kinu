@@ -116,13 +116,25 @@ class Platform:
                 200,
                 json={
                     "id": deployment,
-                    "status": "live" if self.current[project] == deployment else "deactivated",
+                    "status": "build_in_progress"
+                    if self.failure in {"pending", "pending-unknown"}
+                    and deployment.endswith("-new")
+                    else "live"
+                    if self.failure == "ready-not-live" and deployment.endswith("-new")
+                    else "live"
+                    if self.current[project] == deployment
+                    else "deactivated",
                     "commit": {"id": "pinned-source"},
                 },
             )
         if path.endswith("/deploys") and request.method == "POST":
             assert json.loads(request.content) == {"commitId": "pinned-source"}
             candidate = project + "-new"
+            if self.failure in {"pending", "pending-unknown", "ready-not-live"}:
+                self.deployments[candidate] = self.variables[project]
+                if self.failure == "pending-unknown":
+                    return httpx.Response(500)
+                return httpx.Response(200, json={"id": candidate, "status": "created"})
             self.current[project] = candidate
             self.loaded[project] = self.variables[project]
             self.deployments[candidate] = self.loaded[project]

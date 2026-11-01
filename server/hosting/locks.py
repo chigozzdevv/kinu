@@ -16,6 +16,8 @@ async def acquire(database: Database, state: Snapshot, run_id: str) -> None:
                 "connection_id": target.runtime.id,
                 "resource": target.binding.runtime_resource,
             }
+            if await database.collection("provision_locks").find_one(query, session=session):
+                raise ActiveRunConflictError("Finish this workload's key setup before rotating")
             current = await database.collection("runtime_locks").find_one(query, session=session)
             if current and current["run_id"] != run_id:
                 try:

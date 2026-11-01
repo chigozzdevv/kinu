@@ -35,6 +35,20 @@ class Journal:
             raise ResourceConflictError("rotation checkpoint already contains another result")
         return stored
 
+    async def review(self, result: StageExecutionResult) -> None:
+        data = result.model_dump(mode="json")
+        if _sensitive(data):
+            raise ResourceConflictError("rotation evidence cannot contain credential values")
+        await self.database.collection("execution_reviews").insert_one(
+            {
+                "organisation_id": result.organisation_id,
+                "run_id": result.run_id,
+                "id": result.id,
+                "stage": result.stage.value,
+                "data": data,
+            }
+        )
+
 
 def _sensitive(value: Any) -> bool:
     if isinstance(value, dict):

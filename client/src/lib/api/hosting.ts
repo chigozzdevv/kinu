@@ -4,6 +4,10 @@ import { request, workspacePath } from "./http"
 export type HostingPlatform = "vercel" | "railway" | "render"
 export interface HostProject { id: string; name: string }
 export interface HostMapping { reference: string; credential_id: string; service: { id: string; revision: number; endpoint: string | null } }
+export interface KeySetup {
+  id: string; reference: string; project_id: string; credential_id: string | null; message: string | null;
+  phase: "pending" | "creating" | "stored" | "writing" | "deploying" | "registering" | "completed" | "cancelled" | "review-required" | "recovering" | "restoring";
+}
 export interface HostVariable {
   reference: string; project_id: string; environment: string; service_id: string | null;
   name: string; key_id: string; readable: boolean; environment_name: string | null; service_name: string | null;
@@ -15,6 +19,17 @@ export interface HostProjects {
 const path = () => `${workspacePath()}/connections/hosting`
 
 export const hosting = {
+  async getKeySetups(connectionId: string): Promise<KeySetup[]> {
+    return request(`${path()}/${connectionId}/key-setups`)
+  },
+  async createManagedKey(connectionId: string, requestId: string, input: { project_id: string; variable_reference: string; provider_connection_id: string; health_url: string; scopes: string[] }): Promise<KeySetup> {
+    return request(`${path()}/${connectionId}/key-setups`, {
+      method: "POST", headers: { "Idempotency-Key": requestId }, body: JSON.stringify(input),
+    })
+  },
+  async recoverKeySetup(connectionId: string, setupId: string): Promise<KeySetup> {
+    return request(`${path()}/${connectionId}/key-setups/${setupId}/recover`, { method: "POST", body: "{}" })
+  },
   async getHostMappings(connectionId: string): Promise<HostMapping[]> {
     return request(`${path()}/${connectionId}/credentials`)
   },

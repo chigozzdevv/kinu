@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from contracts import Connection, ConnectionStatus, ManagedCredential, SetupSession
 from core.errors import ResourceConflictError, ResourceNotFoundError
 from core.storage.records import Records
+from core.storage.runs import execution_locked
 
 from browser.catalog import Catalog
 
@@ -34,9 +35,9 @@ class Store:
             keys = await rows.match(
                 ManagedCredential, org, {"connection_id": current.id, "archived_at": None}
             )
-            if await self.catalog.database.collection("run_locks").find_one(
-                {"organisation_id": org, "credential_id": {"$in": [key.id for key in keys]}},
-                session=rows.session,
+            assert rows.session is not None
+            if await execution_locked(
+                self.catalog.database, org, [key.id for key in keys], rows.session
             ):
                 raise ResourceConflictError(
                     "Finish this provider's active rotations before reconnecting"

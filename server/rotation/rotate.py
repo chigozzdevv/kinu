@@ -6,9 +6,12 @@ from contracts import (
     CompleteStageCommand,
     FailRunCommand,
     Failure,
+    PauseRunCommand,
+    ResumeRunCommand,
     RotationRun,
     RunStatus,
     Stage,
+    StageBindings,
     StageExecutionResult,
     StageExecutionStatus,
     StageProof,
@@ -23,8 +26,10 @@ from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from policy import GatePolicy
 
+from rotation.approval import RevocationApprovals
 from rotation.generations import discard
 from rotation.journal import Journal
+from rotation.lease import Heartbeat
 from rotation.ports import Effects, Loader
 from rotation.stages import Stages, stable
 from rotation.state import Snapshot
@@ -35,6 +40,7 @@ class Rotation:
         self.database, self.effects, self.loader = database, effects, loader
         self.journal = Journal(database)
         self.audit = AuditWriter(AuditStore(database), region, lambda: datetime.now(UTC))
+        self.approvals: RevocationApprovals | None = None
 
     async def execute(self, org: str, run_id: str, owner: str) -> RotationRun:
         repository = RunStore(self.database)
@@ -45,9 +51,26 @@ class Rotation:
             RunStatus.CANCELLED,
             RunStatus.CLEANUP,
             RunStatus.COMPENSATED,
-            RunStatus.PAUSED,
         }:
             return run
+        if run.status is RunStatus.PAUSED:
+            if run.stage is not Stage.APPROVAL or self.approvals is None:
+                return run
+            if not await self.approvals.ready(run):
+                return run
+            run = (
+                await RunWorkflow(repository).resume(
+                    ResumeRunCommand(
+                        id=stable("resume", run.id + ":" + str(run.revision)),
+                        organisation_id=org,
+                        run_id=run.id,
+                        actor_id=owner,
+                        owner_id=owner,
+                        expected_revision=run.revision,
+                        expires_at=datetime.now(UTC) + timedelta(minutes=14),
+                    )
+                )
+            ).run
         if (
             run.status is RunStatus.RUNNING
             and run.lease
@@ -98,13 +121,53 @@ class Rotation:
         elif not run.lease or run.lease.owner_id != owner:
             raise LeaseConflictError("another rotation worker owns this run")
         stages = Stages(self.database, self.effects, state, run)
+        heartbeat = Heartbeat(repository, workflow, run)
+        heartbeat.start()
         try:
             while run.status is RunStatus.RUNNING:
+                heartbeat.check()
+                stages.run = run
                 await self._guard(run, state)
                 result = await self.journal.get(org, run_id, run.stage)
                 if result is None:
                     started = datetime.now(UTC)
-                    checks, output, bindings = await stages.execute(run.stage)
+                    if (
+                        run.stage is Stage.PREFLIGHT
+                        and state.controls.definition.require_revoke_approval
+                    ):
+                        if self.approvals is None:
+                            raise ResourceConflictError("Revocation approval is not configured")
+                        await self.approvals.ensure_approver(run)
+                    if (
+                        run.stage is Stage.APPROVAL
+                        and state.controls.definition.require_revoke_approval
+                    ):
+                        if self.approvals is None:
+                            raise ResourceConflictError("Revocation approval is not configured")
+                        output = await self.approvals.authorize(state, run)
+                        if output is None:
+                            async with heartbeat.lock:
+                                current = await repository.get(org, run_id)
+                                return (
+                                    await workflow.pause(
+                                        PauseRunCommand(
+                                            id=stable(
+                                                "pause", run.id + ":" + str(current.revision)
+                                            ),
+                                            organisation_id=org,
+                                            run_id=run.id,
+                                            actor_id=owner,
+                                            expected_revision=current.revision,
+                                            fencing_token=run.fencing_token,
+                                        )
+                                    )
+                                ).run
+                        checks = frozenset(
+                            {"approval-valid", "action-digest-valid", "evidence-current"}
+                        )
+                        bindings = StageBindings()
+                    else:
+                        checks, output, bindings = await stages.execute(run.stage)
                     identity = stable("execution", run.id + ":" + run.stage.value)
                     result = await self.journal.save(
                         StageExecutionResult(
@@ -137,28 +200,31 @@ class Rotation:
                     run_id=run_id,
                     occurred_at=result.completed_at,
                 )
-                run = (
-                    await workflow.complete(
-                        CompleteStageCommand(
-                            id=stable("complete", run.id + ":" + run.stage.value),
-                            organisation_id=org,
-                            run_id=run.id,
-                            actor_id=owner,
-                            expected_revision=run.revision,
-                            fencing_token=run.fencing_token,
-                            bindings=result.bindings,
-                            proof=StageProof(
-                                run_id=run.id,
+                async with heartbeat.lock:
+                    heartbeat.check()
+                    current = await repository.get(org, run_id)
+                    run = (
+                        await workflow.complete(
+                            CompleteStageCommand(
+                                id=stable("complete", run.id + ":" + run.stage.value),
                                 organisation_id=org,
-                                stage=run.stage,
-                                checks=result.checks,
-                                evidence_ids=result.evidence_ids,
+                                run_id=run.id,
                                 actor_id=owner,
-                                recorded_at=result.completed_at,
-                            ),
+                                expected_revision=current.revision,
+                                fencing_token=run.fencing_token,
+                                bindings=result.bindings,
+                                proof=StageProof(
+                                    run_id=run.id,
+                                    organisation_id=org,
+                                    stage=run.stage,
+                                    checks=result.checks,
+                                    evidence_ids=result.evidence_ids,
+                                    actor_id=owner,
+                                    recorded_at=result.completed_at,
+                                ),
+                            )
                         )
-                    )
-                ).run
+                    ).run
             return run
         except Exception as error:
             current = await repository.get(org, run_id)
@@ -175,7 +241,9 @@ class Rotation:
             try:
                 if created:
                     restored = await self.effects.rollback(
-                        state, created.output, deployment.output if deployment else None
+                        state,
+                        created.output | {"run_id": run_id, "fencing_token": current.fencing_token},
+                        deployment.output if deployment else None,
                     )
                 elif current.stage is Stage.CREATE:
                     restored = await self.effects.cleanup_unrecorded(state, run_id)
@@ -221,24 +289,46 @@ class Rotation:
                         completed_at=now,
                     )
                 )
-            command = {
-                "id": stable("failed", run.id),
-                "organisation_id": org,
-                "run_id": run_id,
-                "actor_id": owner,
-                "expected_revision": current.revision,
-                "fencing_token": current.fencing_token,
-                "failure": failure,
-            }
-            if current.status in {RunStatus.RUNNING, RunStatus.PAUSED}:
-                if restored:
-                    return (await workflow.fail(FailRunCommand.model_validate(command))).run
-                return (await workflow.cleanup(CleanupRunCommand.model_validate(command))).run
-            return current
+            async with heartbeat.lock:
+                current = await repository.get(org, run_id)
+                if not current.lease or current.lease.owner_id != owner:
+                    return current
+                command = {
+                    "id": stable("failed", run.id),
+                    "organisation_id": org,
+                    "run_id": run_id,
+                    "actor_id": owner,
+                    "expected_revision": current.revision,
+                    "fencing_token": run.fencing_token,
+                    "failure": failure,
+                }
+                if current.status in {RunStatus.RUNNING, RunStatus.PAUSED}:
+                    if restored:
+                        return (await workflow.fail(FailRunCommand.model_validate(command))).run
+                    return (await workflow.cleanup(CleanupRunCommand.model_validate(command))).run
+                return current
+        finally:
+            await heartbeat.close()
 
     async def _reject(self, repository: RunStore, run: RotationRun, owner: str) -> RotationRun:
         if run.status is not RunStatus.PENDING:
-            raise ResourceConflictError("the running rotation mapping changed")
+            return (
+                await RunWorkflow(repository).cleanup(
+                    CleanupRunCommand(
+                        id=stable("mapping", run.id + ":" + str(run.revision)),
+                        organisation_id=run.organisation_id,
+                        run_id=run.id,
+                        actor_id=owner,
+                        expected_revision=run.revision,
+                        fencing_token=run.fencing_token,
+                        failure=Failure(
+                            code="rotation-mapping-changed",
+                            message="Restore the pinned credential mappings before recovery.",
+                            retryable=False,
+                        ),
+                    )
+                )
+            ).run
         workflow = RunWorkflow(repository)
         started = (
             await workflow.start(
@@ -274,7 +364,8 @@ class Rotation:
     async def _guard(self, run: RotationRun, state: Snapshot) -> None:
         current = await RunStore(self.database).get(run.organisation_id, run.id)
         if (
-            current.revision != run.revision
+            current.fencing_token != run.fencing_token
+            or current.stage is not run.stage
             or current.status is not RunStatus.RUNNING
             or not current.lease
             or current.lease.expires_at <= datetime.now(UTC)

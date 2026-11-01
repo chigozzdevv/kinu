@@ -344,9 +344,15 @@ def _runtime_aligned(
             and binding.secret_reference != generation.secret_reference
         )
         or runtime.get("reconciling") is True
-        or runtime.get("generation_id") != generation.id
+        or ("secret_references" not in runtime and runtime.get("generation_id") != generation.id)
     ):
         return False
+    references = runtime.get("secret_references")
+    if isinstance(references, dict):
+        return (
+            runtime.get("ready") is True
+            and references.get(binding.runtime_secret_name) == generation.secret_reference
+        )
     expected_secret, expected_version = _secret_version(
         generation.secret_reference or binding.secret_reference
     )
@@ -403,7 +409,9 @@ def _event(
     severity: Severity,
     observed_at: datetime,
 ) -> IngestionEvent:
-    source_event_id = hashlib.sha256(f"{credential.id}\0{kind}\0{state}".encode()).hexdigest()
+    source_event_id = hashlib.sha256(
+        f"{credential.id}\0{credential.active_generation_id}\0{kind}\0{state}".encode()
+    ).hexdigest()
     identity = hashlib.sha256(
         f"{credential.organisation_id}\0detection\0{source_event_id}\0{kind}".encode()
     ).hexdigest()
@@ -418,6 +426,7 @@ def _event(
         confidence=Confidence.VERIFIED,
         resource=SourceResource(
             credential_id=credential.id,
+            generation_id=credential.active_generation_id,
             provider=credential.provider,
             provider_id=credential.provider_id,
         ),

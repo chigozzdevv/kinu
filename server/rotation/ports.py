@@ -16,6 +16,9 @@ class Effects(Protocol):
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]: ...
+    async def verify_current(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> None: ...
     async def promote(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]: ...

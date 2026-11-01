@@ -64,6 +64,7 @@ class Rollout:
             await self.rows.insert_one(
                 {**query, "old": current.model_dump(mode="json"), "phase": "prepared"}
             )
+            await self.rows.update_one(query, {"$set": {"phase": "writing"}})
             with await self.versions.access_for(state.store, created["secret_reference"]) as value:
                 await adapter.write(target.variable, value)
             await self.rows.update_one(query, {"$set": {"phase": "written"}})
@@ -125,17 +126,30 @@ class Rollout:
                 Deployment.model_validate(row["old"]),
             )
             candidate = row.get("candidate", {}).get("id")
-            if current.id not in {old.id, candidate}:
+            restoration = row.get("restoration", {}).get("id")
+            if current.id not in {old.id, candidate, restoration}:
                 return False
+            if row.get("rollback_phase") == "restoring" and not restoration:
+                return False
+            if candidate:
+                pending = await adapter.status(target.variable, candidate)
+                if pending.state == "pending" or (
+                    pending.state == "ready" and current.id == old.id and not restoration
+                ):
+                    return False
+            elif row.get("phase") in {"written", "deploying"}:
+                return False
+            if restoration:
+                previous_restore = await adapter.status(target.variable, restoration)
+                if previous_restore.state == "pending" or (
+                    previous_restore.state == "failed" and current.id == restoration
+                ):
+                    return False
+                if previous_restore.state == "failed":
+                    restoration = None
             if not await self.versions.has_value(state.store, state.credential.secret_reference):
-                if current.id != old.id:
-                    await self.wait(
-                        state,
-                        created,
-                        adapter,
-                        target,
-                        await adapter.restore(target.variable, old.id),
-                    )
+                if current.id not in {old.id, restoration}:
+                    await self.restore(state, created, adapter, target, row, old.id)
                 restored = False
                 continue
             current_value = await adapter.read(target.variable)
@@ -143,6 +157,12 @@ class Rollout:
                 restored = False
                 continue
             with current_value:
+                if row["phase"] == "writing" and not row.get("write_confirmed"):
+                    if fingerprint(current_value.bytes()) != created["fingerprint"]:
+                        return False
+                    await self.rows.update_one(
+                        {"_id": row["_id"]}, {"$set": {"write_confirmed": True}}
+                    )
                 if fingerprint(current_value.bytes()) not in {
                     created["fingerprint"],
                     row.get("old_fingerprint", ""),
@@ -157,9 +177,29 @@ class Rollout:
             ) as old_value:
                 await adapter.write(target.variable, old_value)
                 expected = fingerprint(old_value.bytes())
-            if current.id != old.id:
-                await self.wait(
-                    state, created, adapter, target, await adapter.restore(target.variable, old.id)
-                )
+            if current.id not in {old.id, restoration}:
+                current = await self.restore(state, created, adapter, target, row, old.id)
+            if (await adapter.current(target.variable)).id != current.id:
+                return False
             await self.proof.check(target.service, target.variable.name, expected)
         return restored
+
+    async def restore(
+        self,
+        state: Snapshot,
+        created: dict[str, Any],
+        adapter: Hosting,
+        target: Target,
+        row: dict[str, Any],
+        identity: str,
+    ) -> Deployment:
+        assert target.variable is not None
+        query = {"_id": row["_id"]}
+        await self.rows.update_one(
+            query, {"$set": {"rollback_phase": "restoring"}, "$unset": {"restoration": ""}}
+        )
+        restored = await adapter.restore(target.variable, identity)
+        await self.rows.update_one(
+            query, {"$set": {"restoration": restored.model_dump(mode="json")}}
+        )
+        return await self.wait(state, created, adapter, target, restored)

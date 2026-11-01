@@ -7,13 +7,26 @@ DOMAIN = "0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c"
 
 
 class Platform:
-    def __init__(self, *, unknown: bool = False, value: str = "setup-required") -> None:
+    def __init__(
+        self,
+        *,
+        unknown: bool = False,
+        value: str = "setup-required",
+        project_name: str = "kinu-check",
+        variable: str = "RESEND_API_KEY",
+        health_host: str = "kinu-check.workload.example",
+        deployment_state: str = "live",
+    ) -> None:
         self.unknown, self.value, self.loaded = unknown, value, value
         self.keys: dict[str, dict[str, str]] = {}
         self.created: list[str] = []
         self.revoked: list[str] = []
         self.deployments = 0
         self.current = "initial"
+        self.project_name, self.variable, self.health_host = project_name, variable, health_host
+        self.deployment_state = deployment_state
+        self.candidate: str | None = None
+        self.snapshots = {"initial": value}
 
     def response(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -75,7 +88,7 @@ class Platform:
                 self.revoked.append(key)
                 return httpx.Response(200, json={"id": key})
             raise AssertionError(str(request.url))
-        if request.url.host == "kinu-check.workload.example":
+        if request.url.host == self.health_host:
             valid = any(item["token"] == self.loaded for item in self.keys.values())
             return httpx.Response(
                 200,
@@ -83,7 +96,7 @@ class Platform:
                     "ok": valid,
                     "nonce": request.headers["x-kinu-probe"],
                     "fingerprints": {
-                        "RESEND_API_KEY": hashlib.sha256(self.loaded.encode()).hexdigest()
+                        self.variable: hashlib.sha256(self.loaded.encode()).hexdigest()
                     },
                     **({"state": "provider-rejected"} if not valid else {}),
                 },
@@ -97,7 +110,7 @@ class Platform:
                     {
                         "service": {
                             "id": "app",
-                            "name": "kinu-check",
+                            "name": self.project_name,
                             "type": "web_service",
                         },
                         "cursor": "app",
@@ -110,30 +123,41 @@ class Platform:
                 json=[
                     {
                         "envVar": {
-                            "key": "RESEND_API_KEY",
+                            "key": self.variable,
                             "value": self.value,
                         },
                         "cursor": "variable",
                     }
                 ],
             )
-        if path == "/v1/services/app/env-vars/RESEND_API_KEY":
+        if path == "/v1/services/app/env-vars/" + self.variable:
             if request.method == "PUT":
                 self.value = json.loads(request.content)["value"]
-            return httpx.Response(200, json={"key": "RESEND_API_KEY", "value": self.value})
+            return httpx.Response(200, json={"key": self.variable, "value": self.value})
+        if path == "/v1/services/app/rollback":
+            self.current = json.loads(request.content)["deployId"]
+            self.loaded = self.snapshots[self.current]
+            return httpx.Response(201, json={"id": self.current, "status": "live"})
         if path == "/v1/services/app/deploys":
             if request.method == "POST":
                 assert json.loads(request.content) == {"commitId": "pinned-source"}
                 self.deployments += 1
-                self.loaded, self.current = self.value, "deployment-" + str(self.deployments)
-                return httpx.Response(201, json={"id": self.current, "status": "live"})
+                self.candidate = "deployment-" + str(self.deployments)
+                self.snapshots[self.candidate] = self.value
+                if self.deployment_state == "live":
+                    self.loaded, self.current = self.value, self.candidate
+                return httpx.Response(
+                    201, json={"id": self.candidate, "status": self.deployment_state}
+                )
             return httpx.Response(200, json=[{"deploy": {"id": self.current, "status": "live"}}])
         if path.startswith("/v1/services/app/deploys/"):
             return httpx.Response(
                 200,
                 json={
                     "id": path.rsplit("/", 1)[1],
-                    "status": "live",
+                    "status": self.deployment_state
+                    if path.rsplit("/", 1)[1] == self.candidate
+                    else "live",
                     "commit": {"id": "pinned-source"},
                 },
             )

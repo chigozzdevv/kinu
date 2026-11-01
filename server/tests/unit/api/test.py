@@ -781,3 +781,87 @@ async def test_database_outage_fails_readiness_without_exposing_error_details() 
         assert response.status_code == 503 and response.json() == {"status": "unavailable"}
         assert "private" not in response.text
         assert (await http.get("/health/live")).status_code == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("heartbeat", [None, "recent"])
+async def test_readiness_checks_that_the_background_worker_is_running(
+    heartbeat: str | None,
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    app = create_app(
+        ApiServices(access=AccessControl(AccessRepository(Role.ADMINISTRATOR))),
+        browser=make_browser(IDENTITY),
+    )
+    app.state.database = SimpleNamespace(documents=SimpleNamespace(command=AsyncMock()))
+    app.state.queue = SimpleNamespace(
+        queue=SimpleNamespace(client=SimpleNamespace(get=AsyncMock(return_value=heartbeat)))
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http:
+        response = await http.get("/health/ready")
+        assert response.status_code == (200 if heartbeat else 503)
+        assert response.json() == {"status": "ready" if heartbeat else "worker-unavailable"}
+        app.state.queue.queue.client.get.assert_awaited_once_with("kinu:worker:heartbeat")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("role", [Role.VIEWER, Role.OPERATOR, Role.ADMINISTRATOR])
+async def test_key_setup_and_recovery_require_administrators_and_forward_bound_identity(
+    role: Role,
+) -> None:
+    import json
+
+    from core.private import PrivateClient
+    from pydantic import SecretStr
+    from testkit import make_run
+
+    forwarded: list[dict[str, object]] = []
+
+    def executor(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        forwarded.append(body)
+        assert body["organisation_id"] == "org_one" and body["actor_id"] == IDENTITY.actor_id
+        assert request.headers["authorization"] == "Bearer executor-fixture-token"
+        if request.url.path == "/rotations/recover":
+            assert body["expected_revision"] == 2 and body["run_id"] == "run_one"
+            return httpx.Response(200, json=make_run().model_dump(mode="json"))
+        assert request.url.path == "/hosting" and body["operation"] == "provision"
+        assert body["connection_id"] == "host_one" and len(body["session"]) == 64
+        assert body["data"]["provider_connection_id"] == "provider_one"
+        return httpx.Response(200, json={"id": "setup_one", "phase": "pending"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(executor)) as private:
+        app = create_app(
+            ApiServices(
+                access=AccessControl(AccessRepository(role)),
+                private=PrivateClient(
+                    private, "http://executor", SecretStr("executor-fixture-token")
+                ),
+            ),
+            browser=make_browser(IDENTITY),
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            recovery = await client.post(
+                "/v1/organisations/org_one/runs/run_one/recover",
+                headers=headers(),
+                json={"expected_revision": 2},
+            )
+            setup = await client.post(
+                "/v1/organisations/org_one/connections/hosting/host_one/key-setups",
+                headers=headers(),
+                json={
+                    "project_id": "project_one",
+                    "variable_reference": "render://project_one/production/MAIL_KEY",
+                    "provider_connection_id": "provider_one",
+                    "health_url": "https://workload.example/probe",
+                },
+            )
+        expected = 202 if role is Role.ADMINISTRATOR else 403
+        assert recovery.status_code == setup.status_code == expected
+        assert len(forwarded) == (2 if role is Role.ADMINISTRATOR else 0)

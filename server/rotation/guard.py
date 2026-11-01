@@ -13,7 +13,7 @@ from rotation.state import Snapshot
 async def validate(database: Database, state: Snapshot, created: dict[str, Any]) -> None:
     run = await RunStore(database).get(state.credential.organisation_id, created["run_id"])
     if (
-        run.status is not RunStatus.RUNNING
+        run.status not in {RunStatus.RUNNING, RunStatus.RECOVERING}
         or not run.lease
         or run.lease.expires_at <= datetime.now(UTC)
         or run.fencing_token != created["fencing_token"]

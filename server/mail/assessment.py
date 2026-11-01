@@ -171,7 +171,6 @@ class Assessment:
             and data["provider_id"] == credential.provider_id
             and signal.event.kind in controls.definition.automatic_triggers
             and (source_allowed if signal.event.kind == "credential-exposure-detected" else due)
-            and not controls.definition.require_revoke_approval
         )
         if data.get("decision") is None:
             decision = Decision(decision="review", reason="insufficient-evidence")

@@ -20,6 +20,10 @@ async def ready(request: Request) -> JSONResponse:
         try:
             async with asyncio.timeout(3):
                 await database.documents.command("ping")
+                queue = getattr(request.app.state, "queue", None)
+                if queue and not await queue.queue.client.get("kinu:worker:heartbeat"):
+                    configured = False
+                    description = "worker-unavailable"
         except Exception:
             configured = False
             description = "unavailable"

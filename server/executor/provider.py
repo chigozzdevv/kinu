@@ -29,6 +29,11 @@ from executor.versions import Versions
 
 
 class Providers(HttpProviderConnector):
+    def creation_scopes(self, connection: Connection, requested: frozenset[str]) -> frozenset[str]:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return self.resend.creation_scopes(connection, requested)
+        return super().creation_scopes(connection, requested)
+
     def __init__(
         self,
         authorizations: SecretReader,
@@ -124,6 +129,13 @@ class Providers(HttpProviderConnector):
         return hashlib.sha256(
             json.dumps(await self.catalog.state(connection), sort_keys=True).encode()
         ).hexdigest()
+
+    async def create_credential(
+        self, connection: Connection, name: str, scopes: frozenset[str]
+    ) -> ConnectorResponse:
+        if connection.platform == "resend" and connection.interface is ConnectionInterface.API:
+            return await self.resend.create_credential(connection, name, scopes)
+        return await super().create_credential(connection, name, scopes)
 
     async def execute(
         self, tool: str, payload: dict[str, Any], context: ConnectorContext

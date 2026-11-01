@@ -140,10 +140,8 @@ async def rotate(
     controls = await inventory.get_controls(
         organisation_id, existing.credential_id, body.control_version
     )
-    if credential.control_version != controls.id or controls.definition.require_revoke_approval:
-        raise ResourceConflictError(
-            "incident controls changed or require manual revocation approval"
-        )
+    if credential.control_version != controls.id:
+        raise ResourceConflictError("incident controls changed; refresh before starting rotation")
     incident, run, applied = await service.start_rotation(
         organisation_id,
         incident_id,

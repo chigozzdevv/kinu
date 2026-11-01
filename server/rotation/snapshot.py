@@ -91,6 +91,10 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
                 {"organisation_id": org, "binding_id": binding.id}
             )
             variable = Variable.model_validate(mapping["variable"]) if mapping else None
+            if runtime.platform == "vercel" and variable and variable.environment != "production":
+                raise ResourceConflictError(
+                    "Vercel rotation currently requires a production variable"
+                )
             if (
                 binding.current_generation_id != current.id
                 or binding.secret_reference != current.secret_reference
@@ -138,7 +142,6 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
         or credential.control_version != controls
         or control.credential_id != credential_id
         or control.digest != digest(control.definition)
-        or control.definition.require_revoke_approval
         or control.definition.require_generation_telemetry
         or not 60 <= control.definition.maximum_observation_seconds <= 600
         or not control.definition.preserve_old_generation

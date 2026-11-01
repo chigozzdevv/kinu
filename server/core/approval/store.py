@@ -47,18 +47,20 @@ class ApprovalStore:
             or generation.provider_id != action.provider_id
         ):
             raise ApprovalError("approval no longer matches the active run and credential")
-        evidence = (
-            await rows.database.collection("executions")
-            .find(
-                {
-                    "organisation_id": action.organisation_id,
-                    "run_id": action.run_id,
-                    "stage": {"$in": ["verify", "observe"]},
-                },
-                session=rows.session,
+        evidence = []
+        for collection in ("executions", "execution_reviews"):
+            evidence.extend(
+                await rows.database.collection(collection)
+                .find(
+                    {
+                        "organisation_id": action.organisation_id,
+                        "run_id": action.run_id,
+                        "stage": {"$in": ["verify", "observe"]},
+                    },
+                    session=rows.session,
+                )
+                .to_list()
             )
-            .to_list()
-        )
         if not any(
             result.status is StageExecutionStatus.SUCCEEDED
             and digest(result) == action.evidence_hash

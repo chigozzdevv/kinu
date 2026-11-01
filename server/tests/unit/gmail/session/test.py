@@ -1,12 +1,17 @@
+import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from contracts import ConnectionRole, ConnectionStatus
 from core.errors import ResourceConflictError
+from core.inventory.store import InventoryStore
 from core.storage.database import Database
 from mail.google import Google, RequestError
-from mail.models import SCOPE, GoogleConfig
+from mail.models import SCOPE, GoogleConfig, Mailbox, Sender, SenderUpdate
 from mail.service import Service, digest
 from mail.vault import Vault
 from pydantic import SecretStr
@@ -81,3 +86,39 @@ async def test_quota_failure_does_not_require_reconnecting_the_account() -> None
         with pytest.raises(RequestError) as error:
             await Google(CONFIG, client).request("GET", "https://gmail.googleapis.com/test")
         assert error.value.status == 403
+
+
+async def test_saving_sender_rules_preserves_pending_alerts_and_the_polling_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = MemoryMail()
+    sender = Sender(sender="security@provider.example", provider_connection_id="provider_one")
+    box = Mailbox(
+        id="gmail_one",
+        organisation_id="org_one",
+        email="owner@gmail.com",
+        connected_at=datetime.now(UTC),
+        status="ready",
+        senders=(sender,),
+    )
+    cursor = {"since": 100, "start": 100, "through": 200, "messages": ["pending_alert"]}
+    await store.save(box, "encrypted-grant-fixture", None, cursor=cursor)
+    provider = SimpleNamespace(
+        roles=frozenset({ConnectionRole.PROVIDER}), status=ConnectionStatus.READY, archived_at=None
+    )
+    monkeypatch.setattr(InventoryStore, "get_connection", AsyncMock(return_value=provider))
+    monkeypatch.setattr("mail.service.save_connection", AsyncMock())
+    async with httpx.AsyncClient() as http:
+        service = Service(
+            store,
+            Google(CONFIG, http),
+            Vault(CONFIG),
+            Database("mongodb://unused"),
+            "https://kinu.example",
+        )
+        saved = await service.senders(
+            "org_one", box.id, SenderUpdate(expected_revision=0, senders=(sender,))
+        )
+    _, row = await store.mailbox("org_one", box.id)
+    assert json.loads(row["cursor"]) == cursor
+    assert saved.status == "ready" and saved.revision == 2

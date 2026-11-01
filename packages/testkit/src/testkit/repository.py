@@ -119,10 +119,26 @@ class MemoryRunRepository:
                 raise RunNotFoundError(f"run {run_id} was not found")
             return run
 
-    async def list_runs(self, organisation_id: str, limit: int) -> tuple[RotationRun, ...]:
+    async def list_runs(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        before: str | None = None,
+        statuses: frozenset[RunStatus] | None = None,
+    ) -> tuple[RotationRun, ...]:
+        anchor = await self.get(organisation_id, before) if before else None
         async with self._mutex:
-            runs = [run for (org_id, _), run in self._runs.items() if org_id == organisation_id]
-            return tuple(runs[:limit])
+            runs = [
+                run
+                for (org_id, _), run in self._runs.items()
+                if org_id == organisation_id
+                and (statuses is None or run.status in statuses)
+                and (anchor is None or (run.created_at, run.id) < (anchor.created_at, anchor.id))
+            ]
+            return tuple(
+                sorted(runs, key=lambda run: (run.created_at, run.id), reverse=True)[:limit]
+            )
 
     async def count_runs(self, organisation_id: str, statuses: frozenset[RunStatus]) -> int:
         async with self._mutex:

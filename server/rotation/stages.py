@@ -35,6 +35,8 @@ class Stages:
         result = await self.journal.get(self.run.organisation_id, self.run.id, stage)
         if result is None:
             raise ResourceConflictError(f"rotation is missing its {stage.value} checkpoint")
+        if stage is Stage.CREATE:
+            return result.output | {"run_id": self.run.id, "fencing_token": self.run.fencing_token}
         return result.output
 
     async def execute(self, stage: Stage) -> tuple[frozenset[str], dict[str, Any], StageBindings]:
@@ -66,6 +68,8 @@ class Stages:
                 "mutation-declared",
                 "no-conflict",
             }
+            if state.controls.definition.require_revoke_approval:
+                checks.add("approvers-known")
             return (
                 frozenset(checks),
                 result,

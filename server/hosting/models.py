@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from contracts import Contract, Identifier
 from pydantic import Field, SecretStr
@@ -29,3 +29,13 @@ class Mapping(Contract):
 class Import(Contract):
     project_id: str = Field(min_length=1, max_length=256)
     mappings: tuple[Mapping, ...] = Field(min_length=1, max_length=30)
+
+
+class Provision(Contract):
+    project_id: str = Field(min_length=1, max_length=256)
+    variable_reference: str = Field(min_length=1, max_length=1024)
+    provider_connection_id: Identifier
+    health_url: str = Field(min_length=1, max_length=2048)
+    scopes: frozenset[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default=frozenset(), max_length=50
+    )

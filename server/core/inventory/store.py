@@ -318,6 +318,46 @@ class InventoryStore:
     async def bindings(self, organisation_id: str) -> tuple[ConsumerBinding, ...]:
         return await self._list(ConsumerBinding, organisation_id)
 
+    async def generations(self, organisation_id: str) -> tuple[CredentialGeneration, ...]:
+        return await self._list(CredentialGeneration, organisation_id)
+
+    async def record_observation(
+        self,
+        organisation_id: str,
+        credential_id: str,
+        generation_id: str,
+        expected_revision: int,
+        observed_at: datetime,
+        expires_at: datetime | None,
+        rotation_due_at: datetime | None,
+        metadata_digest: str,
+    ) -> ManagedCredential:
+        async with self._records.write(organisation_id) as rows:
+            current = await rows.get(ManagedCredential, organisation_id, credential_id)
+            if (
+                current.archived_at
+                or current.revision != expected_revision
+                or current.active_generation_id != generation_id
+                or await rows.database.collection("run_locks").find_one(
+                    {"organisation_id": organisation_id, "credential_id": credential_id},
+                    session=rows.session,
+                )
+            ):
+                raise ResourceConflictError("Credential changed during monitoring")
+            return await rows.replace(
+                current.model_copy(
+                    update={
+                        "last_observed_at": observed_at,
+                        "expires_at": expires_at,
+                        "rotation_due_at": rotation_due_at,
+                        "metadata_digest": metadata_digest,
+                        "updated_at": observed_at,
+                        "revision": current.revision + 1,
+                    }
+                ),
+                current.revision,
+            )
+
     async def _get[T: Contract](self, model: type[T], org: str, resource_id: str) -> T:
         async with self._records.read() as rows:
             return await rows.get(model, org, resource_id)

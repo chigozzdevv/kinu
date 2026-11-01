@@ -1,3 +1,6 @@
+from collections.abc import Collection
+from typing import Any
+
 from contracts import (
     CreateRunCommand,
     EventKind,
@@ -31,6 +34,24 @@ from core.storage.repository import (
 )
 
 _TERMINAL = {RunStatus.CANCELLED, RunStatus.COMPLETED, RunStatus.COMPENSATED, RunStatus.FAILED}
+
+
+async def execution_locked(
+    database: Database,
+    org: str,
+    credentials: Collection[str],
+    session: AsyncClientSession,
+) -> bool:
+    async for lock in database.collection("run_locks").find(
+        {"organisation_id": org, "credential_id": {"$in": sorted(credentials)}},
+        session=session,
+    ):
+        run = await database.collection("runs").find_one(
+            {"organisation_id": org, "id": lock["run_id"]}, session=session
+        )
+        if not run or run["data"]["status"] != RunStatus.CLEANUP:
+            return True
+    return False
 
 
 class RunStore:
@@ -126,12 +147,29 @@ class RunStore:
             raise RunNotFoundError("run is unavailable")
         return RotationRun.model_validate(row["data"])
 
-    async def list_runs(self, organisation_id: str, limit: int) -> tuple[RotationRun, ...]:
-        cursor = self._database.collection("runs").find({"organisation_id": organisation_id})
+    async def list_runs(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        before: str | None = None,
+        statuses: frozenset[RunStatus] | None = None,
+    ) -> tuple[RotationRun, ...]:
+        query: dict[str, Any] = {"organisation_id": organisation_id}
+        if statuses is not None:
+            query["data.status"] = {"$in": sorted(statuses)}
+        if before:
+            anchor = await self.get(organisation_id, before)
+            created = anchor.model_dump(mode="json")["created_at"]
+            query["$or"] = [
+                {"data.created_at": {"$lt": created}},
+                {"data.created_at": created, "id": {"$lt": anchor.id}},
+            ]
+        cursor = self._database.collection("runs").find(query)
         return tuple(
             [
                 RotationRun.model_validate(row["data"])
-                async for row in cursor.sort([("data.created_at", -1), ("id", 1)]).limit(
+                async for row in cursor.sort([("data.created_at", -1), ("id", -1)]).limit(
                     min(max(limit, 1), 500)
                 )
             ]

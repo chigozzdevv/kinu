@@ -12,7 +12,7 @@ from hosting.proof import Proof, fingerprint
 from hosting.rollout import Rollout
 from hosting.service import Service
 
-from rotation.effects import _active
+from rotation.effects import _active, retire_replacement
 from rotation.guard import validate
 from rotation.journal import Journal
 from rotation.stages import stable
@@ -199,6 +199,16 @@ class Effects:
         )
         return {"promoted": True}
 
+    async def verify_current(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> None:
+        await self.verify(state, created, deployment)
+        if (
+            await self.versions.current(state.store, state.credential.secret_resource)
+            != created["secret_reference"]
+        ):
+            raise ConnectorError("secret-current", "The active vault generation changed")
+
     async def observe(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
         deployed = await self.journal.get(
             state.credential.organisation_id, created["run_id"], Stage.DEPLOY
@@ -263,7 +273,7 @@ class Effects:
         elif current != state.credential.secret_reference:
             return False
         await validate(self.hosts.database, state, created)
-        await self.provider.revoke_credential(state.provider, created["provider_id"])
+        await retire_replacement(self.provider, self.versions, state, created)
         await self.versions.disable_for(state.store, created["secret_reference"])
         return True
 
@@ -279,11 +289,17 @@ class Effects:
                 state,
                 {"run_id": run_id, "fencing_token": run["data"]["fencing_token"]},
             )
+            sessions = [
+                row["id"]
+                async for row in self.hosts.database.collection("browser_sessions").find(
+                    {"organisation_id": state.credential.organisation_id, "data.run_id": run_id}
+                )
+            ]
             return (
                 await self.hosts.database.collection("browser_actions").find_one(
                     {
                         "organisation_id": state.credential.organisation_id,
-                        "session_id": stable("browser", run_id + ":create:"),
+                        "session_id": {"$in": sessions},
                         "action.protected": True,
                     }
                 )

@@ -33,6 +33,11 @@ class Router:
     ) -> dict[str, Any]:
         return await self.executor(state).promote(state, created, deployment)
 
+    async def verify_current(
+        self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
+    ) -> None:
+        await self.executor(state).verify_current(state, created, deployment)
+
     async def observe(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
         return await self.executor(state).observe(state, created)
 

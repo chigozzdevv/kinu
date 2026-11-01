@@ -39,6 +39,9 @@ KINU_HTTPS_PORT=443
 
 Caddy issues the HTTPS certificate. Only Caddy's ports need public access. MongoDB, Redis,
 the API, Agent-Native and the executor stay on container networks.
+The API trusts forwarded client addresses from private container networks so sign-in limits apply
+to each client. Set `KINU_TRUSTED_PROXIES` to your proxy addresses or CIDRs if you change that
+network layout; keep the API port private.
 
 `deploy.setup` creates random database passwords and separate encryption/service keys without
 overwriting existing values. Keep `.env`, `.secrets/` and database volumes in your backups.
@@ -98,10 +101,25 @@ exact callback shown there. Vercel needs project, environment-variable and deplo
 Railway requests project membership and refresh access. No live provider registration is performed
 by the application setup command.
 
+For a first managed key, select a readable workload variable and an API provider, then choose
+**Create managed key**. Supply the workload health URL and, for custom providers, the intended
+key scopes. Kinu creates the key through that provider, captures it privately, installs it, deploys
+the workload and verifies the loaded value before registering its inventory. This flow accepts
+customer project and variable names. Resend's domain and sending-only rules remain in its adapter.
+An existing provider key is left active for its owner to review. Browser providers currently require
+an existing managed key before switching execution to the browser.
+
+Key setup status stays beside the selected variable. **Check and recover** resumes a captured key
+or restores the previous value after a failed deployment. A pending deployment keeps its key;
+an unknown creation, variable write or deployment outcome stays held for account review.
+Retries never blindly repeat those mutations.
+
 Selected keys use Kinu's encrypted private vault. Rotation updates all registered hosting consumers
 before retiring the predecessor. AWS remains optional and uses its separate Lambda/Secrets Manager
 adapter, currently limited to one Lambda consumer per credential. Cloud role setup is separate from
 deploying Kinu. Mixing Lambda and hosting consumers within one rotation is not supported.
+To enable AWS setup in Compose, set `KINU_CONNECTION_PRINCIPALS` to the comma-separated broker
+principal ARNs authorized to assume the managed connection roles, then recreate the API container.
 
 A workload health URL is required before automated rotation. It must call the issuer using the loaded
 key and return fresh proof. Kinu sends a random `X-Kinu-Probe` header; the response must echo it and
@@ -115,13 +133,31 @@ After issuer rejection, return `ok: false` and `state: "provider-rejected"` with
 Do not return raw keys. Disable response caching. Merely returning a fingerprint without checking
 the issuer does not meet this health contract. Every workload using the key must be registered.
 
-Vercel variables must target one environment. Branch overrides, shared variables, and custom
-environments are excluded. If the predecessor's value is unreadable, its immutable deployment URL
+Vercel variables must target production only. Preview variables, branch overrides, shared variables,
+and custom environments are excluded. If the predecessor's value is unreadable, its immutable deployment URL
 must support the retirement probe. Its health response must also include
 `"provider_ids": {"API_KEY": "ISSUER_REPORTED_KEY_ID"}`, verified through the issuer. Rotation
 stops if that identity cannot be proved. A failed rollout can restore traffic while leaving the project
 variable on the replacement; Kinu then keeps both keys and holds the run for recovery. It does not
 claim a completed rollback or revoke a key whose configuration may still be in use.
+
+The worker checks expiry and drift every five minutes and queues rotations allowed by each
+credential's controls. Credentials with an active rotation or key setup are excluded from monitoring
+until that work finishes. Gmail sender changes preserve the polling cursor and pending messages.
+The API readiness endpoint and worker health check require a recent worker heartbeat.
+
+Selecting **Before revocation** pauses a rotation after deployment and observation. Another enabled
+workspace administrator must approve it; a manual rotation cannot approve itself. The worker then
+repeats observation and checks the bound action before retirement. Rejection restores the predecessor
+when safe. Expired approvals and requests for more evidence produce a fresh approval after rechecking.
+Approval requests expire after 24 hours; both keys remain active while waiting.
+
+Workspace administrators can open a cleanup-required rotation and choose **Recover rotation**.
+Recovery checks the saved evidence and live provider and workload state before restoring the
+predecessor or finishing registration of an already verified retirement. It releases locks only
+after verifying a safe outcome. Unresolved mutations stay held; expired provider sessions can be
+reconnected while the cleanup lock is retained. Active execution renews its lease throughout long
+deployments and observation. Rotation history supports pagination and direct links to older runs.
 
 ## AI and execution
 
@@ -150,6 +186,9 @@ can use several AI calls within the shared daily limit.
 Browser rotation currently requires a readable predecessor, overlapping issuer keys and registered
 hosting consumers. Imported procedures require review; automatic playbook generation and live
 rotation takeover are unavailable. Expired provider sessions require reconnecting the connection.
+GitHub exposure ingestion, Doppler secret storage and playbook generation from text or video are
+not implemented. Settings lists only the integrations with working connection paths; API providers,
+hosting, Gmail, imported browser playbooks and the optional AWS adapter have the limits described above.
 
 ## Development
 
