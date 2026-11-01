@@ -10,7 +10,7 @@ import {
   Server,
 } from "lucide-react"
 import type { ReactNode } from "react"
-import kinuLogo from "../../assets/kinu-logo.svg"
+import kinuMark from "../../assets/kinu-mark.svg"
 
 type EntryProps = {
   icon: ReactNode
@@ -77,7 +77,7 @@ export function Boundary() {
       </section>
 
       <div className="landing-orbit__hub" aria-label="Kinu control plane">
-        <span><img src={kinuLogo} alt="Kinu" /></span>
+        <span><img src={kinuMark} alt="Kinu" /></span>
       </div>
     </div>
   )

@@ -55,7 +55,7 @@ const groups: NavGroup[] = [
 function Brand() {
   return (
     <div className="flex h-10 items-center px-3">
-      <img src={kinuLogo} alt="Kinu" className="h-auto w-[112px] object-contain object-left" />
+      <img src={kinuLogo} alt="Kinu" className="h-9 w-auto max-w-[112px] object-contain object-left" />
     </div>
   )
 }

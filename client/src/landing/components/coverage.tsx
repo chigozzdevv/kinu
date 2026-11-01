@@ -4,12 +4,12 @@ import {
   MonitorCog,
   MousePointer2,
 } from "lucide-react"
-import kinuLogo from "../../assets/kinu-logo.svg"
+import kinuMark from "../../assets/kinu-mark.svg"
 
 function KinuExecutor() {
   return (
     <div className="landing-methods__kinu" aria-label="Kinu">
-      <img src={kinuLogo} alt="" />
+      <img src={kinuMark} alt="" />
     </div>
   )
 }
