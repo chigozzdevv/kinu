@@ -41,6 +41,7 @@ export function shortId(value: string | null, size = 14): string {
 
 export function providerName(value: string): string {
   const names: Record<string, string> = {
+    aws: "AWS",
     "internal-vendor": "Internal Vendor",
     github: "GitHub",
     netsuite: "NetSuite",
