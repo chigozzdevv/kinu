@@ -77,6 +77,9 @@ async def test_first_customer_key_is_created_installed_and_registered_without_sa
         )
         assert Mappings.preferences(version) == controls
         assert credential.consumer_ids and platform.loaded == platform.value
+        consumer = await service.hosts.inventory.get_service(org, credential.consumer_ids[0])
+        environment = await service.hosts.inventory.get_environment(org, consumer.environment_id)
+        assert environment.display_name == "Unspecified" and not environment.production
         assert not platform.revoked and platform.deployments == 1 and "value" not in row
         assert not await database.collection("provision_locks").find_one({"organisation_id": org})
         assert "re_private-fixture" not in json.dumps(await service.list(org, host))

@@ -73,6 +73,7 @@ async def test_vercel_discovers_metadata_and_keeps_secret_values_private() -> No
         assert (await host.projects())[0].name == "App"
         selected = await host.variables("project")
         assert len(selected) == 1 and not selected[0].readable
+        assert selected[0].environment_label == "production"
         assert SECRET not in selected[0].model_dump_json()
         assert await host.read(selected[0]) is None
         assert len(calls) == 2
@@ -176,6 +177,8 @@ async def test_render_paginates_names_without_returning_values_and_updates_only_
         host = Render(Client(http, "token", "https://api.render.com"))
         metadata = await host.variables("project")
         assert len(metadata) == 101
+        assert metadata[0].reference == "render://project/production/KEY_0"
+        assert metadata[0].environment_label is None
         assert SECRET not in str(metadata)
         await host.write(variable("render"), SecretValue(SECRET.encode()))
         assert writes == [{"value": SECRET}]

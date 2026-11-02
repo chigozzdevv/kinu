@@ -29,6 +29,7 @@ export function affectedResource(incident: Incident, graph?: InventoryGraph): { 
       try {
         const location = new URL(item.runtime_resource)
         const platform = titleCase(location.protocol.slice(0, -1))
+        if (location.protocol === "render:") return [platform]
         const environment = location.pathname.split("/").filter(Boolean).at(-1)
         return [platform + (environment && ["production", "development", "preview", "staging", "test"].includes(environment) ? " · " + titleCase(environment) : "")]
       } catch { return [] }

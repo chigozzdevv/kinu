@@ -27,6 +27,7 @@ from core.workflow import RunWorkflow
 from executor.authorization import Authorization
 from executor.vault import Vault
 from executor.versions import Versions
+from hosting.control import mapped_variables
 from hosting.mapping import Mappings
 from hosting.models import Begin, Import, Mapping, Selection
 from hosting.proof import Proof
@@ -263,6 +264,12 @@ async def test_mapping_is_idempotent_and_failed_group_rolls_back_inventory(
             item for item in await hosts.inventory.connections(org) if item.platform == "render"
         )
         selected = (await hosts.variables(org, host.id, "project-one"))[0]
+        registered = await mapped_variables(hosts, org, host.id)
+        record = next(item for item in registered if item["reference"] == selected.reference)
+        assert record["project"] == {"id": "project-one", "name": "project-one"}
+        assert record["variable"]["name"] == selected.name
+        assert record["variable"]["environment_name"] is None
+        assert OLD not in str(registered)
         mappings = Mappings(hosts, versions, provider)
         before = (await hosts.inventory.get_credential(org, credential.id)).revision
         saved = await mappings.save(

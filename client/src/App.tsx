@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Shell } from "./components/sidebar"
 import { OverviewPage } from "./pages/overview"
 import { CredentialsPage } from "./pages/credentials"
+import { CredentialOnboarding } from "./pages/credential-onboarding"
 import { PlaybooksPage } from "./pages/playbooks"
 import { IncidentsPage } from "./pages/incidents"
 import { RotationsPage } from "./pages/rotations"
@@ -113,7 +114,8 @@ export function App({
       case "overview":
         return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} />
       case "credentials":
-        return <CredentialsPage key={dashboardPath(route)} adding={route.addCredential === true} onAdd={() => navigate({ section: "credentials", addCredential: true })} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
+        if (route.addCredential) return <CredentialOnboarding onFinish={(id) => navigate({ section: "credentials", resourceId: id || undefined })} />
+        return <CredentialsPage key={dashboardPath(route)} onAdd={() => navigate({ section: "credentials", addCredential: true })} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
       case "playbooks":
         return <PlaybooksPage />
       case "incidents":

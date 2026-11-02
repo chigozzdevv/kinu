@@ -33,6 +33,8 @@ function Label({ title, message, children }: { title: string; message?: string; 
 
 export function CredentialSetup({
   isOpen,
+  runtime,
+  runtimeField,
   onClose,
   graph,
   resume,
@@ -42,6 +44,8 @@ export function CredentialSetup({
   onCreate,
 }: {
   isOpen: boolean
+  runtime: Connection
+  runtimeField: ReactNode
   onClose: () => void
   resume?: AwsKeyForm
   graph: InventoryGraph
@@ -57,7 +61,7 @@ export function CredentialSetup({
   const [secretStoreId, setSecretStoreId] = useState(resume?.secretStoreId ?? "")
   const [secretResource, setSecretResource] = useState(resume?.secretResource ?? "")
   const [secretReference, setSecretReference] = useState(resume?.secretReference ?? "")
-  const [runtimeConnectionId, setRuntimeConnectionId] = useState(resume?.runtimeConnectionId ?? "")
+  const runtimeConnectionId = runtime.id
   const [runtimeResource, setRuntimeResource] = useState(resume?.runtimeResource ?? "")
   const [environmentName, setEnvironmentName] = useState(resume?.environmentName ?? "")
   const [controls, setControls] = useState<ControlValues>(resume?.controls ?? defaultControls)
@@ -65,17 +69,15 @@ export function CredentialSetup({
   const [runtimeContainerName, setRuntimeContainerName] = useState<string | null>(resume?.runtimeContainerName ?? null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [dependency, setDependency] = useState<"connection" | "secret-location" | "runtime" | "incident" | null>(resume ? "incident" : null)
+  const [dependency, setDependency] = useState<"connection" | "secret-location" | "incident" | null>(resume ? "incident" : null)
 
   const managementConnections = useMemo(() => connections.filter((item) => item.roles.includes("provider") && item.status === "ready" && (
     (item.interface === "api" && item.capabilities.includes("provider.listCredentialMetadata"))
     || (item.interface === "browser" && item.playbook_id !== null && item.playbook_version_id !== null)
   )), [connections])
   const secretStores = useMemo(() => connections.filter((item) => item.platform === "aws" && item.roles.includes("secret-store") && item.interface === "api" && item.status === "ready"), [connections])
-  const runtimeConnections = useMemo(() => connections.filter((item) => item.roles.includes("runtime") && item.interface === "api" && item.status === "ready" && item.capabilities.includes("runtime.listServices")), [connections])
   const connection = connections.find((item) => item.id === connectionId)
   const secretStore = connections.find((item) => item.id === secretStoreId)
-  const runtimeConnection = connections.find((item) => item.id === runtimeConnectionId)
   const provider = connection?.platform ?? ""
   const secretResourcesQuery = useQuery({
     queryKey: ["connections", secretStoreId, "secret-resources"],
@@ -117,7 +119,7 @@ export function CredentialSetup({
   const alreadyImported = connection?.interface === "browser"
     ? Boolean(secretReference && graph.credentials.some((credential) => credential.connection_id === connectionId && credential.secret_reference === secretReference && !credential.archived_at))
     : Boolean(providerId && graph.credentials.some((credential) => credential.connection_id === connectionId && credential.provider_id === providerId && !credential.archived_at))
-  const credentialMessage = alreadyImported ? "This credential has already been added" : credentialResolutionQuery.error?.message
+  const credentialMessage = credentialResolutionQuery.error?.message
 
   useEffect(() => {
     if (!isOpen) {
@@ -129,10 +131,9 @@ export function CredentialSetup({
     if (resume) return
     setStep(0)
     setConnectionId(managementConnections[0]?.id ?? "")
-    setSecretStoreId(secretStores[0]?.id ?? "")
+    setSecretStoreId(secretStores.find((item) => item.id === runtimeConnectionId)?.id ?? secretStores[0]?.id ?? "")
     setSecretResource("")
     setSecretReference("")
-    setRuntimeConnectionId(runtimeConnections[0]?.id ?? "")
     setRuntimeResource("")
     setEnvironmentName("")
     setControls(defaultControls)
@@ -140,7 +141,7 @@ export function CredentialSetup({
     setRuntimeContainerName(null)
     setSubmitting(false)
     setError("")
-  }, [isOpen, managementConnections, runtimeConnections, secretStores, resume])
+  }, [isOpen, managementConnections, runtimeConnectionId, secretStores, resume])
 
   useEffect(() => {
     if (!error) return
@@ -160,7 +161,7 @@ export function CredentialSetup({
   }
 
   async function submit() {
-    if (!connection || (connection.interface !== "browser" && !providerId) || !selectedRuntimeResource || !selectedRuntimeBinding || !resolvedEnvironmentName || !controlsAreValid(controls) || !secretStoreId || !secretReference) return
+    if (alreadyImported || !connection || (connection.interface !== "browser" && !providerId) || !selectedRuntimeResource || !selectedRuntimeBinding || !resolvedEnvironmentName || !controlsAreValid(controls) || !secretStoreId || !secretReference) return
     const credentialId = identifier("cred")
     const generationId = identifier("gen")
     const controlVersionId = identifier("control_version")
@@ -234,12 +235,12 @@ export function CredentialSetup({
   }
 
   if (dependency) return <ConnectionSetup
-    integrations={dependency === "runtime" || dependency === "secret-location" ? ["aws"] : undefined}
+    integrations={dependency === "secret-location" ? ["aws"] : undefined}
     beforeAuthorization={(integration) => saveCredentialReturn(activeOrganisationId(), integration, {
       source: "aws", form: { step, connectionId, secretStoreId, secretResource, secretReference, runtimeConnectionId,
         runtimeResource, environmentName, controls, runtimeSecretName, runtimeContainerName },
     })}
-    initialRoles={dependency === "connection" ? ["provider"] : dependency === "secret-location" ? ["secret-store"] : dependency === "incident" ? ["incident"] : ["runtime"]}
+    initialRoles={dependency === "connection" ? ["provider"] : dependency === "secret-location" ? ["secret-store"] : ["incident"]}
     playbooks={playbooks}
     connections={connections}
     onClose={closeDependency}
@@ -247,7 +248,6 @@ export function CredentialSetup({
     onCreated={async (created) => {
       if (dependency === "connection") setConnectionId(created.id)
       else if (dependency === "secret-location") setSecretStoreId(created.id)
-      else if (dependency === "runtime") { setRuntimeConnectionId(created.id); setRuntimeResource(""); setEnvironmentName("") }
       closeDependency()
     }}
   />
@@ -261,16 +261,16 @@ export function CredentialSetup({
       onBack={() => { setError(""); setStep((value) => Math.max(0, value - 1)) }}
       onCancel={onClose}
       error={error || secretResourcesQuery.error?.message || secretVersionsQuery.error?.message || runtimeResourcesQuery.error?.message}
-      primary={step < steps.length - 1
+      primary={alreadyImported ? <Button disabled>Already added</Button> : step < steps.length - 1
         ? <Button onClick={next} disabled={!canContinue()}>Continue</Button>
         : <Button onClick={submit} disabled={submitting}>{submitting ? "Adding…" : "Add credential"}</Button>}
     >
       {step === 0 && <FormGrid>
+          {runtimeField}
           <ResourceSelect label="Provider connection" value={connectionId} onChange={(value) => { setError(""); setConnectionId(value); setSecretResource(""); setSecretReference(""); setRuntimeResource(""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} addLabel="Add connection" onAdd={() => setDependency("connection")} className={field}><option value="">Select connection</option>{managementConnections.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</ResourceSelect>
           <ResourceSelect label="Secret store" value={secretStoreId} onChange={(value) => { setError(""); setSecretStoreId(value); setSecretResource(""); setSecretReference(""); setRuntimeResource(""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} addLabel="Add connection" onAdd={() => setDependency("secret-location")} className={field}><option value="">Select secret store</option>{secretStores.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</ResourceSelect>
           <Label title="Stored secret"><SelectControl className={field} value={secretResource} onChange={(event) => { setError(""); setSecretResource(event.target.value); setSecretReference(""); setRuntimeResource(""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} disabled={!secretStoreId || secretResourcesQuery.isLoading}><option value="">{secretResourcesQuery.isLoading ? "Loading secrets…" : "Select secret"}</option>{secretResourcesQuery.data?.map((item) => <option key={item.reference} value={item.reference}>{item.display_name}</option>)}</SelectControl></Label>
           <Label title="Current version" message={credentialMessage}><SelectControl className={field} value={secretReference} onChange={(event) => { setError(""); setSecretReference(event.target.value); setRuntimeResource(""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} disabled={!secretResource || secretVersionsQuery.isLoading}><option value="">{secretVersionsQuery.isLoading ? "Loading versions…" : "Select enabled version"}</option>{secretVersionsQuery.data?.filter((item) => item.state === "ENABLED").map((item) => <option key={item.reference} value={item.reference}>{item.reference.split("/").at(-1)}</option>)}</SelectControl></Label>
-          <ResourceSelect label="Runtime connection" value={runtimeConnectionId} onChange={(value) => { setError(""); setRuntimeConnectionId(value); setRuntimeResource(""); setEnvironmentName(""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} addLabel="Add connection" onAdd={() => setDependency("runtime")} className={field}><option value="">Select connection</option>{runtimeConnections.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</ResourceSelect>
           <Label title="Runtime service"><SelectControl className={field} value={runtimeResource} onChange={(event) => { setError(""); const reference = event.target.value; setRuntimeResource(reference); setEnvironmentName(compatibleRuntimeResources.find((item) => item.reference === reference)?.environment_name ?? ""); setRuntimeSecretName(""); setRuntimeContainerName(null) }} disabled={!runtimeConnectionId || !secretReference || runtimeResourcesQuery.isLoading}><option value="">{runtimeResourcesQuery.isLoading ? "Loading services…" : compatibleRuntimeResources.length ? "Select service" : "No service uses this version"}</option>{compatibleRuntimeResources.map((item) => <option key={item.reference} value={item.reference}>{item.display_name}{item.environment_name ? ` · ${item.environment_name}` : ""}</option>)}</SelectControl></Label>
           {selectedRuntimeResource && !selectedRuntimeResource.environment_name && !existingEnvironment && <Label title="Environment"><SelectControl className={field} value={environmentName} onChange={(event) => { setError(""); setEnvironmentName(event.target.value) }}><option value="">Select environment</option><option value="Production">Production</option><option value="Staging">Staging</option></SelectControl></Label>}
           {selectedRuntimeResource && <Label title="Runtime binding"><SelectControl className={field} value={selectedRuntimeBinding ? runtimeBindingKey(selectedRuntimeBinding.container, selectedRuntimeBinding.name) : ""} onChange={(event) => { setError(""); if (!event.target.value) { setRuntimeContainerName(null); setRuntimeSecretName(""); return } const [container, variable] = JSON.parse(event.target.value) as [string | null, string]; setRuntimeContainerName(container); setRuntimeSecretName(variable) }}><option value="">Select binding</option>{compatibleRuntimeBindings.map((binding) => <option key={runtimeBindingKey(binding.container, binding.name)} value={runtimeBindingKey(binding.container, binding.name)}>{binding.name}{compatibleRuntimeBindings.length > 1 && binding.container ? ` · ${binding.container}` : ""}</option>)}</SelectControl></Label>}
@@ -280,7 +280,7 @@ export function CredentialSetup({
 
       {step === 2 && <div>
         <Section title="Credential" onEdit={() => setStep(0)}><DetailList><Detail label="Platform"><Provider value={provider} /></Detail><Detail label="Provider connection">{connection?.display_name}</Detail><Detail label="Secret store">{secretStore?.display_name}</Detail><Detail label="Secret">{selectedSecret?.display_name} · version {secretReference.split("/").at(-1)}</Detail></DetailList></Section>
-        <Section title="Deployment" onEdit={() => setStep(0)}><DetailList><Detail label="Service">{selectedRuntimeResource?.display_name}</Detail><Detail label="Environment">{resolvedEnvironmentName}</Detail><Detail label="Runtime">{runtimeConnection?.display_name}</Detail><Detail label="Binding">{selectedRuntimeBinding?.name}</Detail></DetailList></Section>
+        <Section title="Deployment" onEdit={() => setStep(0)}><DetailList><Detail label="Service">{selectedRuntimeResource?.display_name}</Detail><Detail label="Environment">{resolvedEnvironmentName}</Detail><Detail label="Runtime">{runtime.display_name}</Detail><Detail label="Binding">{selectedRuntimeBinding?.name}</Detail></DetailList></Section>
         <Section title="Controls" onEdit={() => setStep(1)}><ControlsSummary value={controls} connections={connections} /></Section>
       </div>}
 

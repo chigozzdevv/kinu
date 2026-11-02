@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ControlsFields, ControlsSummary } from "../components/controls"
 import { Detail, DetailList, Section } from "../components/detail"
-import { Failure, Loading, Notice } from "../components/state"
+import { Notice, RetryNotice } from "../components/state"
 import { Button } from "../components/ui/button"
 import { Field, FormGrid, ResourceSelect, SelectControl, SetupPage, formControl } from "../components/workspace"
 import { activeOrganisationId, api } from "../lib/api"
-import type { HostMapping } from "../lib/api/hosting"
 import { buildControlPreferences, controlsAreValid, defaultControls } from "../lib/controls"
 import { finishCredentialConnection, saveCredentialReturn, type HostKeyForm } from "../lib/credential-return"
 import { titleCase } from "../lib/format"
+import { approvedProjects, validHealthUrl, variableLabel } from "../lib/hosting"
 import type { Connection, ManagedCredential, Playbook } from "../types"
 import { ConnectionSetup } from "./connections"
 
@@ -18,22 +18,13 @@ const emptyForm: HostKeyForm = {
   controls: { ...defaultControls, automaticTriggers: ["expiry"], expiryDays: 1 },
 }
 
-function validHealth(value: string) {
-  try {
-    const url = new URL(value)
-    return url.protocol === "https:" && !url.username && !url.password && !url.hash
-  } catch {
-    return false
-  }
-}
-
-export function HostKeys({ connection, connections, credentials, playbooks, resume, onBack, onFinish }: {
+export function HostKeys({ connection, connections, credentials, playbooks, runtimeField, resume, onFinish }: {
   connection: Connection
   connections: Connection[]
   credentials: ManagedCredential[]
   playbooks: Playbook[]
   resume?: HostKeyForm
-  onBack: () => void
+  runtimeField: ReactNode
   onFinish: (credentialId: string) => void
 }) {
   const query = useQueryClient()
@@ -42,11 +33,20 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
   const [dependency, setDependency] = useState<"provider" | "incident" | null>(resume ? "incident" : null)
   const [tracking, setTracking] = useState("")
   const attempt = useRef({ input: "", id: "", setupId: "" })
-  const projects = useQuery({ queryKey: ["host-projects", connection.id], queryFn: () => api.getHostProjects(connection.id) })
-  const variables = useQuery({ queryKey: ["host-variables", connection.id, project], queryFn: () => api.getHostVariables(connection.id, project), enabled: Boolean(project) })
   const mapped = useQuery({ queryKey: ["host-mapped", connection.id], queryFn: () => api.getHostMappings(connection.id) })
+  const approved = approvedProjects(connection, mapped.data ?? [])
+  const missingProjectNames = approved.some((item) => !item.name)
+  const projects = useQuery({
+    queryKey: ["host-projects", connection.id], queryFn: () => api.getHostProjects(connection.id),
+    enabled: !mapped.isPending && missingProjectNames,
+  })
+  const eligibleProjects = approved.map((item) => ({
+    id: item.id, name: projects.data?.projects.find((live) => live.id === item.id)?.name ?? item.name ?? item.id,
+  }))
+  const variables = useQuery({ queryKey: ["host-variables", connection.id, project], queryFn: () => api.getHostVariables(connection.id, project), enabled: Boolean(project) })
   const setups = useQuery({
     queryKey: ["key-setups", connection.id], queryFn: () => api.getKeySetups(connection.id),
+    enabled: Boolean(project),
     refetchInterval: (result) => result.state.data?.some((item) => !["completed", "cancelled"].includes(item.phase)) ? 3_000 : false,
   })
   const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider")
@@ -54,8 +54,10 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
   const selectedProvider = providers.find((item) => item.id === provider)
   const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(selectedProvider) })
   const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")) ?? []
-  const projectName = projects.data?.projects.find((item) => item.id === project)?.name
-  const variable = variables.data?.find((item) => item.reference === form.variable)
+  const projectName = eligibleProjects.find((item) => item.id === project)?.name
+  const registeredVariables = (mapped.data ?? []).flatMap((entry) => entry.variable?.project_id === project ? [entry.variable] : [])
+  const availableVariables = new Map([...registeredVariables, ...(variables.data ?? [])].map((item) => [item.reference, item]))
+  const variable = availableVariables.get(form.variable)
   const mapping = variable && mapped.data?.find((item) => item.reference === variable.reference)
   const setup = variable && setups.data?.find((item) => item.reference === variable.reference)
   const settingUp = setup && setup.phase !== "cancelled" && setup.phase !== "completed"
@@ -68,12 +70,12 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
   const otherChoices = mappings.some(([reference]) => reference !== form.variable)
   const canCreate = variable?.readable && selectedProvider?.interface === "api" && selectedProvider.http?.supports_overlap && (!setup || setup.phase === "cancelled")
   const selectionsValid = newKey
-    ? canCreate && newVariables.length === 1 && validHealth(health[createReference] ?? "")
+    ? canCreate && newVariables.length === 1 && validHealthUrl(health[createReference] ?? "")
     : mappings.length > 0 && newVariables.length === mappings.length && mappings.every(([ref, key]) =>
-        availableKeys.some((item) => item.provider_id === key) && (!health[ref]?.trim() || validHealth(health[ref])))
+        availableKeys.some((item) => item.provider_id === key) && (!health[ref]?.trim() || validHealthUrl(health[ref])))
   const unclaimed = newVariables.every((item) => !mapped.data?.some((entry) => entry.reference === item.reference)
     && !setups.data?.some((entry) => entry.reference === item.reference && !["completed", "cancelled"].includes(entry.phase)))
-  const canContinue = Boolean(projectName && selectedProvider && mapped.isSuccess && setups.isSuccess && variables.isSuccess && selectionsValid && unclaimed)
+  const canContinue = Boolean(!mapping && projectName && selectedProvider && mapped.isSuccess && setups.isSuccess && variables.isSuccess && selectionsValid && unclaimed)
 
   function update(patch: Partial<HostKeyForm>) {
     setForm((current) => ({ ...current, ...patch }))
@@ -112,10 +114,6 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
       onFinish(saved.length === 1 ? saved[0].id : "")
     },
   })
-  const updateHealth = useMutation({
-    mutationFn: ({ entry, endpoint }: { entry: HostMapping; endpoint: string }) => api.saveHostHealth(entry.service, endpoint),
-    onSuccess: async () => { await Promise.all([query.invalidateQueries({ queryKey: ["host-mapped", connection.id] }), query.invalidateQueries({ queryKey: ["graph"] })]) },
-  })
   const recover = useMutation({
     mutationFn: (id: string) => api.recoverKeySetup(connection.id, id),
     onSuccess: async (result) => { setTracking(result.id); await query.invalidateQueries({ queryKey: ["key-setups", connection.id] }) },
@@ -142,9 +140,6 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
       closeDependency()
     }} />
 
-  if (projects.isLoading || mapped.isLoading) return <div className="page"><Loading /></div>
-  const loadError = projects.error ?? mapped.error
-  if (loadError) return <div className="page"><Failure error={loadError} /><Button variant="secondary" onClick={onBack}>Back</Button></div>
   function chooseKey(value: string) {
     if (!variable) return
     if (value === "create" && setup?.phase === "cancelled" && setup.id === attempt.current.setupId) {
@@ -159,32 +154,36 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
     save.reset()
     update({ step: next })
   }
-  const endpoint = variable ? health[variable.reference] ?? mapping?.service.endpoint ?? "" : ""
-  const eligibleProjects = projects.data?.projects.filter((item) => projects.data.selected.includes(item.id)) ?? []
-  const primary = step === 2
+  const endpoint = variable ? health[variable.reference] ?? "" : ""
+  const primary = mapping ? <Button disabled>Already added</Button> : step === 2
     ? <Button disabled={save.isPending || !canContinue || (hasNewCredentials && !controlsAreValid(controls))} onClick={() => save.mutate()}>
         {save.isPending ? "Saving…" : newKey ? "Create and install" : mappings.length > 1 ? "Link keys" : "Link key"}
       </Button>
     : <Button disabled={step === 0 ? !canContinue : !controlsAreValid(controls)} onClick={() => goTo(step === 0 && hasNewCredentials ? 1 : 2)}>Continue</Button>
 
   return <SetupPage eyebrow="Inventory / Credentials" title="Add credential" steps={steps} current={step === 2 ? steps.length - 1 : step}
-    onExit={step === 0 ? onBack : () => goTo(step === 2 && hasNewCredentials ? 1 : 0)}
-    onBack={() => goTo(step === 2 && hasNewCredentials ? 1 : 0)} onCancel={() => onFinish("")} primary={primary} error={save.error?.message}>
+    onExit={step === 0 ? () => onFinish("") : () => goTo(step === 2 && hasNewCredentials ? 1 : 0)}
+    onBack={() => goTo(step === 2 && hasNewCredentials ? 1 : 0)} onCancel={() => onFinish("")} primary={primary} error={save.error?.message ?? recover.error?.message}>
     {step === 0 && <div className="space-y-5">
       <FormGrid>
-        <Field label="Project"><SelectControl value={project} onChange={(event) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: event.target.value }) }}>
+        {runtimeField}
+        <Field label="Project"><SelectControl value={project} disabled={!eligibleProjects.length} onChange={(event) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: event.target.value }) }}>
           <option value="">Select project</option>{eligibleProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </SelectControl></Field>
-        <Field label="Variable"><SelectControl value={form.variable} disabled={!project || variables.isLoading} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
-          <option value="">Select variable</option>{variables.data?.map((item) => <option key={item.reference} value={item.reference}>
-            {[item.name, item.service_name, item.environment_name ?? item.environment].filter(Boolean).join(" · ")}
+        <Field label="Variable"><SelectControl value={form.variable} disabled={!project || !availableVariables.size} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
+          <option value="">Select variable</option>{[...availableVariables.values()].map((item) => <option key={item.reference} value={item.reference}>
+            {variableLabel(item)}
           </option>)}
         </SelectControl></Field>
       </FormGrid>
       {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Only production variables are supported.</p>}
-      {variables.error && <Failure error={variables.error} />}
-      {project && variables.data?.length === 0 && <Notice>No supported variables were found.</Notice>}
-      {variable && !mapping && !settingUp && <FormGrid>
+      {projects.isError && missingProjectNames && !project && <RetryNotice onRetry={() => projects.refetch()}>Couldn’t load project names from {connection.display_name}.</RetryNotice>}
+      {variables.isError && !mapping && <RetryNotice onRetry={() => variables.refetch()}>Couldn’t load variables from {connection.display_name}.</RetryNotice>}
+      {mapped.isError && <RetryNotice onRetry={() => mapped.refetch()}>Couldn’t check which variables have already been added.</RetryNotice>}
+      {setups.isError && <RetryNotice onRetry={() => setups.refetch()}>Couldn’t load key setup status.</RetryNotice>}
+      {!eligibleProjects.length && <Notice>No projects are approved for this connection.</Notice>}
+      {project && variables.isSuccess && !availableVariables.size && <Notice>No supported variables were found.</Notice>}
+      {variable && mapped.isSuccess && setups.isSuccess && !mapping && !settingUp && <FormGrid>
         <ResourceSelect label="Provider" value={provider} onChange={chooseProvider} addLabel="Connect provider" onAdd={() => setDependency("provider")}>
           <option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
         </ResourceSelect>
@@ -195,23 +194,18 @@ export function HostKeys({ connection, connections, credentials, playbooks, resu
         <Field label={newKey ? "Health URL (required)" : "Health URL"} wide><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
         {newKey && selectedProvider?.platform !== "resend" && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
       </FormGrid>}
-      {variable && mapping && <div className="space-y-3">
-        <Button variant="secondary" onClick={() => onFinish(mapping.credential_id)}>View credential</Button>
-        <Field label="Health URL"><input className={formControl} type="url" value={endpoint} onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
-        <Button variant="secondary" disabled={updateHealth.isPending || !validHealth(endpoint) || endpoint.trim() === mapping.service.endpoint} onClick={() => updateHealth.mutate({ entry: mapping, endpoint: endpoint.trim() })}>Save URL</Button>
-      </div>}
       {setup && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
         <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
         {setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}
       </div>}
       {mappings.length > 1 && <p className="text-[11px] text-[var(--ink-soft)]">{mappings.length} variables selected</p>}
-      {(keys.error || setups.error || recover.error || updateHealth.error) && <Failure error={(keys.error ?? setups.error ?? recover.error ?? updateHealth.error)!} />}
+      {!mapping && keys.isError && <RetryNotice onRetry={() => keys.refetch()}>Couldn’t load provider keys.</RetryNotice>}
     </div>}
     {step === 1 && <ControlsFields value={controls} connections={connections} onChange={(value) => update({ controls: value })} onAddConnection={() => setDependency("incident")} />}
     {step === 2 && <div>
       <Section title="Credential" onEdit={() => goTo(0)}><DetailList>
-        <Detail label="Hosting">{connection.display_name}</Detail><Detail label="Project">{projectName}</Detail><Detail label="Provider">{selectedProvider?.display_name}</Detail>
-        {newVariables.map((item) => <Detail key={item.reference} label={[item.name, item.service_name, item.environment_name ?? item.environment].filter(Boolean).join(" · ")}>
+        <Detail label="Runtime connection">{connection.display_name}</Detail><Detail label="Project">{projectName}</Detail><Detail label="Provider">{selectedProvider?.display_name}</Detail>
+        {newVariables.map((item) => <Detail key={item.reference} label={variableLabel(item)}>
           {newKey ? "Create and install a new key" : availableKeys.find((key) => key.provider_id === choices[item.reference])?.name ?? choices[item.reference]}
           {health[item.reference]?.trim() && <div className="mt-1">{health[item.reference].trim()}</div>}
         </Detail>)}

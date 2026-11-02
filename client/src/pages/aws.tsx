@@ -21,12 +21,13 @@ function download(setup: AwsPrepared) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function AwsSetup({ onClose, onBack, onChanged, onCreated, connectionId }: {
+export function AwsSetup({ onClose, onBack, onChanged, onCreated, connectionId, requiredRole }: {
   onClose: () => void
   onBack: () => void
   onChanged: () => Promise<void>
   onCreated?: (connection: Connection) => Promise<void>
   connectionId?: string
+  requiredRole?: "runtime" | "secret-store"
 }) {
   const [name, setName] = useState("")
   const [account, setAccount] = useState("")
@@ -50,15 +51,18 @@ export function AwsSetup({ onClose, onBack, onChanged, onCreated, connectionId }
   })
   if (connectionId && saved.isLoading) return <div className="page"><Loading /></div>
   if (saved.error) return <div className="page"><Failure error={saved.error} /></div>
-  const valid = name.trim() && /^\d{12}$/.test(account.trim()) && region.trim() && (resources(secrets).length || resources(functions).length)
+  const hasSecrets = resources(secrets).length > 0
+  const hasFunctions = resources(functions).length > 0
+  const valid = name.trim() && /^\d{12}$/.test(account.trim()) && region.trim() && (hasSecrets || hasFunctions)
+    && (requiredRole !== "runtime" || hasFunctions) && (requiredRole !== "secret-store" || hasSecrets)
 
   return <SetupPage eyebrow="Inventory / Connections" title="Connect AWS" steps={["Resources", "AWS access"]} current={setup ? 1 : 0} onBack={onBack} onExit={onBack} onCancel={onClose} error={prepare.error?.message ?? confirm.error?.message} primary={setup ? <Button onClick={() => confirm.mutate()} disabled={confirm.isPending}>{confirm.isPending ? "Checking…" : "Connect"}</Button> : <Button onClick={() => prepare.mutate()} disabled={!valid || prepare.isPending}>{prepare.isPending ? "Preparing…" : "Continue"}</Button>}>
     {!setup ? <FormGrid>
       <Field label="Connection name"><input className={formControl} value={name} onChange={(event) => setName(event.target.value)} placeholder="Production AWS" /></Field>
       <Field label="AWS account ID"><input className={formControl} value={account} onChange={(event) => setAccount(event.target.value)} inputMode="numeric" placeholder="12-digit account ID" /></Field>
       <Field label="Region"><input className={formControl} value={region} onChange={(event) => setRegion(event.target.value)} /></Field>
-      <Field label="Secret ARNs"><textarea className={`${formControl} h-24 py-3`} value={secrets} onChange={(event) => setSecrets(event.target.value)} placeholder="One complete Secrets Manager ARN per line" /></Field>
-      <Field label="Lambda function ARNs"><textarea className={`${formControl} h-24 py-3`} value={functions} onChange={(event) => setFunctions(event.target.value)} placeholder="One unqualified function ARN per line" /></Field>
+      <Field label={requiredRole === "secret-store" ? "Secret ARNs (required)" : "Secret ARNs"}><textarea required={requiredRole === "secret-store"} className={`${formControl} h-24 py-3`} value={secrets} onChange={(event) => setSecrets(event.target.value)} placeholder="One complete Secrets Manager ARN per line" /></Field>
+      <Field label={requiredRole === "runtime" ? "Lambda function ARNs (required)" : "Lambda function ARNs"}><textarea required={requiredRole === "runtime"} className={`${formControl} h-24 py-3`} value={functions} onChange={(event) => setFunctions(event.target.value)} placeholder="One unqualified function ARN per line" /></Field>
       <Field label="KMS key ARNs (optional)"><textarea className={`${formControl} h-24 py-3`} value={kms} onChange={(event) => setKms(event.target.value)} placeholder="Only for secrets encrypted with your own KMS keys" /></Field>
     </FormGrid> : <div className="space-y-5">
       <ol className="list-decimal space-y-3 pl-5 text-[11px] leading-5 text-[var(--ink-soft)]">

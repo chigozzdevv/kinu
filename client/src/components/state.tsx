@@ -9,6 +9,13 @@ export function Loading() {
   return <div className="grid min-h-52 place-items-center"><LoaderCircle className="size-5 animate-spin text-[var(--accent)]" /></div>
 }
 
+export function RetryNotice({ children, onRetry }: { children: ReactNode; onRetry: () => void }) {
+  return <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-soft)]">
+    {children}
+    <button type="button" className="focus-ring rounded text-[var(--ink)] underline" onClick={onRetry}>Retry</button>
+  </div>
+}
+
 export function Failure({ error }: { error: Error }) {
   return (
     <div className="panel flex min-h-52 flex-col items-center justify-center px-6 text-center">

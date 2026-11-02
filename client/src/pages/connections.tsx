@@ -312,7 +312,8 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
-  if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
+  if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)}
+    requiredRole={category === "runtime" || category === "secret-store" ? category : undefined} />
 
   return <div className="page max-w-[960px]">
     <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={() => initialRoles.length ? onClose() : setCategory(null)} />

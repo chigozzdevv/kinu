@@ -20,6 +20,12 @@ class Variable(Contract):
     environment_name: str | None = None
     service_name: str | None = None
 
+    @property
+    def environment_label(self) -> str | None:
+        if self.environment_name:
+            return self.environment_name
+        return self.environment if self.reference.startswith("vercel://") else None
+
 
 class Deployment(Contract):
     id: str

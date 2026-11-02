@@ -5,6 +5,9 @@ from connectors.base.errors import ConnectorError
 from connectors.hosting.client import Client
 from connectors.hosting.models import Deployment, Project, Variable
 
+# Existing bindings and rotation locks use this namespace for service-scoped Render variables.
+SERVICE_SCOPE = "production"
+
 
 class Render:
     def __init__(self, client: Client) -> None:
@@ -39,10 +42,11 @@ class Render:
             result.extend(
                 Variable(
                     reference=(
-                        f"render://{project}/production/" + quote(item["envVar"]["key"], safe="")
+                        f"render://{project}/{SERVICE_SCOPE}/"
+                        + quote(item["envVar"]["key"], safe="")
                     ),
                     project_id=project,
-                    environment="production",
+                    environment=SERVICE_SCOPE,
                     name=item["envVar"]["key"],
                     key_id=item["envVar"]["key"],
                     readable=True,

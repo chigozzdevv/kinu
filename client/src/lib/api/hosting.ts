@@ -4,7 +4,13 @@ import { request, workspacePath } from "./http"
 
 export type HostingPlatform = "vercel" | "railway" | "render"
 export interface HostProject { id: string; name: string }
-export interface HostMapping { reference: string; credential_id: string; service: { id: string; revision: number; endpoint: string | null } }
+export interface HostMapping {
+  reference: string
+  credential_id: string
+  project: HostProject | null
+  variable: HostVariable | null
+  service: { id: string; revision: number; endpoint: string | null }
+}
 export interface KeySetup {
   id: string; reference: string; project_id: string; credential_id: string | null; message: string | null;
   phase: "pending" | "creating" | "stored" | "writing" | "deploying" | "registering" | "completed" | "cancelled" | "review-required" | "recovering" | "restoring";

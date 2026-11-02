@@ -1,12 +1,18 @@
 from typing import Any, Literal
 
-from contracts import ConsumerBinding, ConsumerService, Contract, Identifier
+from connectors.hosting.models import Variable
+from contracts import Application, ConsumerBinding, ConsumerService, Contract, Identifier
 from core.errors import ResourceConflictError
+from core.storage.records import Records
 from pydantic import Field, SecretStr
 
 from hosting.lifecycle import Lifecycle
 from hosting.models import Begin, Platform, Selection
-from hosting.service import Service
+from hosting.service import Service, project_ref
+
+
+def variable_metadata(item: Variable) -> dict[str, Any]:
+    return item.model_dump() | {"environment_name": item.environment_label}
 
 
 class Request(Contract):
@@ -36,6 +42,47 @@ class Request(Contract):
     data: dict[str, Any] = Field(default_factory=dict, max_length=7)
 
 
+async def mapped_variables(service: Service, org: str, connection_id: str) -> list[dict[str, Any]]:
+    connection = await service.inventory.get_connection(org, connection_id)
+    if connection.platform not in {"vercel", "railway", "render"}:
+        raise ResourceConflictError("Choose a hosting connection")
+    result = []
+    project_names: dict[str, str] = {}
+
+    async with Records(service.database).read() as rows:
+        async for row in service.database.collection("host_bindings").find(
+            {"organisation_id": org, "connection_id": connection.id}
+        ):
+            binding = await rows.get(ConsumerBinding, org, row["binding_id"])
+            workload = await rows.get(ConsumerService, org, binding.service_id)
+            project, variable = None, None
+            if data := row.get("variable"):
+                item = Variable.model_validate(data)
+                if (
+                    project_ref(connection.platform, item.project_id)
+                    in connection.allowed_resources
+                ):
+                    if item.project_id not in project_names:
+                        app = await rows.get(Application, org, workload.application_id)
+                        project_names[item.project_id] = app.display_name
+                    project = {"id": item.project_id, "name": project_names[item.project_id]}
+                    variable = variable_metadata(item)
+            result.append(
+                {
+                    "reference": row["reference"],
+                    "credential_id": row["credential_id"],
+                    "project": project,
+                    "variable": variable,
+                    "service": {
+                        "id": workload.id,
+                        "revision": workload.revision,
+                        "endpoint": workload.endpoint,
+                    },
+                }
+            )
+    return result
+
+
 async def control(service: Service, request: Request) -> Any:
     body, actor, session = request, request.actor_id, request.session
     if body.operation == "owner" and body.platform:
@@ -59,30 +106,7 @@ async def control(service: Service, request: Request) -> Any:
     if body.operation == "forget":
         return await Lifecycle(service.database, service.grants).forget(org, body.connection_id)
     if body.operation == "mapped":
-        connection = await service.inventory.get_connection(org, body.connection_id)
-        if connection.platform not in {"vercel", "railway", "render"}:
-            raise ResourceConflictError("Choose a hosting connection")
-        result = []
-        from core.storage.records import Records
-
-        async with Records(service.database).read() as rows:
-            async for row in service.database.collection("host_bindings").find(
-                {"organisation_id": org, "connection_id": connection.id}
-            ):
-                binding = await rows.get(ConsumerBinding, org, row["binding_id"])
-                workload = await rows.get(ConsumerService, org, binding.service_id)
-                result.append(
-                    {
-                        "reference": row["reference"],
-                        "credential_id": row["credential_id"],
-                        "service": {
-                            "id": workload.id,
-                            "revision": workload.revision,
-                            "endpoint": workload.endpoint,
-                        },
-                    }
-                )
-        return result
+        return await mapped_variables(service, org, body.connection_id)
     if body.operation == "projects":
         return await service.projects(org, body.connection_id, actor, session)
     if body.operation == "save":
@@ -90,5 +114,6 @@ async def control(service: Service, request: Request) -> Any:
             org, body.connection_id, actor, session, Selection.model_validate(body.data)
         )
     if body.operation == "variables" and body.project_id:
-        return await service.variables(org, body.connection_id, body.project_id)
+        variables = await service.variables(org, body.connection_id, body.project_id)
+        return [variable_metadata(item) for item in variables]
     raise ResourceConflictError("Unknown hosting operation")

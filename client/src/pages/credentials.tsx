@@ -4,7 +4,7 @@ import { ArrowUpRight, ChevronRight, LoaderCircle, Plus } from "lucide-react"
 import { Detail, DetailCard, DetailList, DetailPage, DetailTabs } from "../components/detail"
 import { ControlsFields, ControlsSummary } from "../components/controls"
 import { buildControlPreferences, controlsAreValid, controlsFromDefinition, defaultControls, type ControlValues } from "../lib/controls"
-import { PageHeader, PageSection } from "../components/header"
+import { PageHeader } from "../components/header"
 import { DeleteResourceModal, ManageResourceModal } from "../components/manage"
 import { Provider } from "../components/provider"
 import { Failure, Loading, Notice } from "../components/state"
@@ -12,14 +12,36 @@ import { Toolbar } from "../components/toolbar"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
-import type { ManagedCredential } from "../types"
+import type { ConsumerService, ManagedCredential } from "../types"
 import { api } from "../lib/api"
 import { Field, formControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
+import { isHostingPlatform, validHealthUrl } from "../lib/hosting"
 import { ConnectionSetup } from "./connections"
-import { CredentialOnboarding } from "./credential-onboarding"
 
 type CredentialTarget = "approvals" | "rotations" | "connections" | "incidents"
+
+function ConsumerHealth({ service }: { service: ConsumerService }) {
+  const query = useQueryClient()
+  const [draft, setDraft] = useState<string | null>(null)
+  const endpoint = draft ?? service.endpoint ?? ""
+  const save = useMutation({
+    mutationFn: () => api.saveHostHealth(service, endpoint.trim()),
+    onSuccess: async () => {
+      await Promise.all([
+        query.invalidateQueries({ queryKey: ["graph"] }),
+        query.invalidateQueries({ queryKey: ["host-mapped", service.runtime_connection_id] }),
+      ])
+      setDraft(null)
+    },
+  })
+  return <div className="space-y-2">
+    <Field label="Health URL"><input className={formControl} type="url" value={endpoint} onChange={(event) => setDraft(event.target.value)} /></Field>
+    {draft !== null && <Button variant="secondary" size="sm" disabled={save.isPending || !validHealthUrl(endpoint) || endpoint.trim() === service.endpoint}
+      onClick={() => save.mutate()}>Save URL</Button>}
+    {save.error && <p role="alert" className="text-[var(--red)]">{save.error.message}</p>}
+  </div>
+}
 
 function identifier(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`
@@ -35,8 +57,7 @@ function sameControls(left: ControlValues, right: ControlValues) {
     && left.exposureSources.every((source) => right.exposureSources.some((item) => item.connection_id === source.connection_id && item.resource === source.resource))
 }
 
-export function CredentialsPage({ adding, onAdd, initialCredentialId, initialControlVersionId, initialTab, onSelectCredential, onNavigate, onNavigateRotation }: {
-  adding: boolean
+export function CredentialsPage({ onAdd, initialCredentialId, initialControlVersionId, initialTab, onSelectCredential, onNavigate, onNavigateRotation }: {
   onAdd: () => void
   initialCredentialId?: string
   initialControlVersionId?: string
@@ -194,12 +215,6 @@ export function CredentialsPage({ adding, onAdd, initialCredentialId, initialCon
     || !sameControls(editControls, controlsFromDefinition(currentControlVersion.data!.definition))
   )
 
-  if (adding) return <PageSection name="Inventory / Credentials">
-    {playbookNotice && <div className="page pb-0">{playbookNotice}</div>}
-    <CredentialOnboarding graph={graph.data!} connections={connections.data!} environments={environments.data!}
-      playbooks={playbooks.data ?? []} onFinish={onSelectCredential} />
-  </PageSection>
-
   if (addingControlConnection) return <ConnectionSetup initialRoles={["incident"]} playbooks={playbooks.data ?? []} connections={connections.data!} onClose={() => setAddingControlConnection(false)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); setAddingControlConnection(false) }} />
 
   if (currentSelected) return (
@@ -210,7 +225,18 @@ export function CredentialsPage({ adding, onAdd, initialCredentialId, initialCon
       <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "consumers", label: "Consumers" }, { id: "controls", label: "Controls" }]} value={tab} onChange={(nextTab) => { setTab(nextTab); onSelectCredential(currentSelected.id, nextTab, nextTab === "controls" ? viewControlVersionId ?? undefined : undefined) }} />
       <DetailCard>
         {tab === "overview" && <DetailList><Detail label="Type">{titleCase(currentSelected.kind)}</Detail><Detail label="Scopes">{currentSelected.scopes.join(", ") || "None"}</Detail><Detail label="Provider ID">{currentSelected.provider_id ?? "Not recorded"}</Detail><Detail label="Consumers">{currentSelected.consumer_ids.length}</Detail><Detail label="Secret reference"><span className="mono-code break-all">{currentSelected.secret_reference}</span></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
-        {tab === "consumers" && <div className="divide-y divide-[var(--border-soft)]">{selectedServices.map((service) => <div key={service.id} className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]"><div className="break-words text-[11px] font-semibold">{service.display_name}</div><div className="min-w-0 break-words text-[10px] text-[var(--ink-soft)]"><div>{service.runtime_resource}</div><div className="mt-1 text-[var(--ink-muted)]">{environments.data!.find((item) => item.id === service.environment_id)?.display_name}</div></div></div>)}</div>}
+        {tab === "consumers" && <div className="divide-y divide-[var(--border-soft)]">{selectedServices.map((service) => {
+          const runtime = connections.data!.find((item) => item.id === service.runtime_connection_id)
+          const environment = environments.data!.find((item) => item.id === service.environment_id)
+          return <div key={service.id} className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
+            <div className="break-words text-[11px] font-semibold">{service.display_name}</div>
+            <div className="min-w-0 space-y-2 break-words text-[10px] text-[var(--ink-soft)]">
+              <div>{runtime?.platform === "render" ? runtime.display_name : service.runtime_resource}</div>
+              {runtime?.platform !== "render" && <div className="text-[var(--ink-muted)]">{environment?.display_name}</div>}
+              {runtime && isHostingPlatform(runtime.platform) && <ConsumerHealth service={service} />}
+            </div>
+          </div>
+        })}</div>}
         {tab === "controls" && <div className="space-y-6">
           {displayedControlVersion.data ? <ControlsSummary value={controlsFromDefinition(displayedControlVersion.data.definition)} connections={connections.data!} /> : displayedControlVersion.error ? <div className="text-[10px] text-[var(--red)]">{displayedControlVersion.error.message}</div> : <div className="text-[10px] text-[var(--ink-muted)]">Loading controls…</div>}
           <div className="border-t border-[var(--border-soft)] pt-5"><DetailList><Detail label="Connection">{selectedConnection?.display_name}</Detail><Detail label="Interface">{titleCase(selectedConnection?.interface ?? "unknown")}</Detail><Detail label="Secret">{selectedSecretStore?.display_name}</Detail><Detail label="Connection status"><Badge variant={connectionStatus(selectedConnection?.status).variant}>{connectionStatus(selectedConnection?.status).label}</Badge></Detail></DetailList></div>

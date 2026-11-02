@@ -10,7 +10,7 @@ const graph = {
 }
 
 test("confirmed credentials show their mapped service when email fields are empty", () => {
-  assert.deepEqual(affectedResource(incident, graph), { name: "kinu-check", detail: "Render · Production" })
+  assert.deepEqual(affectedResource(incident, graph), { name: "kinu-check", detail: "Render" })
   assert.deepEqual(incident.resource, {})
 })
 
