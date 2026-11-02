@@ -1,4 +1,13 @@
 import type { IntegrationKind } from "../components/integration"
+import { clearCredentialReturn } from "./credential-return.ts"
+
+export type BeforeAuthorization = (integration: IntegrationKind) => void
+
+export function authorizeConnection(url: string, integration: IntegrationKind, before?: BeforeAuthorization) {
+  clearCredentialReturn()
+  before?.(integration)
+  window.location.assign(url)
+}
 
 export function connectionCallbackIntegration(): IntegrationKind | null {
   const parameters = new URLSearchParams(window.location.search)

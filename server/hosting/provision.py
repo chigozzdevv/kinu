@@ -9,6 +9,7 @@ from contracts import Connection, ConnectionInterface, ConnectionRole, Connectio
 from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
 from core.errors import IdempotencyConflictError, ResourceConflictError, ResourceNotFoundError
+from core.inventory.controls import validate_exposure_sources
 from jobs.queue import Jobs
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -104,8 +105,9 @@ class Provisioning:
     ) -> Row:
         existing = await self.rows.find_one({"organisation_id": org, "id": identity})
         if existing:
-            if existing["host_id"] != host_id or existing["request"] != body.model_dump(
-                mode="json"
+            if (
+                existing["host_id"] != host_id
+                or Provision.model_validate(existing["request"]) != body
             ):
                 raise IdempotencyConflictError(
                     "Key setup request already identifies another operation"
@@ -118,6 +120,10 @@ class Provisioning:
             raise ResourceConflictError("Reconnect the hosting account before creating a key")
         provider = await self.hosts.inventory.get_connection(org, body.provider_connection_id)
         self.provider_ready(provider)
+        if body.initial_controls and body.initial_controls.exposure_sources:
+            validate_exposure_sources(
+                await self.hosts.inventory.connections(org), body.initial_controls
+            )
         scopes = self.mappings.provider.creation_scopes(provider, body.scopes)
         provider_ids = [
             item["provider_id"] for item in await self.mappings.provider.metadata(provider)
@@ -419,6 +425,7 @@ class Provisioning:
                 row["actor_id"],
                 Import(
                     project_id=row["project_id"],
+                    initial_controls=body.initial_controls,
                     mappings=(
                         Mapping(
                             variable_reference=variable.reference,

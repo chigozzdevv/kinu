@@ -10,6 +10,7 @@ from contracts import (
     ConnectionInterface,
     ConnectionRole,
     ConnectionStatus,
+    ControlPreferences,
     CreateRunCommand,
     ManagedCredential,
     RunStatus,
@@ -45,6 +46,7 @@ async def setup(
     identity: AuthenticatedIdentity,
     http: httpx.AsyncClient,
     platform_name: str = "render",
+    initial_controls: tuple[ControlPreferences | None, ControlPreferences | None] = (None, None),
 ) -> tuple[Service, Versions, HttpProviderConnector, ManagedCredential]:
     accounts = AccountStore(database, lambda: datetime.now(UTC))
     org = (
@@ -127,7 +129,7 @@ async def setup(
     await InventoryStore(database).add_connection(connection)
     mappings = Mappings(hosts, versions, provider)
     credential = None
-    for project in ("project-one", "project-two"):
+    for project, preferences in zip(("project-one", "project-two"), initial_controls, strict=True):
         variables = await hosts.variables(org, host.id, project)
         imported = await mappings.save(
             org,
@@ -135,6 +137,7 @@ async def setup(
             identity.actor_id,
             Import(
                 project_id=project,
+                initial_controls=preferences,
                 mappings=(
                     Mapping(
                         variable_reference=variables[0].reference,
@@ -152,6 +155,26 @@ async def setup(
         and len(credential.consumer_ids) == 2
     )
     return hosts, versions, provider, credential
+
+
+async def test_second_workload_keeps_the_first_credentials_rotation_rules(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    initial = ControlPreferences(
+        automatic_triggers=frozenset({"drift"}),
+        rotate_before_expiry_seconds=604800,
+        maximum_observation_seconds=180,
+        require_revoke_approval=True,
+    )
+    other = initial.model_copy(update={"require_revoke_approval": False})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(Platform().response)) as http:
+        hosts, _, _, credential = await setup(
+            database, identity, http, initial_controls=(initial, other)
+        )
+        version = await hosts.inventory.get_control_version(
+            credential.organisation_id, credential.id, credential.control_version
+        )
+        assert Mappings.preferences(version) == initial
 
 
 @pytest.mark.parametrize(

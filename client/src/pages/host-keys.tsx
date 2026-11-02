@@ -1,109 +1,226 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { ControlsFields, ControlsSummary } from "../components/controls"
+import { Detail, DetailList, Section } from "../components/detail"
 import { Failure, Loading, Notice } from "../components/state"
 import { Button } from "../components/ui/button"
-import { Badge } from "../components/ui/badge"
-import { Modal } from "../components/ui/modal"
-import { Field, SelectControl, formControl } from "../components/workspace"
-import { api } from "../lib/api"
-import type { Connection } from "../types"
-import type { HostMapping, HostVariable } from "../lib/api/hosting"
+import { Field, FormGrid, ResourceSelect, SelectControl, SetupPage, formControl } from "../components/workspace"
+import { activeOrganisationId, api } from "../lib/api"
+import type { HostMapping } from "../lib/api/hosting"
+import { buildControlPreferences, controlsAreValid, defaultControls } from "../lib/controls"
+import { finishCredentialConnection, saveCredentialReturn, type HostKeyForm } from "../lib/credential-return"
 import { titleCase } from "../lib/format"
+import type { Connection, ManagedCredential, Playbook } from "../types"
+import { ConnectionSetup } from "./connections"
 
-export function HostKeys({ connection, connections }: { connection: Connection; connections: Connection[] }) {
+const emptyForm: HostKeyForm = {
+  project: "", variable: "", provider: "", choices: {}, health: {}, createReference: "", scopes: "", step: 0,
+  controls: { ...defaultControls, automaticTriggers: ["expiry"], expiryDays: 1 },
+}
+
+function validHealth(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === "https:" && !url.username && !url.password && !url.hash
+  } catch {
+    return false
+  }
+}
+
+export function HostKeys({ connection, connections, credentials, playbooks, resume, onBack, onFinish }: {
+  connection: Connection
+  connections: Connection[]
+  credentials: ManagedCredential[]
+  playbooks: Playbook[]
+  resume?: HostKeyForm
+  onBack: () => void
+  onFinish: (credentialId: string) => void
+}) {
   const query = useQueryClient()
+  const [form, setForm] = useState<HostKeyForm>(resume ?? emptyForm)
+  const { project, provider, choices, health, controls, createReference, step } = form
+  const [dependency, setDependency] = useState<"provider" | "incident" | null>(resume ? "incident" : null)
+  const [tracking, setTracking] = useState("")
+  const attempt = useRef({ input: "", id: "", setupId: "" })
   const projects = useQuery({ queryKey: ["host-projects", connection.id], queryFn: () => api.getHostProjects(connection.id) })
-  const [project, setProject] = useState("")
-  const [provider, setProvider] = useState("")
-  const [choices, setChoices] = useState<Record<string, string>>({})
-  const [health, setHealth] = useState<Record<string, string>>({})
-  const [creating, setCreating] = useState<HostVariable | null>(null)
-  const [requestId, setRequestId] = useState("")
-  const [scopes, setScopes] = useState("")
+  const variables = useQuery({ queryKey: ["host-variables", connection.id, project], queryFn: () => api.getHostVariables(connection.id, project), enabled: Boolean(project) })
+  const mapped = useQuery({ queryKey: ["host-mapped", connection.id], queryFn: () => api.getHostMappings(connection.id) })
   const setups = useQuery({
     queryKey: ["key-setups", connection.id], queryFn: () => api.getKeySetups(connection.id),
     refetchInterval: (result) => result.state.data?.some((item) => !["completed", "cancelled"].includes(item.phase)) ? 3_000 : false,
   })
-  const variables = useQuery({ queryKey: ["host-variables", connection.id, project], queryFn: () => api.getHostVariables(connection.id, project), enabled: Boolean(project) })
-  const mapped = useQuery({ queryKey: ["host-mapped", connection.id], queryFn: () => api.getHostMappings(connection.id) })
-  const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(provider) })
-  const providers = connections.filter((item) => item.roles.includes("provider") && (item.interface === "api" && item.http || item.interface === "browser") && item.status === "ready")
+  const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider")
+    && ((item.interface === "api" && item.http) || item.interface === "browser"))
   const selectedProvider = providers.find((item) => item.id === provider)
-  const create = useMutation({
-    mutationFn: () => api.createManagedKey(connection.id, requestId, {
-      project_id: project, variable_reference: creating!.reference, provider_connection_id: provider,
-      health_url: health[creating!.reference]?.trim() ?? "", scopes: scopes.split(/[\s,]+/).filter(Boolean),
-    }),
-    onSuccess: async () => { setCreating(null); await query.invalidateQueries({ queryKey: ["key-setups", connection.id] }) },
+  const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(selectedProvider) })
+  const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")) ?? []
+  const projectName = projects.data?.projects.find((item) => item.id === project)?.name
+  const variable = variables.data?.find((item) => item.reference === form.variable)
+  const mapping = variable && mapped.data?.find((item) => item.reference === variable.reference)
+  const setup = variable && setups.data?.find((item) => item.reference === variable.reference)
+  const settingUp = setup && setup.phase !== "cancelled" && setup.phase !== "completed"
+  const mappings = Object.entries(choices).filter(([, key]) => key)
+  const newKey = createReference !== ""
+  const newVariables = variables.data?.filter((item) => newKey ? item.reference === createReference : choices[item.reference]) ?? []
+  const hasNewCredentials = newKey || !mappings.length || mappings.some(([, key]) =>
+    !credentials.some((item) => item.connection_id === provider && item.provider_id === key && !item.archived_at))
+  const steps = hasNewCredentials ? ["Credential", "Controls", "Review"] : ["Credential", "Review"]
+  const otherChoices = mappings.some(([reference]) => reference !== form.variable)
+  const canCreate = variable?.readable && selectedProvider?.interface === "api" && selectedProvider.http?.supports_overlap && (!setup || setup.phase === "cancelled")
+  const selectionsValid = newKey
+    ? canCreate && newVariables.length === 1 && validHealth(health[createReference] ?? "")
+    : mappings.length > 0 && newVariables.length === mappings.length && mappings.every(([ref, key]) =>
+        availableKeys.some((item) => item.provider_id === key) && (!health[ref]?.trim() || validHealth(health[ref])))
+  const unclaimed = newVariables.every((item) => !mapped.data?.some((entry) => entry.reference === item.reference)
+    && !setups.data?.some((entry) => entry.reference === item.reference && !["completed", "cancelled"].includes(entry.phase)))
+  const canContinue = Boolean(projectName && selectedProvider && mapped.isSuccess && setups.isSuccess && variables.isSuccess && selectionsValid && unclaimed)
+
+  function update(patch: Partial<HostKeyForm>) {
+    setForm((current) => ({ ...current, ...patch }))
+  }
+  function chooseProvider(id: string) {
+    if (id !== provider) update({ provider: id, choices: {}, createReference: "", scopes: "" })
+  }
+  function closeDependency() {
+    finishCredentialConnection()
+    setDependency(null)
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!canContinue || (hasNewCredentials && !controlsAreValid(controls))) throw new Error("Review the credential selections before saving.")
+      const preferences = hasNewCredentials ? buildControlPreferences(controls) : undefined
+      if (newKey) {
+        const input = {
+          project_id: project, variable_reference: createReference, provider_connection_id: provider,
+          health_url: health[createReference].trim(), scopes: form.scopes.split(/[\s,]+/).filter(Boolean),
+          initial_controls: buildControlPreferences(controls),
+        }
+        const signature = JSON.stringify(input)
+        if (attempt.current.input !== signature) attempt.current = { input: signature, id: crypto.randomUUID(), setupId: "" }
+        const pending = await api.createManagedKey(connection.id, attempt.current.id, input)
+        attempt.current.setupId = pending.id
+        setTracking(pending.id)
+        update({ step: 0, createReference: "" })
+        await query.invalidateQueries({ queryKey: ["key-setups", connection.id] })
+        return
+      }
+      const saved = await api.importHostKeys(connection.id, project, mappings.map(([reference, key]) => ({
+        variable_reference: reference, provider_connection_id: provider, provider_id: key, health_url: health[reference]?.trim() || null,
+      })), preferences)
+      await Promise.all(["graph", "overview", "host-mapped"].map((key) => query.invalidateQueries({ queryKey: [key] })))
+      onFinish(saved.length === 1 ? saved[0].id : "")
+    },
+  })
+  const updateHealth = useMutation({
+    mutationFn: ({ entry, endpoint }: { entry: HostMapping; endpoint: string }) => api.saveHostHealth(entry.service, endpoint),
+    onSuccess: async () => { await Promise.all([query.invalidateQueries({ queryKey: ["host-mapped", connection.id] }), query.invalidateQueries({ queryKey: ["graph"] })]) },
   })
   const recover = useMutation({
     mutationFn: (id: string) => api.recoverKeySetup(connection.id, id),
-    onSuccess: async () => { await query.invalidateQueries({ queryKey: ["key-setups", connection.id] }) },
+    onSuccess: async (result) => { setTracking(result.id); await query.invalidateQueries({ queryKey: ["key-setups", connection.id] }) },
   })
+  const completed = setups.data?.find((item) => item.id === tracking && item.phase === "completed")
   useEffect(() => {
-    if (!setups.data?.some((item) => item.phase === "completed")) return
-    void query.invalidateQueries({ queryKey: ["host-mapped", connection.id] })
-    void query.invalidateQueries({ queryKey: ["graph"] })
-    void query.invalidateQueries({ queryKey: ["provider-keys", provider] })
-  }, [setups.data, connection.id, provider, query])
-  const updateHealth = useMutation({
-    mutationFn: ({ mapping, endpoint }: { mapping: HostMapping; endpoint: string }) => api.saveHostHealth(mapping.service, endpoint),
-    onSuccess: async () => { setHealth({}); await Promise.all([query.invalidateQueries({ queryKey: ["host-mapped", connection.id] }), query.invalidateQueries({ queryKey: ["graph"] })]) },
-  })
-  const save = useMutation({
-    mutationFn: () => api.importHostKeys(connection.id, project, Object.entries(choices).filter(([, value]) => value).map(([reference, key]) => ({
-      variable_reference: reference, provider_connection_id: provider, provider_id: key,
-      health_url: health[reference]?.trim() || null,
-    }))),
-    onSuccess: async () => {
-      setChoices({})
-      await Promise.all([query.invalidateQueries({ queryKey: ["graph"] }), query.invalidateQueries({ queryKey: ["connections"] }), query.invalidateQueries({ queryKey: ["host-mapped", connection.id] })])
-    },
-  })
-  if (projects.isLoading || mapped.isLoading) return <Loading />
-  if (projects.error || mapped.error) return <Failure error={(projects.error ?? mapped.error)!} />
-  return <div className="max-w-[640px] space-y-5">
-    <div className="flex flex-wrap items-start gap-4">
-      <Field label="Project"><SelectControl size="sm" width="compact" value={project} onChange={(event) => { setProject(event.target.value); setChoices({}); setHealth({}); save.reset() }}><option value="">Select project</option>{projects.data?.projects.filter((item) => projects.data.selected.includes(item.id)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectControl></Field>
-      <Field label="Provider"><SelectControl size="sm" width="compact" value={provider} onChange={(event) => { setProvider(event.target.value); setChoices({}); save.reset() }}><option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field>
-    </div>
-    {!providers.length && <Notice>Connect a credential provider first.</Notice>}
-    {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Only variables scoped to production are supported.</p>}
-    {variables.isLoading || keys.isLoading ? <Loading /> : variables.error || keys.error ? <Failure error={(variables.error ?? keys.error)!} /> : <div className="divide-y divide-[var(--border-soft)]">
-      {variables.data?.map((variable) => {
-        const mapping = mapped.data?.find((item) => item.reference === variable.reference)
-        const managed = Boolean(mapping)
-        const setup = setups.data?.find((item) => item.reference === variable.reference)
-        const canCreate = !managed && !setups.isLoading && !setups.error && variable.readable && selectedProvider?.interface === "api" && selectedProvider.http?.supports_overlap && (!setup || setup.phase === "cancelled")
-        return <div key={variable.reference} className="space-y-3 py-4">
-          <div className="flex flex-wrap items-center gap-3"><span className="break-all text-[12px] font-semibold">{variable.name}</span><span className="min-w-0 flex-1 text-[10px] text-[var(--ink-muted)]">{[variable.environment_name ?? variable.environment, variable.service_name].filter(Boolean).join(" / ")}</span>{managed && <Badge variant="healthy">Managed</Badge>}</div>
-          {!managed && <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Credential"><SelectControl width="compact" value={choices[variable.reference] ?? ""} disabled={!provider} onChange={(event) => setChoices({ ...choices, [variable.reference]: event.target.value })}><option value="">Skip</option>{keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")).map((key) => <option key={key.provider_id} value={key.provider_id}>{key.name ?? key.provider_id}</option>)}</SelectControl></Field>
-            <Field label="Health URL"><input className={formControl} type="url" value={health[variable.reference] ?? ""} placeholder="https://app.example.com/health" onChange={(event) => setHealth({ ...health, [variable.reference]: event.target.value })} /></Field>
-          </div>}
-          {canCreate && <Button variant="secondary" onClick={() => { create.reset(); setScopes(""); setRequestId(crypto.randomUUID()); setCreating(variable) }}>Create managed key</Button>}
-          {setup && !managed && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]"><p>{titleCase(setup.phase)}</p>{setup.message && <p role="status">{setup.message}</p>}{setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}</div>}
-          {mapping && <div className="flex max-w-[620px] flex-wrap items-end gap-3">
-            <div className="min-w-0 flex-1 basis-64"><Field label="Health URL"><input className={formControl} type="url" value={health[variable.reference] ?? mapping.service.endpoint ?? ""} placeholder="https://app.example.com/health" onChange={(event) => setHealth({ ...health, [variable.reference]: event.target.value })} /></Field></div>
-            <Button variant="secondary" onClick={() => updateHealth.mutate({ mapping, endpoint: health[variable.reference].trim() })} disabled={updateHealth.isPending || !health[variable.reference]?.trim() || health[variable.reference]?.trim() === mapping.service.endpoint}>Save URL</Button>
-          </div>}
-        </div>
-      })}
+    if (!completed?.credential_id) return
+    const id = completed.credential_id
+    let active = true
+    void Promise.all(["graph", "overview", "host-mapped", "provider-keys"].map((key) => query.invalidateQueries({ queryKey: [key] })))
+      .then(() => { if (active) onFinish(id) })
+    return () => { active = false }
+  }, [completed, query, onFinish])
+  const completedCount = setups.data?.filter((item) => item.phase === "completed").length ?? 0
+  useEffect(() => {
+    if (completedCount) void query.invalidateQueries({ queryKey: ["host-mapped", connection.id] })
+  }, [completedCount, connection.id, query])
+
+  if (dependency) return <ConnectionSetup initialRoles={[dependency]} connections={connections} playbooks={playbooks} onClose={closeDependency}
+    beforeAuthorization={(integration) => saveCredentialReturn(activeOrganisationId(), integration, { source: "hosting", hostId: connection.id, form })}
+    onChanged={() => query.invalidateQueries({ queryKey: ["connections"] })}
+    onCreated={async (created) => {
+      if (dependency === "provider" && created.status === "ready") chooseProvider(created.id)
+      closeDependency()
+    }} />
+
+  if (projects.isLoading || mapped.isLoading) return <div className="page"><Loading /></div>
+  const loadError = projects.error ?? mapped.error
+  if (loadError) return <div className="page"><Failure error={loadError} /><Button variant="secondary" onClick={onBack}>Back</Button></div>
+  function chooseKey(value: string) {
+    if (!variable) return
+    if (value === "create" && setup?.phase === "cancelled" && setup.id === attempt.current.setupId) {
+      attempt.current = { input: "", id: "", setupId: "" }
+    }
+    const next = { ...choices }
+    if (value.startsWith("key:")) next[variable.reference] = value.slice(4)
+    else delete next[variable.reference]
+    update({ choices: next, createReference: value === "create" ? variable.reference : "", scopes: "" })
+  }
+  function goTo(next: number) {
+    save.reset()
+    update({ step: next })
+  }
+  const endpoint = variable ? health[variable.reference] ?? mapping?.service.endpoint ?? "" : ""
+  const eligibleProjects = projects.data?.projects.filter((item) => projects.data.selected.includes(item.id)) ?? []
+  const primary = step === 2
+    ? <Button disabled={save.isPending || !canContinue || (hasNewCredentials && !controlsAreValid(controls))} onClick={() => save.mutate()}>
+        {save.isPending ? "Saving…" : newKey ? "Create and install" : mappings.length > 1 ? "Link keys" : "Link key"}
+      </Button>
+    : <Button disabled={step === 0 ? !canContinue : !controlsAreValid(controls)} onClick={() => goTo(step === 0 && hasNewCredentials ? 1 : 2)}>Continue</Button>
+
+  return <SetupPage eyebrow="Inventory / Credentials" title="Add credential" steps={steps} current={step === 2 ? steps.length - 1 : step}
+    onExit={step === 0 ? onBack : () => goTo(step === 2 && hasNewCredentials ? 1 : 0)}
+    onBack={() => goTo(step === 2 && hasNewCredentials ? 1 : 0)} onCancel={() => onFinish("")} primary={primary} error={save.error?.message}>
+    {step === 0 && <div className="space-y-5">
+      <FormGrid>
+        <Field label="Project"><SelectControl value={project} onChange={(event) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: event.target.value }) }}>
+          <option value="">Select project</option>{eligibleProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </SelectControl></Field>
+        <Field label="Variable"><SelectControl value={form.variable} disabled={!project || variables.isLoading} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
+          <option value="">Select variable</option>{variables.data?.map((item) => <option key={item.reference} value={item.reference}>
+            {[item.name, item.service_name, item.environment_name ?? item.environment].filter(Boolean).join(" · ")}
+          </option>)}
+        </SelectControl></Field>
+      </FormGrid>
+      {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Only production variables are supported.</p>}
+      {variables.error && <Failure error={variables.error} />}
       {project && variables.data?.length === 0 && <Notice>No supported variables were found.</Notice>}
+      {variable && !mapping && !settingUp && <FormGrid>
+        <ResourceSelect label="Provider" value={provider} onChange={chooseProvider} addLabel="Connect provider" onAdd={() => setDependency("provider")}>
+          <option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
+        </ResourceSelect>
+        <Field label="Key"><SelectControl value={newKey ? "create" : choices[variable.reference] ? "key:" + choices[variable.reference] : ""} disabled={!selectedProvider || keys.isLoading} onChange={(event) => chooseKey(event.target.value)}>
+          <option value="">Select key</option>{availableKeys.map((item) => <option key={item.provider_id} value={"key:" + item.provider_id}>{item.name ?? item.provider_id}</option>)}
+          {canCreate && !otherChoices && <option value="create">Create managed key…</option>}
+        </SelectControl></Field>
+        <Field label={newKey ? "Health URL (required)" : "Health URL"} wide><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
+        {newKey && selectedProvider?.platform !== "resend" && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
+      </FormGrid>}
+      {variable && mapping && <div className="space-y-3">
+        <Button variant="secondary" onClick={() => onFinish(mapping.credential_id)}>View credential</Button>
+        <Field label="Health URL"><input className={formControl} type="url" value={endpoint} onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
+        <Button variant="secondary" disabled={updateHealth.isPending || !validHealth(endpoint) || endpoint.trim() === mapping.service.endpoint} onClick={() => updateHealth.mutate({ entry: mapping, endpoint: endpoint.trim() })}>Save URL</Button>
+      </div>}
+      {setup && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
+        <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
+        {setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}
+      </div>}
+      {mappings.length > 1 && <p className="text-[11px] text-[var(--ink-soft)]">{mappings.length} variables selected</p>}
+      {(keys.error || setups.error || recover.error || updateHealth.error) && <Failure error={(keys.error ?? setups.error ?? recover.error ?? updateHealth.error)!} />}
     </div>}
-    {Object.values(choices).some(Boolean) && <p className="text-[11px] leading-5 text-[var(--ink-muted)]">Include every workload using these keys; a health URL is required for rotation.</p>}
-    {save.error && <Failure error={save.error} />}
-    {updateHealth.error && <Failure error={updateHealth.error} />}
-    {setups.error && <Failure error={setups.error} />}
-    {recover.error && <Failure error={recover.error} />}
-    {save.isSuccess && <p className="text-[11px] text-[var(--ink-muted)]">Credentials saved.</p>}
-    <Button onClick={() => save.mutate()} disabled={!provider || !Object.values(choices).some(Boolean) || save.isPending}>{save.isPending ? "Saving…" : "Add credentials"}</Button>
-    <Modal isOpen={Boolean(creating)} onClose={() => setCreating(null)} title="Create managed key" actions={<Button disabled={create.isPending || !creating || !health[creating.reference]?.trim()} onClick={() => create.mutate()}>{create.isPending ? "Starting…" : "Create and install"}</Button>}>
-      <div className="space-y-4"><p className="text-[12px] leading-6 text-[var(--ink-soft)]">Create a key with {selectedProvider?.display_name} and install it as {creating?.name} in this workload. Kinu will deploy and verify it. Any previous provider key stays active for you to review.</p>
-      {creating && <Field label="Health URL" hint="The endpoint must prove which key this workload has loaded."><input className={formControl} type="url" value={health[creating.reference] ?? ""} onChange={(event) => setHealth({ ...health, [creating.reference]: event.target.value })} /></Field>}
-      {selectedProvider?.platform !== "resend" && <Field label="Scopes" hint="Separate the permissions for this new key with spaces or commas."><input className={formControl} value={scopes} onChange={(event) => setScopes(event.target.value)} /></Field>}
-      {selectedProvider?.platform === "resend" && <p className="text-[11px] text-[var(--ink-muted)]">Sending only, limited to the domain selected on this Resend connection.</p>}
-      {create.error && <Failure error={create.error} />}</div>
-    </Modal>
-  </div>
+    {step === 1 && <ControlsFields value={controls} connections={connections} onChange={(value) => update({ controls: value })} onAddConnection={() => setDependency("incident")} />}
+    {step === 2 && <div>
+      <Section title="Credential" onEdit={() => goTo(0)}><DetailList>
+        <Detail label="Hosting">{connection.display_name}</Detail><Detail label="Project">{projectName}</Detail><Detail label="Provider">{selectedProvider?.display_name}</Detail>
+        {newVariables.map((item) => <Detail key={item.reference} label={[item.name, item.service_name, item.environment_name ?? item.environment].filter(Boolean).join(" · ")}>
+          {newKey ? "Create and install a new key" : availableKeys.find((key) => key.provider_id === choices[item.reference])?.name ?? choices[item.reference]}
+          {health[item.reference]?.trim() && <div className="mt-1">{health[item.reference].trim()}</div>}
+        </Detail>)}
+        {newKey && (selectedProvider?.platform === "resend" || form.scopes.trim()) && <Detail label="Permissions">{selectedProvider?.platform === "resend" ? "Sending only" : form.scopes.trim()}</Detail>}
+        {!hasNewCredentials && <Detail label="Rotation controls">Use the credential’s existing rules</Detail>}
+      </DetailList></Section>
+      {newKey && <p className="mb-4 text-[11px] leading-5 text-[var(--ink-soft)]">Kinu will deploy and verify the new key. The previous provider key stays active for you to review.</p>}
+      {!newKey && newVariables.some((item) => !health[item.reference]?.trim()) && <Notice>A health URL is required before this workload can rotate.</Notice>}
+      {hasNewCredentials && <Section title="Rotation controls for new keys" onEdit={() => goTo(1)}><ControlsSummary value={controls} connections={connections} /></Section>}
+    </div>}
+  </SetupPage>
 }

@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from contracts import Contract, Identifier
+from contracts import Contract, ControlPreferences, Identifier
 from pydantic import Field, SecretStr
 
 Platform = Literal["vercel", "railway", "render"]
@@ -29,6 +29,7 @@ class Mapping(Contract):
 class Import(Contract):
     project_id: str = Field(min_length=1, max_length=256)
     mappings: tuple[Mapping, ...] = Field(min_length=1, max_length=30)
+    initial_controls: ControlPreferences | None = None
 
 
 class Provision(Contract):
@@ -36,6 +37,7 @@ class Provision(Contract):
     variable_reference: str = Field(min_length=1, max_length=1024)
     provider_connection_id: Identifier
     health_url: str = Field(min_length=1, max_length=2048)
+    initial_controls: ControlPreferences | None = None
     scopes: frozenset[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
         default=frozenset(), max_length=50
     )

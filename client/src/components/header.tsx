@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ChevronDown } from "lucide-react"
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { useOrganisation } from "../lib/useorganisation"
 
 type PageHeaderProps = {
@@ -12,13 +12,19 @@ type PageHeaderProps = {
   onBack?: () => void
 }
 
+const SectionContext = createContext<string | null>(null)
+
+export function PageSection({ name, children }: { name: string; children: ReactNode }) {
+  return <SectionContext value={name}>{children}</SectionContext>
+}
+
 export function PageHeader({ section, eyebrow, title, titlePrefix, description, actions, onBack }: PageHeaderProps) {
   const { active, memberships, select } = useOrganisation()
   const [organisationsOpen, setOrganisationsOpen] = useState(false)
   const organisationMenu = useRef<HTMLDivElement>(null)
   const parts = section?.split(" · ") ?? []
   const resolvedTitle = title ?? parts.at(-1) ?? ""
-  const resolvedEyebrow = eyebrow ?? (parts.length > 1 ? parts.slice(0, -1).join(" / ") : undefined)
+  const resolvedEyebrow = useContext(SectionContext) ?? eyebrow ?? (parts.length > 1 ? parts.slice(0, -1).join(" / ") : undefined)
 
   useEffect(() => {
     const close = (event: PointerEvent) => {

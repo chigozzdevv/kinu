@@ -18,13 +18,12 @@ import { ConnectPage, Field, FormGrid, ResourceSelect, SelectControl, SetupPage,
 import type { Connection, ConnectionRole, HttpProviderApi, Playbook } from "../types"
 import { activeOrganisationId, ApiError, api, type BrowserSetupResponse, type CreateConnectionInput, type GitHubDiscoveryResponse, type GitHubOnboardingResponse } from "../lib/api"
 import { parseProviderAdapter } from "../lib/adapter"
-import { connectionCallbackIntegration } from "../lib/callback"
+import { authorizeConnection, connectionCallbackIntegration, type BeforeAuthorization } from "../lib/callback"
 import { connectionAction, connectionStatus, formatDate, titleCase } from "../lib/format"
 import { PlaybookSetup } from "./playbooks"
 import { BrowserSetupSession, type BrowserSetupCapability } from "./browsersetup"
 import { ConnectionTypes } from "../components/connection-types"
 import { AwsSetup } from "./aws"
-import { HostKeys } from "./host-keys"
 import { HostingSetup } from "./hosting"
 import type { HostingPlatform } from "../lib/api/hosting"
 import { GmailSetup } from "./gmail"
@@ -100,7 +99,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
   const [selected, setSelected] = useState<Connection | null>(null)
-  const [tab, setTab] = useState<"overview" | "access" | "credentials">("overview")
+  const [tab, setTab] = useState<"overview" | "access">("overview")
   const [selectedPlaybookVersion, setSelectedPlaybookVersion] = useState("")
   const [creating, setCreating] = useState(() => connectionCallbackIntegration() !== null)
   const [setupIntegration, setSetupIntegration] = useState<IntegrationKind | null>(null)
@@ -164,7 +163,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     const connection = connections.data.find((item) => item.id === initialConnectionId)
     if (connection) {
       setSelected(connection)
-      setTab(["vercel", "railway", "render"].includes(connection.platform) ? "credentials" : "overview")
+      setTab("overview")
     }
     setInitialSelectionHandled(true)
   }, [connections.data, initialConnectionId, initialSelectionHandled])
@@ -201,10 +200,10 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   if (error) return <div className="page"><Failure error={error} /></div>
   const playbookNotice = playbooks.error && <Notice>Playbooks are unavailable. Browser setup cannot be completed right now.</Notice>
   if (gmailSetupId) return <GmailSetup connectionId={gmailSetupId} connections={connections.data!} onClose={() => setGmailSetupId(null)} onBack={() => setGmailSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["gmail", gmailSetupId] }) }} onCreated={async (connection) => { setSelected(connection); setGmailSetupId(null) }} />
-  if (hostSetup) return <HostingSetup platform={hostSetup.platform} connectionId={hostSetup.id} connection={connections.data?.find((item) => item.id === hostSetup.id)} onClose={() => setHostSetup(null)} onBack={() => setHostSetup(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["host-projects", hostSetup.id] }) }} onCreated={async (connection) => { setSelected(connection) }} />
+  if (hostSetup) return <HostingSetup platform={hostSetup.platform} connectionId={hostSetup.id} connection={connections.data?.find((item) => item.id === hostSetup.id)} onClose={() => setHostSetup(null)} onBack={() => setHostSetup(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); await queryClient.invalidateQueries({ queryKey: ["host-projects", hostSetup.id] }) }} onCreated={async (connection) => { setSelected(connection); setHostSetup(null); setTab("overview") }} />
   if (awsSetupId) return <AwsSetup connectionId={awsSetupId} onClose={() => setAwsSetupId(null)} onBack={() => setAwsSetupId(null)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async (connection) => { setSelected(connection); setAwsSetupId(null) }} />
 
-  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onCreated={async (connection) => { setSelected(connection); setTab(["vercel", "railway", "render"].includes(connection.platform) ? "credentials" : "overview"); onSelectConnection(connection.id) }} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
+  if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onCreated={async (connection) => { setCreating(false); setSelected(connection); setTab("overview"); onSelectConnection(connection.id) }} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
 
   if (creatingPlaybook && currentSelected) return <PlaybookSetup initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
@@ -215,10 +214,9 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   if (currentSelected) return <DetailPage>
     {playbookNotice}
     <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{currentSelected.platform === "resend" && currentSelected.interface === "api" && currentSelected.status === "ready" && <Button variant="secondary" onClick={() => useBrowser.mutate(currentSelected.id)} disabled={useBrowser.isPending}>{useBrowser.isPending ? "Preparing…" : "Use browser"}</Button>}{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
-    <DetailTabs items={[{ id: "overview", label: "Overview" }, ...(["vercel", "railway", "render"].includes(currentSelected.platform) ? [{ id: "credentials" as const, label: "Credentials" }] : []), { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
+    <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
-      {tab === "credentials" && <HostKeys connection={currentSelected} connections={connections.data!} />}
       {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook version">{currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3"><ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{browserPlaybooks.map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList><Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
     </DetailCard>
     {(attach.error || open.error || useBrowser.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error ?? useBrowser.error)?.message}</div>}
@@ -258,11 +256,13 @@ type ConnectionSetupProps = {
   connections: Connection[]
   onChanged: () => Promise<void>
   onCreated?: (connection: Connection) => Promise<void>
+  beforeAuthorization?: BeforeAuthorization
+  integrations?: IntegrationKind[]
   initialRoles?: ConnectionRole[]
   initialIntegration?: IntegrationKind | null
 }
 
-export function ConnectionSetup({ onClose, playbooks, connections, onChanged, onCreated, initialRoles = [], initialIntegration = null }: ConnectionSetupProps) {
+export function ConnectionSetup({ onClose, playbooks, connections, onChanged, onCreated, initialRoles = [], initialIntegration = null, integrations, beforeAuthorization }: ConnectionSetupProps) {
   const [integration, setIntegration] = useState<IntegrationKind | null>(() => connectionCallbackIntegration() ?? initialIntegration)
   const [category, setCategory] = useState<ConnectionRole | null>(initialRoles[0] ?? null)
   const features = useFeatures()
@@ -282,13 +282,13 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const requestedProvider = category === "provider"
   const requestedCloud = category === "runtime" || category === "secret-store"
   const requestedIncident = category === "incident"
-  const visible: IntegrationKind[] = requestedIncident
+  const visible: IntegrationKind[] = integrations ?? (requestedIncident
     ? ["gmail", "github"]
     : requestedProvider
     ? ["resend", "custom-api", "computer-use"]
     : requestedCloud
       ? category === "runtime" ? ["vercel", "railway", "render", "aws"] : ["aws"]
-      : []
+      : [])
   const connected = {
     resend: connections.some((item) => item.platform === "resend" && item.status === "ready"),
     gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
@@ -304,14 +304,14 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
     <PageHeader eyebrow="Inventory / Connections" title="Add connection" onBack={onClose} />
     <ConnectionTypes onSelect={setCategory} />
   </div>
-  if (integration && !available[integration]) return <div className="page"><PageHeader title="Add connection" onBack={onClose} /><Notice>This connection is not available yet.</Notice></div>
+  if (integration && (!available[integration] || (integrations && !integrations.includes(integration)))) return <div className="page"><PageHeader title="Add connection" onBack={onClose} /><Notice>This connection is not available yet.</Notice></div>
 
-  if (integration === "vercel" || integration === "railway" || integration === "render") return <HostingSetup platform={integration} {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
+  if (integration === "vercel" || integration === "railway" || integration === "render") return <HostingSetup platform={integration} {...{ onClose, onChanged, onCreated }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "resend") return <ResendSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
-  if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
-  if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} onBack={() => setIntegration(null)} />
+  if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
+  if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
 
   return <div className="page max-w-[960px]">
@@ -436,7 +436,7 @@ function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbooks, co
 
 type SavedGitHubOnboarding = GitHubOnboardingResponse & { installation_id?: number }
 
-function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections }: Pick<ConnectionSetupProps, "onClose" | "onChanged" | "onCreated" | "connections"> & { onBack: () => void }) {
+function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections, beforeAuthorization }: Pick<ConnectionSetupProps, "onClose" | "onChanged" | "onCreated" | "connections" | "beforeAuthorization"> & { onBack: () => void }) {
   const [step, setStep] = useState(0)
   const [discovery, setDiscovery] = useState<GitHubDiscoveryResponse | null>(null)
   const [callbackError, setCallbackError] = useState("")
@@ -446,14 +446,14 @@ function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections }: Pic
     mutationFn: () => api.beginGitHubOnboarding(),
     onSuccess: (value) => {
       sessionStorage.setItem("kinu.github", JSON.stringify(value))
-      window.location.assign(value.authorization_url)
+      authorizeConnection(value.authorization_url, "github", beforeAuthorization)
     },
   })
   const install = useMutation({
     mutationFn: () => api.beginGitHubOnboarding(),
     onSuccess: (value) => {
       sessionStorage.setItem("kinu.github", JSON.stringify(value))
-      window.location.assign(value.installation_url)
+      authorizeConnection(value.installation_url, "github", beforeAuthorization)
     },
   })
   const discover = useMutation({
@@ -495,7 +495,7 @@ function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections }: Pic
     const parameters = new URLSearchParams(window.location.search)
     const callback = parameters.has("github") || parameters.has("installation_id") || (parameters.has("code") && sessionStorage.getItem("kinu.github"))
     if (!callback) return
-    const clearCallback = () => window.history.replaceState({}, "", window.location.pathname)
+    const clearCallback = () => window.history.replaceState({}, "", beforeAuthorization ? "/dashboard/credentials?add=1" : window.location.pathname)
     const raw = sessionStorage.getItem("kinu.github")
     if (!raw) {
       clearCallback()
@@ -524,7 +524,7 @@ function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections }: Pic
         const continued = { ...saved, installation_id: installationId }
         sessionStorage.setItem("kinu.github", JSON.stringify(continued))
         clearCallback()
-        window.location.assign(saved.authorization_url)
+        authorizeConnection(saved.authorization_url, "github", beforeAuthorization)
         return
       }
       if (!state) {

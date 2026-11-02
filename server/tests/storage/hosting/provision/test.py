@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from connectors.base.errors import ConnectorError
+from contracts import ControlPreferences
 from core.auth import AuthenticatedIdentity
 from core.errors import StorageUnavailableError
 from core.storage.database import Database
@@ -57,13 +58,24 @@ async def test_first_customer_key_is_created_installed_and_registered_without_sa
         org, host, seed = await setup(database, identity, http)
         service = Provisioning(seed.mappings, queue(), seed.proof)
         await service.initialize()
-        pending = await service.request(org, host, identity.actor_id, "customer_setup", request())
+        controls = ControlPreferences(
+            automatic_triggers=frozenset({"drift", "expiry"}),
+            rotate_before_expiry_seconds=604800,
+            maximum_observation_seconds=180,
+            require_revoke_approval=True,
+        )
+        body = request().model_copy(update={"initial_controls": controls})
+        pending = await service.request(org, host, identity.actor_id, "customer_setup", body)
         assert pending["phase"] == "pending" and not platform.created
         await service.execute(org, pending["id"])
         row = await service.get(org, pending["id"])
         assert row["phase"] == "completed", row.get("message")
         credential = await seed.mappings.hosts.inventory.get_credential(org, row["credential_id"])
         assert credential.provider_id == platform.created[0]
+        version = await service.hosts.inventory.get_control_version(
+            org, credential.id, credential.control_version
+        )
+        assert Mappings.preferences(version) == controls
         assert credential.consumer_ids and platform.loaded == platform.value
         assert not platform.revoked and platform.deployments == 1 and "value" not in row
         assert not await database.collection("provision_locks").find_one({"organisation_id": org})
@@ -74,7 +86,7 @@ async def test_first_customer_key_is_created_installed_and_registered_without_sa
             )
             == 1
         )
-        same = await service.request(org, host, identity.actor_id, "customer_setup", request())
+        same = await service.request(org, host, identity.actor_id, "customer_setup", body)
         await service.execute(org, same["id"])
         assert same["credential_id"] == credential.id
         assert len(platform.created) == platform.deployments == 1

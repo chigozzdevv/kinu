@@ -11,6 +11,7 @@ export type NavItem =
 
 export type DashboardRoute = {
   section: NavItem
+  addCredential?: boolean
   resourceId?: string
   tab?: string
   controlVersionId?: string
@@ -50,6 +51,9 @@ export function dashboardRoute(pathname = window.location.pathname, search = win
 
   const section = parts[1] as NavItem
   const resourceId = detailSections.has(section) ? decoded(parts[2]) : undefined
+  if (section === "credentials" && !resourceId && new URLSearchParams(search).get("add") === "1") {
+    return { section, addCredential: true }
+  }
   if (section !== "credentials" || !resourceId) return { section, resourceId }
 
   const parameters = new URLSearchParams(search)
@@ -63,6 +67,7 @@ export function dashboardRoute(pathname = window.location.pathname, search = win
 
 export function dashboardPath(route: DashboardRoute): string {
   let path = route.section === "overview" ? "/dashboard" : `/dashboard/${route.section}`
+  if (route.section === "credentials" && route.addCredential) return path + "?add=1"
   if (route.resourceId && detailSections.has(route.section)) path += `/${encodeURIComponent(route.resourceId)}`
   if (route.section !== "credentials" || !route.resourceId) return path
 

@@ -1,4 +1,5 @@
 import type { Connection, ManagedCredential, ProviderCredentialMetadata } from "../../types"
+import type { ControlPreferences } from "./types"
 import { request, workspacePath } from "./http"
 
 export type HostingPlatform = "vercel" | "railway" | "render"
@@ -22,7 +23,7 @@ export const hosting = {
   async getKeySetups(connectionId: string): Promise<KeySetup[]> {
     return request(`${path()}/${connectionId}/key-setups`)
   },
-  async createManagedKey(connectionId: string, requestId: string, input: { project_id: string; variable_reference: string; provider_connection_id: string; health_url: string; scopes: string[] }): Promise<KeySetup> {
+  async createManagedKey(connectionId: string, requestId: string, input: { project_id: string; variable_reference: string; provider_connection_id: string; health_url: string; scopes: string[]; initial_controls: ControlPreferences }): Promise<KeySetup> {
     return request(`${path()}/${connectionId}/key-setups`, {
       method: "POST", headers: { "Idempotency-Key": requestId }, body: JSON.stringify(input),
     })
@@ -39,8 +40,8 @@ export const hosting = {
   async getProviderKeys(connectionId: string): Promise<ProviderCredentialMetadata[]> {
     return request(`${workspacePath()}/inventory/connections/${connectionId}/credential-metadata`)
   },
-  async importHostKeys(connectionId: string, projectId: string, mappings: { variable_reference: string; provider_connection_id: string; provider_id: string; health_url: string | null }[]): Promise<ManagedCredential[]> {
-    return request(`${path()}/${connectionId}/credentials`, { method: "POST", body: JSON.stringify({ project_id: projectId, mappings }) })
+  async importHostKeys(connectionId: string, projectId: string, mappings: { variable_reference: string; provider_connection_id: string; provider_id: string; health_url: string | null }[], initialControls?: ControlPreferences): Promise<ManagedCredential[]> {
+    return request(`${path()}/${connectionId}/credentials`, { method: "POST", body: JSON.stringify({ project_id: projectId, mappings, initial_controls: initialControls }) })
   },
   async beginHosting(platform: HostingPlatform, displayName: string, token?: string, connection?: Connection): Promise<{ authorization_url?: string; connection_id?: string }> {
     return request(path(), { method: "POST", body: JSON.stringify({ platform, display_name: displayName, token, connection_id: connection?.id, expected_revision: connection?.revision }) })

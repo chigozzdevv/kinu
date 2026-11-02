@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { activeOrganisationId, api, type ImportCredentialInput } from "../lib/api"
 import type { Connection, Environment, InventoryGraph, Playbook } from "../types"
+import { finishCredentialConnection, saveCredentialReturn, type AwsKeyForm } from "../lib/credential-return"
 import { ControlsFields, ControlsSummary } from "./controls"
 import { buildControlPreferences, controlsAreValid, defaultControls, type ControlValues } from "../lib/controls"
 import { Detail, DetailList, Section } from "./detail"
@@ -34,6 +35,7 @@ export function CredentialSetup({
   isOpen,
   onClose,
   graph,
+  resume,
   connections,
   environments,
   playbooks,
@@ -41,6 +43,7 @@ export function CredentialSetup({
 }: {
   isOpen: boolean
   onClose: () => void
+  resume?: AwsKeyForm
   graph: InventoryGraph
   connections: Connection[]
   environments: Environment[]
@@ -49,20 +52,20 @@ export function CredentialSetup({
 }) {
   const queryClient = useQueryClient()
   const initialized = useRef(false)
-  const [step, setStep] = useState(0)
-  const [connectionId, setConnectionId] = useState("")
-  const [secretStoreId, setSecretStoreId] = useState("")
-  const [secretResource, setSecretResource] = useState("")
-  const [secretReference, setSecretReference] = useState("")
-  const [runtimeConnectionId, setRuntimeConnectionId] = useState("")
-  const [runtimeResource, setRuntimeResource] = useState("")
-  const [environmentName, setEnvironmentName] = useState("")
-  const [controls, setControls] = useState<ControlValues>(defaultControls)
-  const [runtimeSecretName, setRuntimeSecretName] = useState("")
-  const [runtimeContainerName, setRuntimeContainerName] = useState<string | null>(null)
+  const [step, setStep] = useState(resume?.step ?? 0)
+  const [connectionId, setConnectionId] = useState(resume?.connectionId ?? "")
+  const [secretStoreId, setSecretStoreId] = useState(resume?.secretStoreId ?? "")
+  const [secretResource, setSecretResource] = useState(resume?.secretResource ?? "")
+  const [secretReference, setSecretReference] = useState(resume?.secretReference ?? "")
+  const [runtimeConnectionId, setRuntimeConnectionId] = useState(resume?.runtimeConnectionId ?? "")
+  const [runtimeResource, setRuntimeResource] = useState(resume?.runtimeResource ?? "")
+  const [environmentName, setEnvironmentName] = useState(resume?.environmentName ?? "")
+  const [controls, setControls] = useState<ControlValues>(resume?.controls ?? defaultControls)
+  const [runtimeSecretName, setRuntimeSecretName] = useState(resume?.runtimeSecretName ?? "")
+  const [runtimeContainerName, setRuntimeContainerName] = useState<string | null>(resume?.runtimeContainerName ?? null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [dependency, setDependency] = useState<"connection" | "secret-location" | "runtime" | "incident" | null>(null)
+  const [dependency, setDependency] = useState<"connection" | "secret-location" | "runtime" | "incident" | null>(resume ? "incident" : null)
 
   const managementConnections = useMemo(() => connections.filter((item) => item.roles.includes("provider") && item.status === "ready" && (
     (item.interface === "api" && item.capabilities.includes("provider.listCredentialMetadata"))
@@ -123,6 +126,7 @@ export function CredentialSetup({
     }
     if (initialized.current) return
     initialized.current = true
+    if (resume) return
     setStep(0)
     setConnectionId(managementConnections[0]?.id ?? "")
     setSecretStoreId(secretStores[0]?.id ?? "")
@@ -136,7 +140,7 @@ export function CredentialSetup({
     setRuntimeContainerName(null)
     setSubmitting(false)
     setError("")
-  }, [isOpen, managementConnections, runtimeConnections, secretStores])
+  }, [isOpen, managementConnections, runtimeConnections, secretStores, resume])
 
   useEffect(() => {
     if (!error) return
@@ -217,7 +221,6 @@ export function CredentialSetup({
     setError("")
     try {
       await onCreate(input)
-      onClose()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Credential could not be added")
     } finally {
@@ -225,17 +228,27 @@ export function CredentialSetup({
     }
   }
 
+  function closeDependency() {
+    finishCredentialConnection()
+    setDependency(null)
+  }
+
   if (dependency) return <ConnectionSetup
+    integrations={dependency === "runtime" || dependency === "secret-location" ? ["aws"] : undefined}
+    beforeAuthorization={(integration) => saveCredentialReturn(activeOrganisationId(), integration, {
+      source: "aws", form: { step, connectionId, secretStoreId, secretResource, secretReference, runtimeConnectionId,
+        runtimeResource, environmentName, controls, runtimeSecretName, runtimeContainerName },
+    })}
     initialRoles={dependency === "connection" ? ["provider"] : dependency === "secret-location" ? ["secret-store"] : dependency === "incident" ? ["incident"] : ["runtime"]}
     playbooks={playbooks}
     connections={connections}
-    onClose={() => setDependency(null)}
+    onClose={closeDependency}
     onChanged={() => queryClient.invalidateQueries({ queryKey: ["connections"] })}
     onCreated={async (created) => {
       if (dependency === "connection") setConnectionId(created.id)
       else if (dependency === "secret-location") setSecretStoreId(created.id)
       else if (dependency === "runtime") { setRuntimeConnectionId(created.id); setRuntimeResource(""); setEnvironmentName("") }
-      setDependency(null)
+      closeDependency()
     }}
   />
 

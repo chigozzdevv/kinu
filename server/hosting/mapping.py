@@ -63,7 +63,16 @@ class Mappings:
                 raise ResourceConflictError("Hosting connection changed during discovery")
             for items in groups.values():
                 results.append(
-                    await self.group(rows, host, items, store, actor, project_name, setup_id)
+                    await self.group(
+                        rows,
+                        host,
+                        items,
+                        store,
+                        actor,
+                        project_name,
+                        setup_id,
+                        body.initial_controls,
+                    )
                 )
         return tuple(results)
 
@@ -76,6 +85,7 @@ class Mappings:
         actor: str,
         project_name: str,
         setup_id: str | None,
+        initial_controls: ControlPreferences | None,
     ) -> ManagedCredential:
         org, now, first = host.organisation_id, datetime.now(UTC), items[0]
         key, provider, credential = first.credential_id, first.provider, first.existing
@@ -192,7 +202,7 @@ class Mappings:
                 "revision": credential.revision + 1 if credential else 0,
             }
         )
-        preferences = self.preferences(previous)
+        preferences = self.preferences(previous, initial_controls)
         services = tuple(
             [await rows.get(ConsumerService, org, item.service_id) for item in bindings]
         )
@@ -243,9 +253,11 @@ class Mappings:
         return changed
 
     @staticmethod
-    def preferences(previous: ControlVersion | None) -> ControlPreferences:
+    def preferences(
+        previous: ControlVersion | None, initial: ControlPreferences | None = None
+    ) -> ControlPreferences:
         if not previous:
-            return ControlPreferences(
+            return initial or ControlPreferences(
                 automatic_triggers=frozenset({"expiry"}),
                 rotate_before_expiry_seconds=86400,
                 maximum_observation_seconds=60,

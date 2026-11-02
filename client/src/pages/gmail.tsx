@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Plus, X } from "lucide-react"
 import { api } from "../lib/api"
+import { authorizeConnection, type BeforeAuthorization } from "../lib/callback"
 import type { GmailSender } from "../lib/api/gmail"
 import type { Connection } from "../types"
 import { Detail, DetailList } from "../components/detail"
@@ -11,13 +12,14 @@ import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { ConnectPage, Field, SelectControl, SetupPage, formControl } from "../components/workspace"
 
-export function GmailSetup({ connections, onBack, onClose, onChanged, onCreated, connectionId }: {
+export function GmailSetup({ connections, onBack, onClose, onChanged, onCreated, connectionId, beforeAuthorization }: {
   connections: Connection[]
   onBack: () => void
   onClose: () => void
   onChanged: () => Promise<void>
   onCreated?: (connection: Connection) => Promise<void>
   connectionId?: string
+  beforeAuthorization?: BeforeAuthorization
 }) {
   const [mailboxId, setMailboxId] = useState(() => connectionId ?? new URLSearchParams(window.location.search).get("gmail") ?? "")
   const validId = /^gmail_[a-f0-9]{32}$/.test(mailboxId)
@@ -27,7 +29,7 @@ export function GmailSetup({ connections, onBack, onClose, onChanged, onCreated,
   const accounts = useQuery({ queryKey: ["gmail-accounts"], queryFn: () => api.listGmail(), enabled: !validId, retry: false })
   const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider"))
   const rows = senders ?? (mailbox.data?.senders.length ? mailbox.data.senders : [{ sender: "", provider_connection_id: providers[0]?.id ?? "" }])
-  const begin = useMutation({ mutationFn: () => api.beginGmail(validId ? mailboxId : undefined), onSuccess: (value) => { window.location.assign(value.authorization_url) } })
+  const begin = useMutation({ mutationFn: () => api.beginGmail(validId ? mailboxId : undefined), onSuccess: (value) => { authorizeConnection(value.authorization_url, "gmail", beforeAuthorization) } })
   const save = useMutation({ mutationFn: () => api.saveGmail(mailbox.data!, rows.map((item) => ({ ...item, sender: item.sender.trim() }))), onSuccess: async (box) => {
     await onChanged()
     const connection = await api.getConnection(box.id)
@@ -36,8 +38,8 @@ export function GmailSetup({ connections, onBack, onClose, onChanged, onCreated,
   } })
   const disconnect = useMutation({ mutationFn: () => api.disconnectGmail(mailbox.data!), onSuccess: async () => { await onChanged(); onClose() } })
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("gmail")) window.history.replaceState({}, "", window.location.pathname)
-  }, [])
+    if (!beforeAuthorization && new URLSearchParams(window.location.search).has("gmail")) window.history.replaceState({}, "", window.location.pathname)
+  }, [beforeAuthorization])
   const callbackError = mailboxId === "expired" ? "Connection expired. Connect Gmail again." : mailboxId === "failed" ? "Gmail was not connected. Try again." : ""
   if (validId && mailbox.isLoading) return <div className="page"><Loading /></div>
   if (mailbox.error) return <div className="page"><Failure error={mailbox.error} /></div>

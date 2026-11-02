@@ -24,8 +24,8 @@ export function ResendSetup({ onClose, onBack, onChanged, onCreated }: {
     onSuccess: async (connection) => {
       setToken("")
       await onChanged()
-      await onCreated?.(connection)
-      onClose()
+      if (onCreated) await onCreated(connection)
+      else onClose()
     },
   })
   if (step === 0) return <ConnectPage eyebrow="Inventory / Connections" title="Connect Resend" onBack={onBack} onClose={onClose}

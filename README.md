@@ -93,8 +93,8 @@ Redacted screenshots before protected actions and after verified private key cap
 in the executor vault for 90 days and available to workspace members who can read the run. The result image is taken with
 page scripts frozen and sensitive fields covered; secret values and screenshots never reach the model.
 
-For hosting, choose Vercel, Railway or Render, select allowed projects, then open the connection's
-**Credentials** tab. Choose key variables and their issuer identities. Kinu creates inventory and
+In **Credentials → Add credential**, choose a hosting account or connect Vercel, Railway or Render.
+Select the project, its key variables and their issuer, then review the rotation controls. Kinu creates inventory and
 consumer bindings automatically and reuses the existing connections across keys. Render uses an
 API key; Vercel and Railway use installation-owned OAuth apps configured in Settings. Register the
 exact callback shown there. Vercel needs project, environment-variable and deployment permissions;

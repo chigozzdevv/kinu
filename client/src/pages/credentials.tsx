@@ -4,10 +4,9 @@ import { ArrowUpRight, ChevronRight, LoaderCircle, Plus } from "lucide-react"
 import { Detail, DetailCard, DetailList, DetailPage, DetailTabs } from "../components/detail"
 import { ControlsFields, ControlsSummary } from "../components/controls"
 import { buildControlPreferences, controlsAreValid, controlsFromDefinition, defaultControls, type ControlValues } from "../lib/controls"
-import { PageHeader } from "../components/header"
+import { PageHeader, PageSection } from "../components/header"
 import { DeleteResourceModal, ManageResourceModal } from "../components/manage"
 import { Provider } from "../components/provider"
-import { CredentialSetup } from "../components/setup"
 import { Failure, Loading, Notice } from "../components/state"
 import { Toolbar } from "../components/toolbar"
 import { Badge } from "../components/ui/badge"
@@ -18,7 +17,7 @@ import { api } from "../lib/api"
 import { Field, formControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
 import { ConnectionSetup } from "./connections"
-import { HostKeys } from "./host-keys"
+import { CredentialOnboarding } from "./credential-onboarding"
 
 type CredentialTarget = "approvals" | "rotations" | "connections" | "incidents"
 
@@ -36,7 +35,9 @@ function sameControls(left: ControlValues, right: ControlValues) {
     && left.exposureSources.every((source) => right.exposureSources.some((item) => item.connection_id === source.connection_id && item.resource === source.resource))
 }
 
-export function CredentialsPage({ initialCredentialId, initialControlVersionId, initialTab, onSelectCredential, onNavigate, onNavigateRotation }: {
+export function CredentialsPage({ adding, onAdd, initialCredentialId, initialControlVersionId, initialTab, onSelectCredential, onNavigate, onNavigateRotation }: {
+  adding: boolean
+  onAdd: () => void
   initialCredentialId?: string
   initialControlVersionId?: string
   initialTab?: string
@@ -49,8 +50,6 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
   const [search, setSearch] = useState("")
   const [provider, setProvider] = useState("all")
   const [selected, setSelected] = useState<ManagedCredential | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [source, setSource] = useState("")
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [addingControlConnection, setAddingControlConnection] = useState(false)
@@ -87,15 +86,6 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     setTab(requestedTab)
     setViewControlVersionId(requestedTab === "controls" ? initialControlVersionId ?? credential.control_version : null)
   }, [graph.data, initialControlVersionId, initialCredentialId, initialTab])
-  const createCredential = useMutation({
-    mutationFn: api.importCredential.bind(api),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["graph"] }),
-        queryClient.invalidateQueries({ queryKey: ["overview"] }),
-      ])
-    },
-  })
   const saveCredential = useMutation({
     mutationFn: async () => {
       let credential = currentSelected!
@@ -204,20 +194,11 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
     || !sameControls(editControls, controlsFromDefinition(currentControlVersion.data!.definition))
   )
 
-  if (creating) {
-    const hosts = connections.data!.filter((item) => ["vercel", "railway", "render"].includes(item.platform) && item.status === "ready")
-    const host = hosts.find((item) => item.id === source)
-    const close = () => { setCreating(false); setSource("") }
-    if (source === "aws") return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<CredentialSetup isOpen onClose={close} graph={graph.data!} connections={connections.data!} environments={environments.data!} playbooks={playbooks.data ?? []} onCreate={(input) => createCredential.mutateAsync(input)} /></>
-    return <div className="page"><PageHeader eyebrow="Inventory / Credentials" title="Add credentials" onBack={host ? () => setSource("") : close} />
-      {host ? <HostKeys connection={host} connections={connections.data!} /> : <div className="max-w-[620px] space-y-3">
-        <p className="mb-5 text-[12px] text-[var(--ink-muted)]">Choose where your application uses its keys.</p>
-        {hosts.map((item) => <button key={item.id} className="focus-ring content-hover flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource(item.id)}>{item.display_name}<ChevronRight className="content-chevron size-4" /></button>)}
-        <button className="focus-ring content-hover flex w-full items-center justify-between rounded-xl border border-[var(--border-soft)] p-4 text-left text-[12px]" onClick={() => setSource("aws")}>AWS Secrets Manager<ChevronRight className="content-chevron size-4" /></button>
-        <Button variant="secondary" onClick={() => onNavigate("connections")}>Connect hosting</Button>
-      </div>}
-    </div>
-  }
+  if (adding) return <PageSection name="Inventory / Credentials">
+    {playbookNotice && <div className="page pb-0">{playbookNotice}</div>}
+    <CredentialOnboarding graph={graph.data!} connections={connections.data!} environments={environments.data!}
+      playbooks={playbooks.data ?? []} onFinish={onSelectCredential} />
+  </PageSection>
 
   if (addingControlConnection) return <ConnectionSetup initialRoles={["incident"]} playbooks={playbooks.data ?? []} connections={connections.data!} onClose={() => setAddingControlConnection(false)} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} onCreated={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }); setAddingControlConnection(false) }} />
 
@@ -269,7 +250,7 @@ export function CredentialsPage({ initialCredentialId, initialControlVersionId, 
       <PageHeader
         eyebrow="Inventory"
         title="Credentials"
-        actions={<Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add credential</Button>}
+        actions={<Button onClick={onAdd}><Plus className="size-3.5" /> Add credential</Button>}
       />
 
       {activityNotice}

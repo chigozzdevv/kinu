@@ -9,6 +9,7 @@ import { RotationsPage } from "./pages/rotations"
 import { ApprovalsPage } from "./pages/approvals"
 import { ConnectionsPage } from "./pages/connections"
 import { connectionCallbackIntegration } from "./lib/callback"
+import { clearCredentialReturn, credentialReturn } from "./lib/credential-return"
 import { AuditsPage } from "./pages/audits"
 import { SettingsPage } from "./pages/settings"
 import { BrowserSetupPage } from "./pages/browsersetup"
@@ -28,6 +29,14 @@ const queryClient = new QueryClient({
   },
 })
 
+function currentRoute(organisation: string): DashboardRoute {
+  const integration = connectionCallbackIntegration()
+  if (!integration) return dashboardRoute()
+  return credentialReturn(organisation, integration)
+    ? { section: "credentials", addCredential: true }
+    : { section: "connections" }
+}
+
 export function App({
   activeOrganisation,
   memberships,
@@ -35,21 +44,22 @@ export function App({
   activeOrganisation: OrganisationMembership
   memberships: OrganisationMembership[]
 }) {
-  const currentRoute = () => connectionCallbackIntegration()
-    ? { section: "connections" as const }
-    : dashboardRoute()
-  const [route, setRoute] = useState<DashboardRoute>(currentRoute)
+  const organisation = activeOrganisation.organisation.id
+  const [route, setRoute] = useState<DashboardRoute>(() => currentRoute(organisation))
   const [logoutError, setLogoutError] = useState("")
   const currentNav = route.section
 
   useEffect(() => {
-    if (connectionCallbackIntegration() && window.location.pathname !== "/dashboard/connections") {
-      window.history.replaceState({}, "", `/dashboard/connections${window.location.search}`)
+    if (connectionCallbackIntegration()) {
+      const callback = currentRoute(organisation)
+      const params = new URLSearchParams(window.location.search)
+      if (callback.addCredential) params.set("add", "1")
+      window.history.replaceState({}, "", `/dashboard/${callback.section}?${params}`)
     }
-    const restoreRoute = () => setRoute(currentRoute())
+    const restoreRoute = () => setRoute(currentRoute(organisation))
     window.addEventListener("popstate", restoreRoute)
     return () => window.removeEventListener("popstate", restoreRoute)
-  }, [])
+  }, [organisation])
 
   const navigate = (next: DashboardRoute, replace = false) => {
     const location = dashboardPath(next)
@@ -86,6 +96,7 @@ export function App({
   const handleLogout = async () => {
     try {
       const destination = await signOutIdentity()
+      clearCredentialReturn()
       clearOrganisation()
       queryClient.clear()
       window.location.assign(destination)
@@ -102,7 +113,7 @@ export function App({
       case "overview":
         return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} />
       case "credentials":
-        return <CredentialsPage key={dashboardPath(route)} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
+        return <CredentialsPage key={dashboardPath(route)} adding={route.addCredential === true} onAdd={() => navigate({ section: "credentials", addCredential: true })} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
       case "playbooks":
         return <PlaybooksPage />
       case "incidents":

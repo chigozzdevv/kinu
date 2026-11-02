@@ -5,15 +5,17 @@ import { Failure, Loading, Notice } from "../components/state"
 import { Button } from "../components/ui/button"
 import { ConnectPage, Field, SetupPage, formControl } from "../components/workspace"
 import { api } from "../lib/api"
+import { authorizeConnection, type BeforeAuthorization } from "../lib/callback"
 import type { HostingPlatform } from "../lib/api/hosting"
 import type { Connection } from "../types"
 
 const names = { vercel: "Vercel", railway: "Railway", render: "Render" }
 const validId = (value: string | null) => value?.startsWith("connection_") ? value : ""
 
-export function HostingSetup({ platform, connectionId, connection, onBack, onClose, onChanged, onCreated }: {
+export function HostingSetup({ platform, connectionId, connection, onBack, onClose, onChanged, onCreated, beforeAuthorization }: {
   platform: HostingPlatform; connectionId?: string; onBack: () => void; onClose: () => void;
   connection?: Connection; onChanged: () => Promise<void>; onCreated?: (connection: Connection) => Promise<void>;
+  beforeAuthorization?: BeforeAuthorization
 }) {
   const [identity, setIdentity] = useState(() => connectionId ?? validId(new URLSearchParams(window.location.search).get("hosting")))
   const [selected, setSelected] = useState<string[] | null>(null)
@@ -22,14 +24,14 @@ export function HostingSetup({ platform, connectionId, connection, onBack, onClo
   const [name, setName] = useState(names[platform])
   const [callbackError] = useState(() => new URLSearchParams(window.location.search).get("hosting"))
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("hosting")) window.history.replaceState({}, "", "/dashboard/connections")
-  }, [])
+    if (!beforeAuthorization && new URLSearchParams(window.location.search).has("hosting")) window.history.replaceState({}, "", "/dashboard/connections")
+  }, [beforeAuthorization])
   const projects = useQuery({ queryKey: ["host-projects", identity], queryFn: () => api.getHostProjects(identity), enabled: Boolean(identity) })
   const begin = useMutation({
     mutationFn: () => api.beginHosting(platform, name.trim(), token || undefined, reconnecting ? projects.data?.connection ?? connection : undefined),
     onSuccess: async (result) => {
       setToken("")
-      if (result.authorization_url) window.location.assign(result.authorization_url)
+      if (result.authorization_url) authorizeConnection(result.authorization_url, platform, beforeAuthorization)
       else if (result.connection_id) {
         setIdentity(result.connection_id)
         setReconnecting(false)
@@ -41,10 +43,10 @@ export function HostingSetup({ platform, connectionId, connection, onBack, onClo
   const save = useMutation({
     mutationFn: () => api.saveHostProjects(identity, selected ?? projects.data!.selected, projects.data!.connection?.revision),
     onSuccess: async (connection) => {
-      if (window.location.search.includes("hosting=")) window.history.replaceState({}, "", "/dashboard/connections")
+      await projects.refetch()
       await onChanged()
-      await onCreated?.(connection)
-      onClose()
+      if (onCreated) await onCreated(connection)
+      else onClose()
     },
   })
   if (!identity || reconnecting) return <ConnectPage eyebrow="Inventory / Connections" title={`${reconnecting ? "Reconnect" : "Connect"} ${names[platform]}`} onBack={onBack} onClose={onClose}
