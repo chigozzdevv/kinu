@@ -129,6 +129,13 @@ class Assessment:
             item for item in credentials if item.provider_id == signal.event.resource.provider_id
         ]
         match = matches[0] if len(matches) == 1 else None
+        # Forwarding accepts mail from any sender. DKIM proves who sent it, not
+        # that this sender can speak for the credential's provider.
+        provider_authenticated = sender is not None or bool(
+            match
+            and match.provider == "resend"
+            and sender_address.rpartition("@")[2] == "resend.com"
+        )
         relevant = signal.event.kind != "credential-security-review" or match is not None
         proof = await authenticated(raw, sender_address) if relevant else False
         provider_id = match.provider_id if match else None
@@ -156,7 +163,7 @@ class Assessment:
                 )
             }
         )
-        if proof:
+        if proof and provider_authenticated:
             signal = signal.model_copy(
                 update={
                     "transport": MailTrust.VERIFIED_RECEIPT,
@@ -167,6 +174,7 @@ class Assessment:
             "signal": signal.model_dump(mode="json"),
             "sender": sender_address,
             "authenticated": proof,
+            "provider_authenticated": provider_authenticated,
             "provider_id": provider_id,
             "revision": box.revision,
             "decision": None,
@@ -212,6 +220,7 @@ class Assessment:
         )
         allowed = bool(
             data["authenticated"]
+            and (self.source != "email" or data.get("provider_authenticated", False))
             and data["provider_id"] == credential.provider_id
             and signal.event.kind in controls.definition.automatic_triggers
             and (source_allowed if signal.event.kind == "credential-exposure-detected" else due)

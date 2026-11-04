@@ -118,6 +118,8 @@ mount client secrets and set `KINU_VERCEL_CLIENT_SECRET_FILE` or
 For email alerts, open **Connections → Incident sources → Email** and forward mail to the
 workspace address. Kinu shows Gmail forwarding confirmations in that setup screen and marks
 the connection as receiving when mail arrives. No Gmail OAuth app is required.
+Automatic forwarded alerts currently require a Resend sender with aligned DKIM,
+an exact credential match, and permitted controls; other senders require review.
 On the host, configure `KINU_INBOUND_EMAIL_DOMAIN`, `KINU_RESEND_KEY`, and
 `KINU_RESEND_WEBHOOK_SECRET`. Enable receiving on a dedicated Resend subdomain and send
 `email.received` webhooks to `/v1/webhooks/resend` on the API origin.

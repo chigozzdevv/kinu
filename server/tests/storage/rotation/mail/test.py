@@ -209,13 +209,17 @@ async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
         assert any(item.kind == "incident.review-required" for item in events)
 
 
-@pytest.mark.parametrize("signed,approved", [(True, True), (False, True), (True, False)])
+@pytest.mark.parametrize(
+    "signed,approved,trusted",
+    [(True, True, True), (False, True, True), (True, False, True), (True, True, False)],
+)
 async def test_forwarded_alerts_resolve_keys_without_sender_rules_and_keep_rotation_gates(
     database: Database,
     demo: DemoConfig,
     monkeypatch: pytest.MonkeyPatch,
     signed: bool,
     approved: bool,
+    trusted: bool,
 ) -> None:
     async def proof(*args: Any) -> bool:
         return signed
@@ -227,6 +231,11 @@ async def test_forwarded_alerts_resolve_keys_without_sender_rules_and_keep_rotat
     box, _ = await forwarding.mailbox(demo.organisation_id, inbox.id)
     async with Records(database).write(demo.organisation_id) as rows:
         credential = await rows.get(ManagedCredential, demo.organisation_id, demo.credential_id)
+        provider = await rows.get(Connection, demo.organisation_id, credential.connection_id)
+        await rows.replace(
+            provider.model_copy(update={"platform": "resend", "revision": provider.revision + 1}),
+            provider.revision,
+        )
         original = await rows.get(ControlVersion, demo.organisation_id, credential.control_version)
         definition = original.definition.model_copy(
             update={
@@ -249,14 +258,19 @@ async def test_forwarded_alerts_resolve_keys_without_sender_rules_and_keep_rotat
         await rows.add(controls, demo.organisation_id)
         await rows.replace(
             credential.model_copy(
-                update={"control_version": controls.id, "revision": credential.revision + 1}
+                update={
+                    "provider": "resend",
+                    "control_version": controls.id,
+                    "revision": credential.revision + 1,
+                }
             ),
             credential.revision,
         )
     agent, queue = Agent(), Queue()
     assessment = Assessment(database, forwarding, agent, queue, demo.region, source="email")
+    sender = "security@resend.com" if trusted else "security@unrelated.example"
     raw = (
-        f"From: {SENDER}\r\nSubject: API key exposed\r\n\r\n"
+        f"From: {sender}\r\nSubject: API key exposed\r\n\r\n"
         f"Key {'a' * 24} was exposed. PRIVATE-BODY-MARKER"
     ).encode()
     data = await assessment.prepare_forwarded(box, "forwarded_one", raw, datetime.now(UTC))
@@ -266,7 +280,7 @@ async def test_forwarded_alerts_resolve_keys_without_sender_rules_and_keep_rotat
     await assessment.process(box, "forwarded_one", data)
     incidents = await IncidentStore(database).list_incidents(demo.organisation_id, 10)
     assert len(incidents) == 1
-    if signed and approved:
+    if signed and approved and trusted:
         assert len(agent.inputs) == len(queue.sent) == 1
         assert incidents[0].status is IncidentStatus.ROTATING
     else:
