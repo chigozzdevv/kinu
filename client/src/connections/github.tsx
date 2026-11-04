@@ -6,7 +6,7 @@ import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { ConnectPage, SetupPage } from "../components/workspace"
 import type { Connection } from "../types"
-import { activeOrganisationId, ApiError, api, type GitHubDiscoveryResponse, type GitHubOnboardingResponse } from "../lib/api"
+import { ApiError, api, type GitHubDiscoveryResponse, type GitHubOnboardingResponse } from "../lib/api"
 import { authorizeConnection, connectionCallbackIntegration, type BeforeAuthorization } from "../lib/callback"
 import { disconnectImpact } from "./management"
 import type { ProviderSetupProps } from "./provider-setup-props"
@@ -18,7 +18,7 @@ export function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections
   const [discovery, setDiscovery] = useState<GitHubDiscoveryResponse | null>(null)
   const [callbackError, setCallbackError] = useState("")
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
-  const githubConnection = connections.find((item) => item.platform === "github" && item.roles.includes("incident"))
+  const githubConnection = connections.find((item) => item.platform === "github" && item.roles.includes("incident") && !item.archived_at && item.status !== "disabled")
   const begin = useMutation({
     mutationFn: () => api.beginGitHubOnboarding(),
     onSuccess: (value) => {
@@ -39,33 +39,7 @@ export function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections
   const complete = useMutation({ mutationFn: async () => {
     if (!discovery) throw new Error("GitHub repositories are unavailable")
     const completed = await api.completeGitHubOnboarding(discovery.session.id)
-    const reference = `oauth://github/installation/${completed.installation.installation_id}`
-    const existing = connections.find((item) => item.authorization_reference === reference)
-    if (existing) return existing
-    const timestamp = new Date().toISOString()
-    return api.createConnection({ connection: {
-      id: `conn_github_${completed.installation.installation_id}`,
-      organisation_id: activeOrganisationId(),
-      platform: "github",
-      display_name: `GitHub · ${completed.installation.account_login}`,
-      roles: ["incident"],
-      interface: "api",
-      authorization: "oauth",
-      authorization_reference: reference,
-      capabilities: ["incident.verifyWebhook", "incident.readFinding", "repository.resolveContext"],
-      allowed_resources: completed.repositories.map((item) => item.full_name),
-      http: null,
-      playbook_id: null,
-      playbook_version_id: null,
-      status: completed.installation.ready ? "ready" : "setup-required",
-      authenticated_at: timestamp,
-      authorization_expires_at: null,
-      last_validated_at: completed.installation.ready ? timestamp : null,
-      region: "global",
-      created_at: timestamp,
-      updated_at: timestamp,
-      revision: 0,
-    } })
+    return api.getConnection(`conn_github_${completed.installation.installation_id}`)
   } })
 
   useEffect(() => {
@@ -151,7 +125,7 @@ export function GitHubSetup({ onClose, onBack, onChanged, onCreated, connections
   if (!discovery) {
     const returning = Boolean(sessionStorage.getItem("kinu.github") && connectionCallbackIntegration() === "github")
     const busy = begin.isPending || install.isPending || discover.isPending || returning
-    if (githubConnection && !returning) return <><ConnectPage eyebrow="Inventory / Connections" title="GitHub" onBack={onBack} onClose={onClose} error={disconnect.error?.message} action={<Button variant="secondary" onClick={() => setConfirmingDisconnect(true)}>Disconnect</Button>}><IntegrationMark kind="github" /></ConnectPage><Modal isOpen={confirmingDisconnect} onClose={() => setConfirmingDisconnect(false)} title="Disconnect GitHub?" description={disconnectImpact(githubConnection)} size="narrow" showClose={false} actions={<Button variant="danger" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>{disconnect.isPending ? "Disconnecting…" : "Disconnect"}</Button>} /></>
+    if (githubConnection && !returning) return <><ConnectPage eyebrow="Inventory / Connections" title="GitHub" onBack={onBack} onClose={onClose} error={callbackError || begin.error?.message || install.error?.message || discover.error?.message || disconnect.error?.message} action={<>{githubConnection.status !== "ready" && <Button disabled={busy} onClick={() => begin.mutate()}>{busy ? "Connecting…" : "Reconnect"}</Button>}<Button variant="secondary" onClick={() => setConfirmingDisconnect(true)}>Disconnect</Button></>}><IntegrationMark kind="github" /></ConnectPage><Modal isOpen={confirmingDisconnect} onClose={() => setConfirmingDisconnect(false)} title="Disconnect GitHub?" description={disconnectImpact(githubConnection)} size="narrow" showClose={false} actions={<Button variant="danger" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>{disconnect.isPending ? "Disconnecting…" : "Disconnect"}</Button>} /></>
     return <ConnectPage eyebrow="Inventory / Connections" title="GitHub" onBack={onBack} onClose={onClose} error={callbackError || begin.error?.message || install.error?.message || discover.error?.message} action={<Button onClick={() => begin.mutate()} disabled={busy}>{busy ? "Connecting…" : "Connect"}</Button>}><IntegrationMark kind="github" /></ConnectPage>
   }
 

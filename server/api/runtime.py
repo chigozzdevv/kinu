@@ -22,6 +22,7 @@ from core.auth.store import SessionStore
 from core.config import Settings
 from core.connection.bridge import ConnectionBridge, RuntimeMetadata, SecretMetadata
 from core.connection.service import ConnectionService
+from core.github.bridge import GitHubBridge
 from core.incident.service import IncidentService
 from core.incident.store import IncidentStore
 from core.inventory import InventoryService
@@ -127,6 +128,7 @@ async def runtime(
                     notifications=notifications,
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
+                    github=GitHubBridge(private) if private else None,
                     private=private,
                     browser_setup=BrowserBridge(private, config.public_url, config.api_origin)
                     if private

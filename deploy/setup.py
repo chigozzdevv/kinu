@@ -34,6 +34,12 @@ def setup() -> None:
         "KINU_VERCEL_CLIENT_SECRET": "",
         "KINU_RAILWAY_CLIENT_ID": "",
         "KINU_RAILWAY_CLIENT_SECRET": "",
+        "KINU_INBOUND_EMAIL_DOMAIN": "",
+        "KINU_RESEND_WEBHOOK_SECRET": "",
+        "KINU_GITHUB_APP_SLUG": "",
+        "KINU_GITHUB_CLIENT_ID": "",
+        "KINU_GITHUB_CLIENT_SECRET": "",
+        "KINU_GITHUB_WEBHOOK_SECRET": "",
         **{
             f"KINU_MONGO_{role}_PASSWORD": secrets.token_hex(24)
             for role in ("ROOT", "API", "EXECUTOR", "NATIVE")

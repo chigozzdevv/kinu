@@ -22,7 +22,7 @@ from core.errors import (
     IntegrationNotConfiguredError,
     ResourceSetupRequiredError,
 )
-from core.github import GitHubOnboardingService
+from core.github.service import GitHubOnboardingApi
 from core.history import RunHistoryService
 from core.incident import IncidentService
 from core.inventory import InventoryService
@@ -59,7 +59,7 @@ class ApiServices:
     audit: AuditWriter | None = None
     overview: OverviewService | None = None
     browser_setup: BrowserSetupApi | None = None
-    github: GitHubOnboardingService | None = None
+    github: GitHubOnboardingApi | None = None
     history: RunHistoryService | None = None
     accounts: AccountService | None = None
     connections: ConnectionService | None = None

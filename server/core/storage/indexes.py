@@ -93,6 +93,16 @@ async def ensure_indexes(database: Database) -> None:
             IndexModel([("organisation_id", 1), ("run_id", 1), ("stage", 1)]),
         ],
         "mail": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
+        "source_deliveries": [
+            IndexModel([("state", 1), ("available_at", 1)]),
+            IndexModel("expires_on", expireAfterSeconds=0),
+        ],
+        "github_onboarding": [
+            IndexModel("organisation_id"),
+            IndexModel("expires_on", expireAfterSeconds=0),
+        ],
+        "github_installations": [IndexModel("organisation_id")],
+        "github_receipts": [IndexModel("data.received_at")],
         "users": [IndexModel("email", unique=True), IndexModel("id", unique=True)],
         "sessions": [
             IndexModel("token_hash", unique=True),

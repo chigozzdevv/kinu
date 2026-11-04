@@ -42,6 +42,19 @@ class SenderUpdate(Contract):
         return self
 
 
+class ForwardInbox(Contract):
+    id: Identifier
+    organisation_id: Identifier
+    address: str = Field(min_length=5, max_length=254)
+    created_at: AwareDatetime
+    last_received_at: AwareDatetime | None = None
+    receiving: bool = False
+    confirmation_url: str | None = Field(
+        default=None, pattern=r"^https://mail-settings\.google\.com/mail/vf-[A-Za-z0-9_?=&%.-]+$"
+    )
+    revision: int = Field(default=0, ge=0)
+
+
 class GoogleConfig(Contract):
     client_id: str = ""
     client_secret: SecretStr = SecretStr("")

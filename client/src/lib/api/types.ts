@@ -208,6 +208,7 @@ export interface CredentialControlsResponse {
 }
 
 export interface Features {
+  email: boolean
   hosting: boolean
   aws_connections: boolean
   github: boolean

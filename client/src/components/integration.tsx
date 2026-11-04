@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { providerName } from "../lib/format"
 import { PlatformIcon } from "./platform-icon"
 
-export type IntegrationKind = "github" | "gmail" | "aws" | "custom-api" | "computer-use" | "vercel" | "railway" | "render" | "resend"
+export type IntegrationKind = "email" | "github" | "gmail" | "aws" | "custom-api" | "computer-use" | "vercel" | "railway" | "render" | "resend"
 
 type Integration = {
   id: IntegrationKind
@@ -12,6 +12,7 @@ type Integration = {
 }
 
 const integrations: Integration[] = [
+  { id: "email", description: "Forwarded email alerts", action: "Connect" },
   { id: "gmail", description: "Incident emails", action: "Connect" },
   { id: "github", description: "Secret scanning", action: "Connect" },
   { id: "vercel", description: "Projects and variables", action: "Connect" },
@@ -105,7 +106,7 @@ export function IntegrationGrid({
         <span className="mt-7 text-[13px] font-semibold text-[var(--ink)]">{providerName(integration.id)}</span>
         <span className="mt-1 text-[10px] text-[var(--ink-muted)]">{integration.description}</span>
         <span className="mt-auto flex items-center pt-5 text-[10px] font-semibold text-[var(--ink-soft)] group-hover:text-[var(--ink)]">
-          {!available[integration.id] ? "Unavailable" : isConnected && integration.id === "github" ? "Disconnect" : isConnected ? "Add another" : integration.action}
+          {!available[integration.id] ? "Not configured" : isConnected && ["github", "email"].includes(integration.id) ? "Manage" : isConnected ? "Add another" : integration.action}
           <ChevronRight className="content-chevron ml-auto size-3.5" />
         </span>
       </button>

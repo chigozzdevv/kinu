@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -9,7 +9,10 @@ from connectors.base.errors import (
     ConnectorError,
     ConnectorSetupRequiredError,
 )
-from connectors.secrets import SecretStore
+
+
+class GitHubSecrets(Protocol):
+    async def access(self, version: str) -> SecretValue: ...
 
 
 class GitHubOnboardingConnector:
@@ -19,7 +22,7 @@ class GitHubOnboardingConnector:
         client_id: str,
         client_secret_reference: str,
         redirect_uri: str,
-        secrets: SecretStore,
+        secrets: GitHubSecrets,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._app_slug = app_slug

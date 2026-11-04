@@ -55,6 +55,29 @@ class GitHubRepositoryStore(Protocol):
     ) -> tuple[GitHubRepository, ...]: ...
 
 
+class GitHubOnboardingApi(Protocol):
+    async def begin(
+        self, organisation_id: str, subject: str
+    ) -> tuple[GitHubOnboardingSession, str, str, str, str]: ...
+
+    async def discover(
+        self,
+        organisation_id: str,
+        session_id: str,
+        subject: str,
+        state: str,
+        verifier: str,
+        code: str,
+        installation_id: int | None,
+    ) -> tuple[
+        GitHubOnboardingSession, GitHubInstallation, tuple[GitHubRepositoryCandidate, ...]
+    ]: ...
+
+    async def complete(
+        self, organisation_id: str, session_id: str, subject: str
+    ) -> tuple[GitHubOnboardingSession, GitHubInstallation, tuple[GitHubRepository, ...]]: ...
+
+
 class GitHubOnboardingService:
     def __init__(
         self,

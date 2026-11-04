@@ -14,6 +14,7 @@ from core.storage.database import Database
 from core.storage.records import Records
 from demo.config import DemoConfig
 from mail.assessment import Assessment
+from mail.forwarding import Forwarding
 from mail.google import Google
 from mail.links import save_connection
 from mail.models import GoogleConfig, Mailbox, Sender, SenderUpdate
@@ -206,3 +207,68 @@ async def test_only_authenticated_mapped_and_approved_alerts_can_rotate(
         assert not agent.inputs and not queue.sent
         assert incidents[0].status is IncidentStatus.ACTION
         assert any(item.kind == "incident.review-required" for item in events)
+
+
+@pytest.mark.parametrize("signed,approved", [(True, True), (False, True), (True, False)])
+async def test_forwarded_alerts_resolve_keys_without_sender_rules_and_keep_rotation_gates(
+    database: Database,
+    demo: DemoConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    signed: bool,
+    approved: bool,
+) -> None:
+    async def proof(*args: Any) -> bool:
+        return signed
+
+    monkeypatch.setattr("mail.assessment.authenticated", proof)
+    forwarding = Forwarding(database, "inbound.example.com")
+    inbox = await forwarding.create(demo.organisation_id)
+    await forwarding.received(inbox, None)
+    box, _ = await forwarding.mailbox(demo.organisation_id, inbox.id)
+    async with Records(database).write(demo.organisation_id) as rows:
+        credential = await rows.get(ManagedCredential, demo.organisation_id, demo.credential_id)
+        original = await rows.get(ControlVersion, demo.organisation_id, credential.control_version)
+        definition = original.definition.model_copy(
+            update={
+                "require_revoke_approval": False,
+                "exposure_sources": (
+                    ExposureSource(connection_id=inbox.id, resource=inbox.address),
+                )
+                if approved
+                else (),
+            }
+        )
+        controls = original.model_copy(
+            update={
+                "id": "controls_forwarding",
+                "number": original.number + 1,
+                "definition": definition,
+                "digest": digest(definition),
+            }
+        )
+        await rows.add(controls, demo.organisation_id)
+        await rows.replace(
+            credential.model_copy(
+                update={"control_version": controls.id, "revision": credential.revision + 1}
+            ),
+            credential.revision,
+        )
+    agent, queue = Agent(), Queue()
+    assessment = Assessment(database, forwarding, agent, queue, demo.region, source="email")
+    raw = (
+        f"From: {SENDER}\r\nSubject: API key exposed\r\n\r\n"
+        f"Key {'a' * 24} was exposed. PRIVATE-BODY-MARKER"
+    ).encode()
+    data = await assessment.prepare_forwarded(box, "forwarded_one", raw, datetime.now(UTC))
+    assert "PRIVATE-BODY-MARKER" not in str(data)
+    assert data["signal"]["event"]["source"] == "email"
+    await assessment.process(box, "forwarded_one", data)
+    await assessment.process(box, "forwarded_one", data)
+    incidents = await IncidentStore(database).list_incidents(demo.organisation_id, 10)
+    assert len(incidents) == 1
+    if signed and approved:
+        assert len(agent.inputs) == len(queue.sent) == 1
+        assert incidents[0].status is IncidentStatus.ROTATING
+    else:
+        assert not agent.inputs and not queue.sent
+        assert incidents[0].status is IncidentStatus.ACTION

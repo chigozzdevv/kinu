@@ -89,6 +89,7 @@ async def main() -> None:
                 ("monitoring", service.monitor.poll),
                 ("key setup", service.provisioning.poll),
                 ("gmail", service.poll),
+                ("incident sources", service.sources.drain),
                 ("email", service.email.drain),
                 ("heartbeat", heartbeat),
             )

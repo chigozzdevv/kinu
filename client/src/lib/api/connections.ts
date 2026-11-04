@@ -11,6 +11,15 @@ export interface AwsSetup {
   kms_arns: string[]
 }
 
+export interface EmailInbox {
+  id: string
+  organisation_id: string
+  address: string
+  receiving: boolean
+  confirmation_url: string | null
+  last_received_at: string | null
+}
+
 export interface AwsPrepared {
   connection: Connection
   role_arn: string
@@ -19,6 +28,8 @@ export interface AwsPrepared {
 }
 
 export const connections = {
+  getEmailInbox: () => request<EmailInbox | null>(`${workspacePath()}/connections/email`),
+  createEmailInbox: () => request<EmailInbox>(`${workspacePath()}/connections/email`, { method: "POST", body: "{}" }),
   async prepareProviderBrowser(connectionId: Identifier): Promise<Connection> {
     return request(`${workspacePath()}/connections/provider/${connectionId}/browser`, { method: "POST" })
   },

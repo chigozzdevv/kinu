@@ -1,4 +1,4 @@
-import { Braces, Globe2, MonitorCog, type LucideIcon } from "lucide-react"
+import { Braces, Globe2, Mail, MonitorCog, type LucideIcon } from "lucide-react"
 import aws from "../assets/platforms/aws.png"
 import github from "../assets/platforms/github.svg"
 import gmail from "../assets/platforms/gmail.png"
@@ -13,6 +13,7 @@ import stripe from "../assets/platforms/stripe.svg"
 import vercel from "../assets/platforms/vercel.png"
 
 const marks = new Map<string, string | LucideIcon>([
+  ["email", Mail],
   ["aws", aws],
   ["github", github],
   ["gmail", gmail],

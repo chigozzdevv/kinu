@@ -27,6 +27,7 @@ export function requiresBrowserAuthentication(connection: Connection) {
 }
 
 export function disconnectImpact(connection: Connection) {
+  if (connection.platform === "email") return "Stops processing alerts sent to this workspace’s email address."
   if (connection.platform === "gmail") return "Stops Gmail monitoring and removes saved access for this workspace."
   if (connection.platform === "github") return "Removing this connection will disable GitHub security monitoring for exposed credentials."
   if (connection.interface === "browser") return `Removing this connection will stop Kinu from rotating credentials through ${connection.display_name} with Computer Use.`

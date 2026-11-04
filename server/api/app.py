@@ -60,6 +60,7 @@ from api.routes.hosts import router as hosts_router
 from api.routes.installation import router as installation_router
 from api.routes.integrations import router as integrations_router
 from api.routes.providers import router as providers_router
+from api.routes.sources import router as sources_router
 from api.runtime import runtime
 
 ErrorHandler = Callable[[Request, Exception], Awaitable[JSONResponse]]
@@ -117,6 +118,7 @@ def create_app(
     app.include_router(settings_router)
     app.include_router(demo_router)
     app.include_router(features_router)
+    app.include_router(sources_router)
     app.add_exception_handler(KinuError, _kinu_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)

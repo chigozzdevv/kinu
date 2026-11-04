@@ -12,6 +12,7 @@ async def authenticated(request: Request) -> Runtime:
     value = request.headers.get("authorization", "")
     if not value.isascii() or not secrets.compare_digest(expected, value):
         raise HTTPException(401)
-    if len(await request.body()) > 65536:
+    limit = 800_000 if request.url.path == "/incident-sources" else 65536
+    if len(await request.body()) > limit:
         raise HTTPException(413)
     return service

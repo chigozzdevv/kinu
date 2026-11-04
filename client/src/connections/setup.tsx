@@ -11,6 +11,7 @@ import { ConnectionTypes } from "../components/connection-types"
 import { AwsSetup } from "./aws"
 import { HostingSetup } from "./hosting"
 import { GmailSetup } from "./gmail"
+import { EmailSetup } from "./email"
 import { ResendSetup } from "./resend"
 import { GitHubSetup } from "./github"
 import { ComputerUseSetup } from "./computer-use"
@@ -35,6 +36,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const integrationSettings = useQuery({ queryKey: ["integrations"], queryFn: () => api.getIntegrations(), enabled: features.data?.hosting === true })
   const configured = (id: string) => integrationSettings.data?.integrations.some((item) => item.id === id && item.configured) === true
   const available = {
+    email: features.data?.email === true,
     vercel: features.data?.hosting === true && configured("vercel"),
     railway: features.data?.hosting === true && configured("railway"),
     render: features.data?.hosting === true,
@@ -49,14 +51,15 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const requestedCloud = category === "runtime" || category === "secret-store"
   const requestedIncident = category === "incident"
   const visible: IntegrationKind[] = integrations ?? (requestedIncident
-    ? ["gmail", "github"]
+    ? ["email", "github"]
     : requestedProvider
     ? ["resend", "custom-api", "computer-use"]
     : requestedCloud
       ? category === "runtime" ? ["vercel", "railway", "render", "aws"] : ["aws"]
       : [])
-  const unconfigured = { vercel: features.data?.hosting === true && !configured("vercel"), railway: features.data?.hosting === true && !configured("railway") }
+  const unconfigured = { email: !available.email, github: !available.github, vercel: features.data?.hosting === true && !configured("vercel"), railway: features.data?.hosting === true && !configured("railway") }
   const connected = {
+    email: connections.some((item) => item.platform === "email" && !item.archived_at && item.status !== "disabled"),
     resend: connections.some((item) => item.platform === "resend" && item.status === "ready"),
     gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
@@ -78,6 +81,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   if (integration === "resend") return <ResendSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
+  if (integration === "email") return <EmailSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "aws") return <AwsSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)}
     requiredRole={category === "runtime" || category === "secret-store" ? category : undefined} />

@@ -128,6 +128,7 @@ async def test_default_runtime_serves_data_and_reports_unavailable_integrations(
             "aws_connections": False,
             "github": False,
             "gmail": False,
+            "email": False,
             "hosting": False,
             "provider_api": False,
             "browser_setup": False,

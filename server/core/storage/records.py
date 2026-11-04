@@ -28,6 +28,7 @@ from contracts import (
     ProtectedAction,
 )
 from contracts.api_playbook import ApiPlaybook, ApiPlaybookVersion
+from mail.models import ForwardInbox
 from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.errors import DuplicateKeyError
 
@@ -44,6 +45,7 @@ _KINDS: dict[type[Contract], str] = {
     Playbook: "playbook",
     ApiPlaybook: "api-playbook",
     ApiPlaybookVersion: "api-playbook-version",
+    ForwardInbox: "forward-inbox",
     Probe: "probe",
     Incident: "incident",
     Notification: "notification",

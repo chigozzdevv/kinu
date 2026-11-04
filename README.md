@@ -115,7 +115,20 @@ Restart the executor and worker after changing it. Direct executor deployments c
 mount client secrets and set `KINU_VERCEL_CLIENT_SECRET_FILE` or
 `KINU_RAILWAY_CLIENT_SECRET_FILE` to the mounted container path.
 
-Gmail uses Google's read-only OAuth scope. Add exact alert senders and select their credential
+For email alerts, open **Connections → Incident sources → Email** and forward mail to the
+workspace address. Kinu shows Gmail forwarding confirmations in that setup screen and marks
+the connection as receiving when mail arrives. No Gmail OAuth app is required.
+On the host, configure `KINU_INBOUND_EMAIL_DOMAIN`, `KINU_RESEND_KEY`, and
+`KINU_RESEND_WEBHOOK_SECRET`. Enable receiving on a dedicated Resend subdomain and send
+`email.received` webhooks to `/v1/webhooks/resend` on the API origin.
+
+For GitHub, register a GitHub App with read-only Secret scanning alerts and the
+`secret_scanning_alert` event. Set `KINU_GITHUB_APP_SLUG`, `KINU_GITHUB_CLIENT_ID`,
+`KINU_GITHUB_CLIENT_SECRET`, and `KINU_GITHUB_WEBHOOK_SECRET`. Its callback and setup URL
+are `${KINU_PUBLIC_URL}/dashboard/connections?github=1`; its webhook is
+`${KINU_API_PUBLIC_URL}/v1/webhooks/github`. Users choose repositories when installing it.
+
+Existing Gmail connections use Google's read-only OAuth scope. Add exact alert senders and select their credential
 providers after connecting. Kinu reads new matching messages every five minutes, ignores
 attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
 sender-aligned DKIM using SHA-256 with an RSA key of at least 1024 bits, a unique credential match

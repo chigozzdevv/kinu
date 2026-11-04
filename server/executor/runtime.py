@@ -19,6 +19,7 @@ from core.storage.database import Database
 from hosting.mapping import Mappings
 from hosting.provision import Provisioning
 from hosting.service import Service as Hosts
+from ingestion.connections import Sources
 from ingestion.runtime import RuntimeInspector
 from ingestion.worker import Monitor
 from jobs.queue import Jobs
@@ -112,6 +113,7 @@ class Runtime:
         self.email = EmailWorker(
             database, http, config.resend_key, config.email_sender, config.public_url
         )
+        self.sources = Sources(self)
 
     async def mail(self) -> Service:
         settings = await self.vault.integration("gmail")
