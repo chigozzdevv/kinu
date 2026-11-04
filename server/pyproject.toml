@@ -12,6 +12,7 @@ dependencies = [
     "kinu-policy",
     "kinu-telemetry",
     "httpx>=0.28,<1",
+    "mangum>=0.22,<1",
     "pydantic-settings>=2.10,<3",
     "uvicorn[standard]>=0.35,<1",
     "pymongo>=4.16,<5",
