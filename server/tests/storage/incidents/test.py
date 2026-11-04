@@ -1,8 +1,8 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from contracts import Confidence, IncidentStatus, IngestionEvent, Severity, SourceResource
+from contracts import Confidence, Incident, IncidentStatus, IngestionEvent, Severity, SourceResource
 from core.account import AccountService
 from core.account.store import AccountStore
 from core.audit.chain import GENESIS, event_hash
@@ -16,6 +16,60 @@ from core.storage.database import Database
 
 pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 10, 27, tzinfo=UTC)
+
+
+async def test_open_incidents_are_filtered_before_history_limits_and_page_without_loss(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    workspace = await AccountService(
+        AccountStore(database, lambda: NOW), lambda: NOW
+    ).create_organisation(identity, "Incident status")
+    org = workspace.organisation.id
+    records = []
+    expected = set()
+    for index in range(1002):
+        opened = index < 501
+        identity_id = f"incident_{index:06d}"
+        if opened:
+            expected.add(identity_id)
+        item = Incident(
+            id=identity_id,
+            organisation_id=org,
+            event_id=f"event_{index:06d}",
+            source="test",
+            source_event_id=f"source_{index:06d}",
+            severity=Severity.HIGH,
+            confidence=Confidence.VERIFIED,
+            status=IncidentStatus.ACTION if opened else IncidentStatus.DISMISSED,
+            resource=SourceResource(),
+            dismissal_reason=None if opened else "Test incident",
+            created_at=NOW + timedelta(seconds=index),
+            updated_at=NOW + timedelta(seconds=index),
+        )
+        records.append(
+            {
+                "id": item.id,
+                "organisation_id": org,
+                "kind": "incident",
+                "revision": 0,
+                "data": item.model_dump(mode="json"),
+            }
+        )
+    await database.collection("inventory").insert_many(records)
+    service = IncidentService(IncidentStore(database), lambda: NOW)
+    seen: list[str] = []
+    before = None
+    while page := await service.list_incidents(
+        org, frozenset({IncidentStatus.ACTION}), 250, before
+    ):
+        seen.extend(item.id for item in page)
+        before = page[-1].id
+    assert len(seen) == len(set(seen)) == 501
+    assert set(seen) == expected
+    assert len(await service.list_incidents(org, limit=100)) == 100
+    assert await service.list_incidents("org_other", frozenset({IncidentStatus.ACTION})) == ()
+    with pytest.raises(ResourceNotFoundError):
+        await service.list_incidents("org_other", before=seen[0])
 
 
 async def test_incident_and_audit_retries_remain_durable_and_tenant_scoped(

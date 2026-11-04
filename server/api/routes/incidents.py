@@ -76,12 +76,13 @@ async def list_incidents(
     request: Request,
     incident_status: Annotated[list[IncidentStatus] | None, Query(alias="status")] = None,
     limit: int = Query(default=100, ge=1, le=500),
+    before: Identifier | None = None,
 ) -> tuple[Incident, ...]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_READ)
     statuses = frozenset(incident_status) if incident_status is not None else None
     return await required(api.incidents, "incidents").list_incidents(
-        organisation_id, statuses, limit
+        organisation_id, statuses, limit, before
     )
 
 

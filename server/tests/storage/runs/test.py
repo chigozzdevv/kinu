@@ -1,23 +1,29 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
+from api.app import create_app
+from api.deps import ApiServices
 from contracts import (
+    ApprovalDecision,
     CancelRunCommand,
     Confidence,
     CreateRunCommand,
+    Failure,
     Incident,
     IncidentStatus,
     RotationRun,
     RunStatus,
     Severity,
     SourceResource,
+    Stage,
     StartRunCommand,
     Trigger,
 )
 from core.account import AccountService
 from core.account.store import AccountStore
-from core.auth import AuthenticatedIdentity
+from core.auth import AccessControl, AuthenticatedIdentity
 from core.errors import (
     ActiveRunConflictError,
     IdempotencyConflictError,
@@ -25,15 +31,168 @@ from core.errors import (
     RunNotFoundError,
 )
 from core.incident.store import IncidentStore
+from core.overview.store import OverviewStore
 from core.storage.database import Database
 from core.storage.incidents import sync_incidents
 from core.storage.records import Records
 from core.storage.runs import RunStore
 from core.workflow import RunWorkflow
 from pymongo.asynchronous.client_session import AsyncClientSession
+from tests.browser import HEADERS, make_browser
 
 pytestmark = pytest.mark.anyio
 NOW = datetime(2026, 10, 27, tzinfo=UTC)
+
+
+async def test_current_runs_do_not_resurface_history_but_preserve_unfinished_work(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    _, command = await setup(database, identity)
+    org = command.organisation_id
+
+    def run(name: str, key: str, status: RunStatus, minute: int) -> RotationRun:
+        return RotationRun(
+            id=name,
+            organisation_id=org,
+            credential_id=key,
+            control_version="controls_one",
+            trigger=command.trigger,
+            status=status,
+            stage=Stage.COMPLETE if status is RunStatus.COMPLETED else Stage.CREATE,
+            failure=Failure(code="test-failure", message="Stopped", retryable=False)
+            if status in {RunStatus.FAILED, RunStatus.CLEANUP}
+            else None,
+            created_at=NOW + timedelta(minutes=minute),
+            updated_at=NOW + timedelta(minutes=minute),
+        )
+
+    records = [
+        run("old_failed", "key_one", RunStatus.FAILED, 0),
+        run("completed", "key_one", RunStatus.COMPLETED, 1),
+        run("failed_first", "key_two", RunStatus.FAILED, 2),
+        run("failed_latest", "key_two", RunStatus.FAILED, 3),
+        run("cleanup", "key_three", RunStatus.CLEANUP, 0),
+        run("completed_after_cleanup", "key_three", RunStatus.COMPLETED, 4),
+        run("paused", "key_four", RunStatus.PAUSED, 0),
+        run("completed_after_pause", "key_four", RunStatus.COMPLETED, 5),
+    ]
+    await database.collection("runs").insert_many(
+        [
+            {
+                "organisation_id": org,
+                "id": item.id,
+                "credential_id": item.credential_id,
+                "revision": item.revision,
+                "data": item.model_dump(mode="json"),
+            }
+            for item in records
+        ]
+    )
+    store = RunStore(database)
+    seen: list[str] = []
+    before = None
+    while page := await store.list_runs(org, 2, current=True, before=before):
+        seen.extend(item.id for item in page)
+        before = page[-1].id
+    assert len(seen) == len(set(seen)) == 6
+    assert set(seen) == {item.id for item in records} - {"old_failed", "failed_first"}
+    assert [
+        item.id
+        for item in await store.list_runs(
+            org, 100, current=True, statuses=frozenset({RunStatus.FAILED})
+        )
+    ] == ["failed_latest"]
+    assert len(await store.list_runs(org, 100)) == 8
+    assert await store.list_runs("org_other", 100, current=True) == ()
+    overview = OverviewStore(database)
+    assert await overview.count_runs(org, frozenset({RunStatus.FAILED})) == 1
+    assert await overview.count_runs(org, frozenset({RunStatus.CLEANUP, RunStatus.PAUSED})) == 2
+    app = create_app(
+        ApiServices(
+            workflow=RunWorkflow(store), access=AccessControl(AccountStore(database, lambda: NOW))
+        ),
+        browser=make_browser(identity),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        current_response = await client.get(
+            f"/v1/organisations/{org}/runs?current=true&status=failed", headers=HEADERS
+        )
+        history_response = await client.get(
+            f"/v1/organisations/{org}/runs?status=failed", headers=HEADERS
+        )
+    assert current_response.status_code == history_response.status_code == 200
+    assert [item["id"] for item in current_response.json()] == ["failed_latest"]
+    assert len(history_response.json()) == 3
+
+
+async def test_pending_approval_counts_only_include_current_matching_requests(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    _, command = await setup(database, identity)
+    org = command.organisation_id
+    variants = [
+        "valid",
+        "completed",
+        "failed",
+        "wrong_plan",
+        "wrong_generation",
+        "old_controls",
+        "archived",
+        "expired",
+        "consumed",
+    ]
+    for name in variants:
+        key = f"key_{name}"
+        run_id = f"run_{name}"
+        await database.collection("runs").insert_one(
+            {
+                "id": run_id,
+                "organisation_id": org,
+                "credential_id": key,
+                "data": {
+                    "status": name if name in {"completed", "failed"} else "paused",
+                    "plan_hash": "plan",
+                    "current_generation_id": "old",
+                    "target_generation_id": "new",
+                    "control_version": "controls",
+                },
+            }
+        )
+        await database.collection("inventory").insert_many(
+            [
+                {
+                    "id": key,
+                    "organisation_id": org,
+                    "kind": "credential",
+                    "data": {
+                        "control_version": "changed" if name == "old_controls" else "controls",
+                        "archived_at": NOW.isoformat() if name == "archived" else None,
+                    },
+                },
+                {
+                    "id": f"approval_{name}",
+                    "organisation_id": org,
+                    "kind": "approval",
+                    "data": {
+                        "run_id": run_id,
+                        "decision": "pending",
+                        "plan_hash": "wrong" if name == "wrong_plan" else "plan",
+                        "generation_id": "wrong" if name == "wrong_generation" else "old",
+                        "expires_at": (
+                            NOW + timedelta(days=-1 if name == "expired" else 1)
+                        ).isoformat(),
+                        "consumed_at": NOW.isoformat() if name == "consumed" else None,
+                    },
+                },
+            ]
+        )
+    overview = OverviewStore(database)
+    assert await overview.count_approvals(org, frozenset({ApprovalDecision.PENDING}), NOW) == 1
+    assert (
+        await overview.count_approvals("org_other", frozenset({ApprovalDecision.PENDING}), NOW) == 0
+    )
 
 
 async def test_run_pages_cover_history_beyond_500_with_stable_ties_and_scoped_cursors(

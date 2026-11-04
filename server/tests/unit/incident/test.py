@@ -40,8 +40,25 @@ class Incidents:
     async def get(self, organisation_id: str, incident_id: str) -> Incident:
         return self.values[incident_id]
 
-    async def list_incidents(self, organisation_id: str, limit: int) -> tuple[Incident, ...]:
-        return tuple(self.values.values())[:limit]
+    async def list_incidents(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        statuses: frozenset[IncidentStatus] | None = None,
+        before: str | None = None,
+    ) -> tuple[Incident, ...]:
+        anchor = await self.get(organisation_id, before) if before else None
+        values = [
+            item
+            for item in self.values.values()
+            if item.organisation_id == organisation_id
+            and (statuses is None or item.status in statuses)
+            and (anchor is None or (item.created_at, item.id) < (anchor.created_at, anchor.id))
+        ]
+        return tuple(
+            sorted(values, key=lambda item: (item.created_at, item.id), reverse=True)[:limit]
+        )
 
     async def correlate(
         self,

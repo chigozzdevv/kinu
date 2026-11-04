@@ -117,12 +117,13 @@ async def list_runs(
     run_status: Annotated[list[RunStatus] | None, Query(alias="status")] = None,
     limit: int = Query(default=100, ge=1, le=500),
     before: Identifier | None = None,
+    current: bool = False,
 ) -> tuple[RotationRun, ...]:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_READ)
     statuses = frozenset(run_status) if run_status is not None else None
     return await required(api.workflow, "workflow").list_runs(
-        organisation_id, statuses, limit, before
+        organisation_id, statuses, limit, before, current
     )
 
 

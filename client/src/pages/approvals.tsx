@@ -12,7 +12,8 @@ import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
-import type { Approval, ApprovalEvidenceSnapshot } from "../types"
+import { isActionableApproval } from "../lib/rotation-state"
+import type { Approval, ApprovalEvidenceSnapshot, ManagedCredential, RotationRun } from "../types"
 
 type ApprovalDecision = "approved" | "rejected"
 
@@ -25,9 +26,9 @@ function isExpired(approval: Approval, now = Date.now()) {
   return approval.decision === "pending" && Date.parse(approval.expires_at) <= now
 }
 
-function approvalStatus(approval: Approval, now = Date.now()): { label: string; variant: "warning" | "healthy" | "danger" | "neutral" } {
+function approvalStatus(approval: Approval, run: RotationRun | undefined, credential: ManagedCredential | undefined, now = Date.now()): { label: string; variant: "warning" | "healthy" | "danger" | "neutral" } {
   if (isExpired(approval, now)) return { label: "Expired", variant: "neutral" }
-  if (approval.decision === "pending") return { label: "Action required", variant: "warning" }
+  if (approval.decision === "pending") return isActionableApproval(approval, run, credential, now) ? { label: "Action required", variant: "warning" } : { label: "Inactive", variant: "neutral" }
   if (approval.decision === "approved") return { label: "Approved", variant: "healthy" }
   if (approval.decision === "rejected") return { label: "Rejected", variant: "danger" }
   if (approval.decision === "cancelled") return { label: "Cancelled", variant: "neutral" }
@@ -55,10 +56,11 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
   const [selectedId, setSelectedId] = useState(initialApprovalId)
   const [confirming, setConfirming] = useState<ApprovalDecision | null>(null)
   const [now, setNow] = useState(Date.now())
-  const [approvals, runs, graph] = useQueries({ queries: [
-    { queryKey: ["approvals"], queryFn: () => api.getApprovals() },
-    { queryKey: ["rotations"], queryFn: () => api.getRotations() },
-    { queryKey: ["graph"], queryFn: () => api.getGraph() },
+  const [approvals, runs, graph, currentRuns] = useQueries({ queries: [
+    { queryKey: ["approvals"], queryFn: () => api.getApprovals(), refetchInterval: 5_000 },
+    { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: 5_000 },
+    { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
+    { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
   ] })
   const evidence = useQuery({
     queryKey: ["approval-evidence", selectedId],
@@ -74,18 +76,19 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
     return (approvals.data ?? []).filter((approval) => {
-      const run = runs.data?.find((item) => item.id === approval.run_id)
+      const run = currentRuns.data?.find((item) => item.id === approval.run_id) ?? runs.data?.find((item) => item.id === approval.run_id)
       const credential = graph.data?.credentials.find((item) => item.id === run?.credential_id)
-      const presentation = approvalStatus(approval, now)
+      const presentation = approvalStatus(approval, run, credential, now)
       const matchesStatus = status === "all"
-        || (status === "expired" ? isExpired(approval, now) : status === "pending" ? approval.decision === "pending" && !isExpired(approval, now) : approval.decision === status)
+        || (status === "expired" ? isExpired(approval, now) : status === "pending" ? isActionableApproval(approval, run, credential, now) : status === "inactive" ? approval.decision === "pending" && !isExpired(approval, now) && !isActionableApproval(approval, run, credential, now) : approval.decision === status)
       const haystack = `${approvalName(approval)} ${credential?.display_name ?? ""} ${run?.stage ?? ""} ${presentation.label}`.toLowerCase()
       return matchesStatus && (!term || haystack.includes(term))
     })
-  }, [approvals.data, graph.data, now, runs.data, search, status])
+  }, [approvals.data, graph.data, now, runs.data, currentRuns.data, search, status])
 
   const selected = approvals.data?.find((approval) => approval.id === selectedId)
-  const selectedRun = runs.data?.find((item) => item.id === selected?.run_id)
+  const selectedRunDetail = useQuery({ queryKey: ["rotation", selected?.run_id], queryFn: () => api.getRotation(selected!.run_id), enabled: Boolean(selected), refetchInterval: 5_000 })
+  const selectedRun = currentRuns.data?.find((item) => item.id === selected?.run_id) ?? selectedRunDetail.data ?? runs.data?.find((item) => item.id === selected?.run_id)
   const selectedCredential = graph.data?.credentials.find((item) => item.id === selectedRun?.credential_id)
 
   const openApproval = (approvalId: string) => {
@@ -107,13 +110,13 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
     },
   })
 
-  if ([approvals, runs, graph].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
-  const error = [approvals, runs, graph].find((query) => query.error)?.error
+  if ([approvals, runs, graph, currentRuns].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
+  const error = [approvals, runs, graph, currentRuns].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
 
   if (selected) {
-    const actionable = selected.decision === "pending" && !isExpired(selected, now)
-    const presentation = approvalStatus(selected, now)
+    const actionable = isActionableApproval(selected, selectedRun, selectedCredential, now)
+    const presentation = approvalStatus(selected, selectedRun, selectedCredential, now)
     return <DetailPage>
       <PageHeader eyebrow="Operations / Approvals" title={approvalName(selected)} titlePrefix={selectedCredential ? <Provider value={selectedCredential.provider} label={false} /> : undefined} onBack={() => { setSelectedId(""); onSelectApproval(""); setConfirming(null); decide.reset() }} actions={<>{selectedRun && <Button variant="secondary" onClick={() => onNavigateRotation(selectedRun.id)}>Open rotation <ArrowUpRight className="size-3.5" /></Button>}{actionable && <><Button variant="danger" disabled={decide.isPending} onClick={() => setConfirming("rejected")}>Reject</Button><Button disabled={decide.isPending} onClick={() => setConfirming("approved")}>Approve</Button></>}</>} />
       {decide.error && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{decide.error.message}</div>}
@@ -127,7 +130,7 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
           </> : null}
         </section>
       </DetailCard>
-      <Modal isOpen={Boolean(confirming)} onClose={() => setConfirming(null)} title={confirming === "approved" ? "Approve revocation?" : "Reject revocation?"} actions={<Button variant={confirming === "approved" ? "primary" : "danger"} disabled={decide.isPending} onClick={() => confirming && decide.mutate(confirming)}>{decide.isPending ? "Saving…" : confirming === "approved" ? "Approve" : "Reject"}</Button>}>
+      <Modal isOpen={Boolean(confirming)} onClose={() => setConfirming(null)} title={confirming === "approved" ? "Approve revocation?" : "Reject revocation?"} actions={<Button variant={confirming === "approved" ? "primary" : "danger"} disabled={decide.isPending || !actionable} onClick={() => confirming && decide.mutate(confirming)}>{decide.isPending ? "Saving…" : confirming === "approved" ? "Approve" : "Reject"}</Button>}>
         <DetailList><Detail label="Credential">{selectedCredential?.display_name ?? "Credential"}</Detail><Detail label="Action">Revoke previous credential</Detail></DetailList>
       </Modal>
     </DetailPage>
@@ -135,20 +138,20 @@ export function ApprovalsPage({ initialApprovalId = "", onSelectApproval, onNavi
 
   return <div className="page">
     <PageHeader eyebrow="Operations" title="Approvals" />
-    <Toolbar value={search} onChange={setSearch} placeholder="Search approvals or credentials" onClear={() => { setSearch(""); setStatus("all") }} filters={[{ label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All approvals</option><option value="pending">Action required</option><option value="expired">Expired</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="more-evidence">Evidence requested</option><option value="extend-observation">Verification extended</option></> }]} />
+    <Toolbar value={search} onChange={setSearch} placeholder="Search approvals or credentials" onClear={() => { setSearch(""); setStatus("all") }} filters={[{ label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All approvals</option><option value="pending">Action required</option><option value="expired">Expired</option><option value="inactive">Inactive</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="more-evidence">Evidence requested</option><option value="extend-observation">Verification extended</option></> }]} />
     <Table responsive>
       <TableHeader><TableRow><TableHead>Requested action</TableHead><TableHead>Credential</TableHead><TableHead>Stage</TableHead><TableHead>Requested</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
       <TableBody columns={6} emptyMessage={search.trim() ? "No matching approvals." : "No approvals in this view."}>{rows.map((approval) => {
-        const run = runs.data!.find((item) => item.id === approval.run_id)
+        const run = currentRuns.data!.find((item) => item.id === approval.run_id) ?? runs.data!.find((item) => item.id === approval.run_id)
         const credential = graph.data!.credentials.find((item) => item.id === run?.credential_id)
-        const presentation = approvalStatus(approval, now)
+        const presentation = approvalStatus(approval, run, credential, now)
         return <TableRow key={approval.id}>
           <TableCell primary><button className="focus-ring rounded-lg text-left font-medium hover:underline" onClick={() => openApproval(approval.id)}>{approvalName(approval)}</button></TableCell>
           <TableCell label="Credential">{credential?.display_name ?? "Credential"}</TableCell>
           <TableCell label="Stage">{titleCase(run?.stage ?? "unknown")}</TableCell>
           <TableCell label="Requested" className="text-[10px] text-[var(--ink-soft)]">{formatDate(approval.created_at)}</TableCell>
           <TableCell label="Status"><Badge variant={presentation.variant}>{presentation.label}</Badge></TableCell>
-          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{approval.decision === "pending" && !isExpired(approval, now) ? "Review" : "View details"} <ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
+          <TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={() => openApproval(approval.id)}>{isActionableApproval(approval, run, credential, now) ? "Review" : "View details"} <ChevronRight className="content-chevron size-3.5" /></Button></TableCell>
         </TableRow>
       })}</TableBody>
     </Table>

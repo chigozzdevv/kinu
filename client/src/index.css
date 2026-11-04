@@ -76,6 +76,78 @@
     width: 100%;
   }
 
+  .rotation-run-page {
+    max-width: none;
+  }
+
+  .rotation-run-page > header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding-block: 12px;
+    background: var(--workspace);
+    overflow-wrap: anywhere;
+  }
+
+  .rotation-transcript {
+    max-width: 60rem;
+    margin-inline: auto;
+  }
+
+  .rotation-turn + .rotation-turn {
+    border-top: 1px solid var(--border-soft);
+    padding-top: 1.25rem;
+  }
+
+  .rotation-frame-dialog {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(96vw, 100rem);
+    height: min(92dvh, 64rem);
+    max-width: none;
+    max-height: none;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: white;
+    color: var(--ink);
+  }
+
+  .rotation-frame-dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .rotation-frame-dialog::backdrop {
+    background: rgb(25 27 30 / 55%);
+  }
+
+  html:has(.rotation-frame-dialog[open]) {
+    overflow: hidden;
+  }
+
+  .rotation-frame-viewport {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--surface-soft);
+  }
+
+  .rotation-frame-viewport img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .rotation-frame-viewport[data-actual-size="true"] img {
+    width: auto;
+    height: auto;
+    max-width: none;
+    margin: auto;
+  }
+
   .panel {
     background: var(--surface);
     border: 1px solid var(--border);

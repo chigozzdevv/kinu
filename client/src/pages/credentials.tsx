@@ -18,6 +18,8 @@ import { Field, formControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
 import { isHostingPlatform, validHealthUrl } from "../lib/hosting"
 import { ConnectionSetup } from "../connections/setup"
+import { currentRotation } from "../lib/rotation-state"
+import { currentIncident } from "../lib/incident"
 
 type CredentialTarget = "approvals" | "rotations" | "connections" | "incidents"
 
@@ -81,15 +83,15 @@ export function CredentialsPage({ onAdd, initialCredentialId, initialControlVers
   const [viewControlVersionId, setViewControlVersionId] = useState<string | null>(initialControlVersionId ?? null)
   const [graph, runs, incidents, connections, environments, playbooks] = useQueries({
     queries: [
-      { queryKey: ["graph"], queryFn: () => api.getGraph() },
-      { queryKey: ["rotations"], queryFn: () => api.getRotations(), retry: false, refetchInterval: 5_000 },
-      { queryKey: ["incidents"], queryFn: () => api.getIncidents(), retry: false, refetchInterval: 10_000 },
-      { queryKey: ["connections"], queryFn: () => api.getConnections() },
+      { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
+      { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), retry: false, refetchInterval: 5_000 },
+      { queryKey: ["incidents", "open"], queryFn: () => api.getOpenIncidents(), retry: false, refetchInterval: 10_000 },
+      { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
       { queryKey: ["environments"], queryFn: () => api.getEnvironments() },
       { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },
     ],
   })
-  const credentialDetail = useQuery({ queryKey: ["credentials", selected?.id], queryFn: () => api.getCredential(selected!.id), enabled: Boolean(selected) })
+  const credentialDetail = useQuery({ queryKey: ["credentials", selected?.id], queryFn: () => api.getCredential(selected!.id), enabled: Boolean(selected), refetchInterval: 10_000 })
   const currentSelected = credentialDetail.data ?? selected
   const currentControlVersion = useQuery({ queryKey: ["controls", currentSelected?.id, currentSelected?.control_version], queryFn: () => api.getCredentialControls(currentSelected!.id, currentSelected!.control_version), enabled: Boolean(currentSelected) })
   const displayedControlVersionId = viewControlVersionId ?? currentSelected?.control_version
@@ -169,9 +171,9 @@ export function CredentialsPage({ onAdd, initialCredentialId, initialControlVers
 
   function operationalState(item: ManagedCredential) {
     if (!activityAvailable) return { label: "Status unavailable", variant: "warning" as const, moving: false }
-    const latestRun = runs.data.find((entry) => entry.credential_id === item.id)
+    const latestRun = currentRotation(runs.data, item)
     const run = latestRun && !["completed", "compensated", "cancelled"].includes(latestRun.status) ? latestRun : undefined
-    const incident = incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status))
+    const incident = currentIncident(incidents.data, item)
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "running" || run?.status === "recovering") return { label: "Running", variant: "active" as const, moving: true }
     if (connection?.status !== "ready") return { ...connectionStatus(connection?.status), moving: false }
@@ -181,9 +183,9 @@ export function CredentialsPage({ onAdd, initialCredentialId, initialControlVers
   }
 
   function actionFor(item: ManagedCredential): { label: string; target?: CredentialTarget; runId?: string } {
-    const latestRun = activityAvailable ? runs.data.find((entry) => entry.credential_id === item.id) : undefined
+    const latestRun = activityAvailable ? currentRotation(runs.data, item) : undefined
     const run = latestRun && !["completed", "compensated", "cancelled"].includes(latestRun.status) ? latestRun : undefined
-    const incident = activityAvailable ? incidents.data.find((entry) => entry.credential_id === item.id && !["resolved", "dismissed"].includes(entry.status)) : undefined
+    const incident = activityAvailable ? currentIncident(incidents.data, item) : undefined
     const connection = connections.data!.find((entry) => entry.id === item.connection_id)
     if (run?.status === "paused" && run.stage === "approval") return { label: "Review approval", target: "approvals" }
     if (connection?.status === "setup-required" || connection?.status === "reauthentication-required") return { label: "Set up connection", target: "connections" }

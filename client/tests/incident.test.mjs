@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { affectedResource } from "../src/lib/incident.ts"
+import { affectedResource, currentIncident } from "../src/lib/incident.ts"
 
 const incident = { organisation_id: "org_one", credential_id: "key_one", resource: {} }
 const graph = {
@@ -8,6 +8,15 @@ const graph = {
   bindings: [{ credential_id: "key_one", organisation_id: "org_one", service_id: "service_one" }],
   services: [{ id: "service_one", organisation_id: "org_one", display_name: "kinu-check", runtime_resource: "render://test/production" }],
 }
+
+test("credential status keeps an older actionable incident ahead of newer activity", () => {
+  const oldOpen = { ...incident, id: "old", status: "action-required" }
+  const rotating = { ...incident, id: "new", status: "rotation-started" }
+  const resolved = { ...incident, id: "resolved", status: "resolved" }
+  assert.equal(currentIncident([resolved, rotating, oldOpen], graph.credentials[0]), oldOpen)
+  assert.equal(currentIncident([resolved], graph.credentials[0]), undefined)
+  assert.equal(currentIncident([{ ...oldOpen, organisation_id: "another_workspace" }], graph.credentials[0]), undefined)
+})
 
 test("confirmed credentials show their mapped service when email fields are empty", () => {
   assert.deepEqual(affectedResource(incident, graph), { name: "kinu-check", detail: "Render" })

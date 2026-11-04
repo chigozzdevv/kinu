@@ -36,6 +36,34 @@ from core.storage.repository import (
 _TERMINAL = {RunStatus.CANCELLED, RunStatus.COMPLETED, RunStatus.COMPENSATED, RunStatus.FAILED}
 
 
+def current_runs_pipeline(organisation_id: str) -> list[dict[str, Any]]:
+    """Keep each key's latest attempt and every run still holding work open."""
+    return [
+        {"$match": {"organisation_id": organisation_id}},
+        {
+            "$setWindowFields": {
+                "partitionBy": "$credential_id",
+                "sortBy": {"data.created_at": -1, "id": -1},
+                "output": {
+                    "current_id": {
+                        "$first": "$id",
+                        "window": {"documents": ["unbounded", "current"]},
+                    }
+                },
+            }
+        },
+        {
+            "$match": {
+                "$or": [
+                    {"$expr": {"$eq": ["$id", "$current_id"]}},
+                    {"data.status": {"$nin": sorted(_TERMINAL)}},
+                ]
+            }
+        },
+        {"$unset": "current_id"},
+    ]
+
+
 async def execution_locked(
     database: Database,
     org: str,
@@ -154,6 +182,7 @@ class RunStore:
         *,
         before: str | None = None,
         statuses: frozenset[RunStatus] | None = None,
+        current: bool = False,
     ) -> tuple[RotationRun, ...]:
         query: dict[str, Any] = {"organisation_id": organisation_id}
         if statuses is not None:
@@ -165,6 +194,15 @@ class RunStore:
                 {"data.created_at": {"$lt": created}},
                 {"data.created_at": created, "id": {"$lt": anchor.id}},
             ]
+        if current:
+            pipeline = [
+                *current_runs_pipeline(organisation_id),
+                {"$match": query},
+                {"$sort": {"data.created_at": -1, "id": -1}},
+                {"$limit": min(max(limit, 1), 500)},
+            ]
+            current_cursor = await self._database.collection("runs").aggregate(pipeline)
+            return tuple([RotationRun.model_validate(row["data"]) async for row in current_cursor])
         cursor = self._database.collection("runs").find(query)
         return tuple(
             [

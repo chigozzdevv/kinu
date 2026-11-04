@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import builderIcon from "@iconify-icons/logos/builder-io-icon.js"
-import { Check, EyeOff, LoaderCircle, MonitorCog, Pause } from "lucide-react"
+import { Check, Expand, EyeOff, LoaderCircle, MonitorCog, Pause, X, ZoomIn, ZoomOut } from "lucide-react"
 import type { ComputerUseActivity } from "../types"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
@@ -20,22 +20,24 @@ function Message({ actor, attachment = false, children }: { actor: Actor; attach
   const outgoing = actor !== "builder"
   return <div className={`flex items-start gap-2.5 ${outgoing ? "flex-row-reverse" : ""}`}>
     <Avatar actor={actor} />
-    <div className={`min-w-0 ${attachment ? "w-full max-w-[560px]" : "w-fit max-w-[calc(100%-38px)]"}`}>
-      <div className={`mb-1.5 flex h-7 items-center text-[10px] font-semibold text-[var(--ink-muted)] ${outgoing ? "justify-end" : ""}`}>{names[actor]}</div>
-      <div className={`rounded-2xl border text-[11px] leading-5 ${attachment ? "border-[var(--border)] bg-white p-2" : outgoing ? "border-[var(--ink)] bg-[var(--ink)] px-4 py-3 text-white" : "border-[var(--border)] bg-white px-4 py-3 text-[var(--ink)]"}`}>
+    <div className={`min-w-0 ${attachment ? "w-full max-w-[40rem]" : "w-fit max-w-[68ch] [overflow-wrap:anywhere]"}`}>
+      <div className={`mb-1 flex h-7 items-center text-[12px] font-semibold text-[var(--ink-soft)] ${outgoing ? "justify-end" : ""}`}>{names[actor]}</div>
+      <div className={`rounded-2xl border text-[13px] leading-5 ${attachment ? "border-[var(--border)] bg-white p-2" : outgoing ? "border-[var(--ink)] bg-[var(--ink)] px-3.5 py-2.5 text-white" : "border-[var(--border)] bg-white px-3.5 py-2.5 text-[var(--ink)]"}`}>
         {children}
       </div>
     </div>
   </div>
 }
 
-function ComputerUseImage({ runId, activity, caption, hidden = false }: { runId: string; activity: ComputerUseActivity; caption?: string; hidden?: boolean }) {
+function ComputerUseImage({ runId, activity, caption, hidden = false }: { runId: string; activity: ComputerUseActivity; caption: string; hidden?: boolean }) {
   const frame = useQuery({
     queryKey: ["rotations", runId, "computer-use", activity.id, "image"],
     queryFn: () => api.getComputerUseImage(runId, activity.id),
     staleTime: Infinity,
   })
   const [imageUrl, setImageUrl] = useState("")
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [actualSize, setActualSize] = useState(false)
 
   useEffect(() => {
     if (!frame.data) {
@@ -47,11 +49,31 @@ function ComputerUseImage({ runId, activity, caption, hidden = false }: { runId:
     return () => URL.revokeObjectURL(value)
   }, [frame.data])
 
-  return <figure><div className="grid aspect-video place-items-center overflow-hidden rounded-xl bg-[var(--surface-soft)]">
-    {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
-    {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
-    {imageUrl && <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />}
-  </div><figcaption className="flex items-center justify-between px-1 pt-1.5 text-[9px] text-[var(--ink-muted)]">{caption}{hidden && <span className="ml-auto inline-flex" title="Key hidden" role="img" aria-label="Key hidden"><EyeOff className="size-3" aria-hidden="true" /></span>}</figcaption></figure>
+  const previewClass = "grid aspect-video w-full place-items-center overflow-hidden rounded-lg bg-[var(--surface-soft)]"
+  return <figure className="relative">
+    {imageUrl ? <button type="button" className={`focus-ring ${previewClass} cursor-zoom-in after:absolute after:inset-0 after:rounded-xl`} aria-label={`Expand browser capture: ${caption}`} onClick={() => dialog.current?.showModal()}>
+      <img src={imageUrl} alt="Redacted browser screenshot" className="size-full object-contain" />
+    </button> : <div className={previewClass}>
+      {frame.isLoading && <LoaderCircle className="size-5 animate-spin text-[var(--ink-muted)]" />}
+      {frame.error && <div className="px-6 text-center text-[11px] text-[var(--red)]">{frame.error.message}</div>}
+    </div>}
+    {imageUrl && <dialog ref={dialog} className="rotation-frame-dialog" aria-label={`Browser capture: ${caption}`} onClose={() => setActualSize(false)}>
+      <header className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2">
+        <span className="mr-auto text-[13px] font-semibold">Browser · {caption}</span>
+        <button type="button" className="focus-ring inline-flex items-center gap-1.5 rounded-md p-2 text-xs" aria-pressed={actualSize} onClick={() => setActualSize(!actualSize)}>
+          {actualSize ? <ZoomOut className="size-4" /> : <ZoomIn className="size-4" />}{actualSize ? "Fit to window" : "Actual size"}
+        </button>
+        <button type="button" className="focus-ring rounded-md p-2" aria-label="Close browser capture" onClick={() => dialog.current?.close()}><X className="size-4" /></button>
+      </header>
+      <div className="rotation-frame-viewport" data-actual-size={actualSize}>
+        <img src={imageUrl} alt={`Redacted browser screenshot: ${caption}`} />
+      </div>
+    </dialog>}
+    <figcaption className="flex items-center gap-2 px-1 pt-1.5 text-[11px] leading-4 text-[var(--ink-soft)]">
+      {caption}{hidden && <span className="inline-flex" title="Key hidden" role="img" aria-label="Key hidden"><EyeOff className="size-3.5" aria-hidden="true" /></span>}
+      {imageUrl && <Expand className="ml-auto size-3.5" aria-hidden="true" />}
+    </figcaption>
+  </figure>
 }
 
 function Explanation({ text, streaming }: { text: string; streaming: boolean }) {
@@ -79,13 +101,13 @@ function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
       {symbol ? <span role="img" aria-label={receipt.status === "succeeded" ? "Succeeded" : "Failed"} className="shrink-0 text-[14px] leading-none">{symbol}</span> : <span className={`grid size-4 shrink-0 place-items-center rounded-full ${tone}`} aria-hidden="true"><Indicator className="size-2.5 text-white" strokeWidth={3} /></span>}
       <span>Response</span>
     </div>
-    <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-5">{JSON.stringify(response, null, 2)}</pre>
+    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5">{JSON.stringify(response, null, 2)}</pre>
   </div>
 }
 
 export function RunActivity({ runId, activities }: { runId: string; activities: ComputerUseActivity[] }) {
   const turns = [...new Set(activities.map((activity) => activity.turn))]
-  return <div className="mt-5 max-w-[720px] space-y-8">
+  return <div className="rotation-transcript mt-5 space-y-6">
     {turns.map((turn) => {
       const events = activities.filter((activity) => activity.turn === turn)
       const input = events.find((activity) => activity.phase === "input")
@@ -98,19 +120,19 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
       const receipt = execution ?? validation ?? (response?.status === "failed" ? response : undefined)
       const content = proposal?.content ?? response?.content
       const streaming = !proposal && response?.status === "streaming"
-      return <div key={turn} className="space-y-4">
+      return <div key={turn} className="rotation-turn space-y-3">
         {input?.prompt && <Message actor="kinu">
           <Explanation text={input.prompt} streaming={false} />
-          {input.target && <p className="mt-2 text-[9px] text-white/70" title={input.intent ?? undefined}><code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
+          {input.target && <p className="mt-2 text-[11px] text-white/80" title={input.intent ?? undefined}><code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
         </Message>}
         {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before click" /></Message>}
         {(proposal || content) && <Message actor="builder">
           {content && <Explanation text={content} streaming={streaming} />}
           {proposal && <div className={`${content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.arguments.button ? `“${proposal.arguments.button}”` : proposal.intent}</span></div>}
-          {proposal && Object.keys(proposal.arguments).length > 0 && <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[9px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
+          {proposal && Object.keys(proposal.arguments).length > 0 && <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--surface-soft)] px-3 py-2 font-mono text-[12px] leading-5">{JSON.stringify(proposal.arguments, null, 2)}</pre>}
         </Message>}
         {receipt && <Message actor="kinu"><ActionResponse receipt={receipt} /></Message>}
-        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} hidden /></Message>}
+        {execution?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={execution} caption="After action" hidden /></Message>}
         {proposal && !receipt && <Message actor="kinu"><span className="inline-flex items-center gap-2"><LoaderCircle className="size-3 animate-spin" aria-hidden="true" />Working…</span></Message>}
       </div>
     })}

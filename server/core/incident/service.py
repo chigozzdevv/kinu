@@ -24,15 +24,20 @@ from core.audit.writer import AuditWriter
 from core.errors import ResourceConflictError
 from core.storage.repository import MutationResult
 
-_LIST_SCAN_LIMIT = 500
-
 
 class IncidentRepository(Protocol):
     async def ingest(self, incident: Incident, event: IngestionEvent) -> tuple[Incident, bool]: ...
 
     async def get(self, organisation_id: str, incident_id: str) -> Incident: ...
 
-    async def list_incidents(self, organisation_id: str, limit: int) -> tuple[Incident, ...]: ...
+    async def list_incidents(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        statuses: frozenset[IncidentStatus] | None = None,
+        before: str | None = None,
+    ) -> tuple[Incident, ...]: ...
 
     async def correlate(
         self,
@@ -172,14 +177,14 @@ class IncidentService:
         organisation_id: str,
         statuses: frozenset[IncidentStatus] | None = None,
         limit: int = 100,
+        before: str | None = None,
     ) -> tuple[Incident, ...]:
-        incidents = await self._repository.list_incidents(organisation_id, _LIST_SCAN_LIMIT)
-        if statuses is not None:
-            incidents = tuple(incident for incident in incidents if incident.status in statuses)
-        ordered = sorted(
-            incidents, key=lambda incident: (incident.created_at, incident.id), reverse=True
+        return await self._repository.list_incidents(
+            organisation_id,
+            min(max(limit, 1), 500),
+            statuses=statuses,
+            before=before,
         )
-        return tuple(ordered[:limit])
 
     async def correlate(
         self,

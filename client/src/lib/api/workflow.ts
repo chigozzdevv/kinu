@@ -8,8 +8,25 @@ export const workflow = {
     return request(`${workspacePath()}/overview`)
   },
 
-  async getIncidents(): Promise<Incident[]> {
-    return request(`${workspacePath()}/incidents`)
+  async getIncidents(status?: Incident["status"]): Promise<Incident[]> {
+    return request(`${workspacePath()}/incidents${status ? `?status=${encodeURIComponent(status)}` : ""}`)
+  },
+
+  async getIncident(incidentId: string): Promise<Incident> {
+    return request(`${workspacePath()}/incidents/${encodeURIComponent(incidentId)}`)
+  },
+
+  async getOpenIncidents(): Promise<Incident[]> {
+    const path = workspacePath()
+    const result: Incident[] = []
+    let before = ""
+    while (true) {
+      const filters = "status=new&status=correlating&status=action-required&status=rotation-started&status=contained"
+      const page = await request<Incident[]>(`${path}/incidents?${filters}&limit=500${before ? `&before=${encodeURIComponent(before)}` : ""}`)
+      result.push(...page)
+      if (page.length < 500) return result
+      before = page[page.length - 1]!.id
+    }
   },
 
   async confirmIncident(incidentId: Identifier, expectedRevision: number, credentialId: Identifier): Promise<Incident> {
@@ -36,6 +53,18 @@ export const workflow = {
 
   async getRotations(before?: string): Promise<RotationRun[]> {
     return request(`${workspacePath()}/runs${before ? `?before=${encodeURIComponent(before)}` : ""}`)
+  },
+
+  async getCurrentRotations(): Promise<RotationRun[]> {
+    const path = workspacePath()
+    const result: RotationRun[] = []
+    let before = ""
+    while (true) {
+      const page = await request<RotationRun[]>(`${path}/runs?current=true&limit=500${before ? `&before=${encodeURIComponent(before)}` : ""}`)
+      result.push(...page)
+      if (page.length < 500) return result
+      before = page[page.length - 1]!.id
+    }
   },
 
   async startRotation(input: StartRotationInput): Promise<RotationRun> {

@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 import { incidentReason } from "../lib/incident"
+import { currentRotations, isActionableApproval } from "../lib/rotation-state"
 import type { NavItem } from "../lib/navigation"
 import type { RotationRun } from "../types"
 
@@ -67,18 +68,19 @@ function QuickStart({ steps, onNavigate }: { steps: QuickStartStep[]; onNavigate
 export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateIncident, onNavigateApproval }: OverviewProps) {
   const [showAllAttention, setShowAllAttention] = useState(false)
   const [showAllActivities, setShowAllActivities] = useState(false)
-  const [runs, incidents, approvals, graph, connections, playbooks] = useQueries({
+  const [runs, currentRuns, incidents, approvals, graph, connections, playbooks] = useQueries({
     queries: [
       { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: 5_000 },
-      { queryKey: ["incidents"], queryFn: () => api.getIncidents(), refetchInterval: 10_000 },
+      { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
+      { queryKey: ["incidents", "open"], queryFn: () => api.getOpenIncidents(), refetchInterval: 10_000 },
       { queryKey: ["approvals"], queryFn: () => api.getApprovals(), refetchInterval: 10_000 },
-      { queryKey: ["graph"], queryFn: () => api.getGraph() },
-      { queryKey: ["connections"], queryFn: () => api.getConnections() },
+      { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
+      { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
       { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks() },
     ],
   })
 
-  const queries = [runs, incidents, graph, connections]
+  const queries = [runs, currentRuns, incidents, graph, connections]
   if (queries.some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = queries.find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
@@ -87,10 +89,13 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
   const activeConnections = connections.data!.filter((item) => !item.archived_at)
   const activePlaybooks = playbooks.data?.filter((item) => !item.archived_at) ?? []
   const credential = (id: string | null | undefined) => credentials.find((item) => item.id === id)
-  const pendingApprovals = approvals.data?.filter((approval) => approval.decision === "pending" && Date.parse(approval.expires_at) > Date.now()) ?? []
+  const pendingApprovals = approvals.data?.filter((approval) => {
+    const run = currentRuns.data!.find((run) => run.id === approval.run_id)
+    return isActionableApproval(approval, run, credential(run?.credential_id))
+  }) ?? []
   const approvalRunIds = new Set(pendingApprovals.map((approval) => approval.run_id))
   const actionableIncidents = incidents.data!.filter((incident) => incident.status === "action-required")
-  const interruptedRuns = runs.data!.filter((run) => ["failed", "cleanup-required"].includes(run.status) || (run.status === "paused" && !approvalRunIds.has(run.id)))
+  const interruptedRuns = currentRotations(currentRuns.data!).filter((run) => ["failed", "cleanup-required"].includes(run.status) || (run.status === "paused" && !approvalRunIds.has(run.id)))
   const recentRuns = [...runs.data!]
     .filter((run) => !["failed", "cleanup-required", "paused"].includes(run.status))
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
@@ -105,7 +110,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
 
   const actionRows = [
     ...pendingApprovals.map((approval) => {
-      const run = runs.data!.find((item) => item.id === approval.run_id)
+      const run = currentRuns.data!.find((item) => item.id === approval.run_id)
       const item = credential(run?.credential_id)
       return {
         id: `approval:${approval.id}`,

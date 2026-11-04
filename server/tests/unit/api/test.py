@@ -71,8 +71,25 @@ class IncidentRepository:
             _incident("incident_two", IncidentStatus.ACTION, NOW + timedelta(minutes=5)),
         )
 
-    async def list_incidents(self, organisation_id: str, limit: int) -> tuple[Incident, ...]:
-        return self.incidents[:limit]
+    async def list_incidents(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        statuses: frozenset[IncidentStatus] | None = None,
+        before: str | None = None,
+    ) -> tuple[Incident, ...]:
+        anchor = await self.get(organisation_id, before) if before else None
+        values = [
+            item
+            for item in self.incidents
+            if item.organisation_id == organisation_id
+            and (statuses is None or item.status in statuses)
+            and (anchor is None or (item.created_at, item.id) < (anchor.created_at, anchor.id))
+        ]
+        return tuple(
+            sorted(values, key=lambda item: (item.created_at, item.id), reverse=True)[:limit]
+        )
 
     async def count_incidents(
         self, organisation_id: str, statuses: frozenset[IncidentStatus]

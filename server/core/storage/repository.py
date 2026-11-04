@@ -46,6 +46,7 @@ class RunRepository(Protocol):
         *,
         before: str | None = None,
         statuses: frozenset[RunStatus] | None = None,
+        current: bool = False,
     ) -> tuple[RotationRun, ...]: ...
 
     async def mutate(

@@ -73,9 +73,10 @@ class RunWorkflow:
         statuses: frozenset[RunStatus] | None = None,
         limit: int = 100,
         before: str | None = None,
+        current: bool = False,
     ) -> tuple[RotationRun, ...]:
         return await self._repository.list_runs(
-            organisation_id, limit, before=before, statuses=statuses
+            organisation_id, limit, before=before, statuses=statuses, current=current
         )
 
     async def start(self, command: StartRunCommand) -> MutationResult:

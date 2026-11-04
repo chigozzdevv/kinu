@@ -126,14 +126,31 @@ class MemoryRunRepository:
         *,
         before: str | None = None,
         statuses: frozenset[RunStatus] | None = None,
+        current: bool = False,
     ) -> tuple[RotationRun, ...]:
         anchor = await self.get(organisation_id, before) if before else None
         async with self._mutex:
+            runs = [run for (org_id, _), run in self._runs.items() if org_id == organisation_id]
+            runs.sort(key=lambda run: (run.created_at, run.id), reverse=True)
+            if current:
+                latest: dict[str, str] = {}
+                for run in runs:
+                    latest.setdefault(run.credential_id, run.id)
+                terminal = {
+                    RunStatus.COMPLETED,
+                    RunStatus.COMPENSATED,
+                    RunStatus.CANCELLED,
+                    RunStatus.FAILED,
+                }
+                runs = [
+                    run
+                    for run in runs
+                    if run.id == latest[run.credential_id] or run.status not in terminal
+                ]
             runs = [
                 run
-                for (org_id, _), run in self._runs.items()
-                if org_id == organisation_id
-                and (statuses is None or run.status in statuses)
+                for run in runs
+                if (statuses is None or run.status in statuses)
                 and (anchor is None or (run.created_at, run.id) < (anchor.created_at, anchor.id))
             ]
             return tuple(
@@ -141,12 +158,11 @@ class MemoryRunRepository:
             )
 
     async def count_runs(self, organisation_id: str, statuses: frozenset[RunStatus]) -> int:
-        async with self._mutex:
-            return sum(
-                1
-                for (org_id, _), run in self._runs.items()
-                if org_id == organisation_id and run.status in statuses
+        return len(
+            await self.list_runs(
+                organisation_id, max(len(self._runs), 1), statuses=statuses, current=True
             )
+        )
 
     async def mutate(
         self,

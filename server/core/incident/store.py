@@ -15,6 +15,7 @@ from core.storage.records import Records, RecordTransaction
 
 class IncidentStore:
     def __init__(self, database: Database) -> None:
+        self._database = database
         self._rows = Records(database)
 
     async def ingest(self, incident: Incident, event: IngestionEvent) -> tuple[Incident, bool]:
@@ -45,11 +46,32 @@ class IncidentStore:
         async with self._rows.read() as rows:
             return await rows.get(Incident, organisation_id, incident_id)
 
-    async def list_incidents(self, organisation_id: str, limit: int) -> tuple[Incident, ...]:
-        async with self._rows.read() as rows:
-            values = await rows.list(Incident, organisation_id)
+    async def list_incidents(
+        self,
+        organisation_id: str,
+        limit: int,
+        *,
+        statuses: frozenset[IncidentStatus] | None = None,
+        before: str | None = None,
+    ) -> tuple[Incident, ...]:
+        query: dict[str, Any] = {"organisation_id": organisation_id, "kind": "incident"}
+        if statuses is not None:
+            query["data.status"] = {"$in": sorted(statuses)}
+        if before:
+            anchor = await self.get(organisation_id, before)
+            created = anchor.model_dump(mode="json")["created_at"]
+            query["$or"] = [
+                {"data.created_at": {"$lt": created}},
+                {"data.created_at": created, "id": {"$lt": anchor.id}},
+            ]
+        cursor = self._database.collection("inventory").find(query)
         return tuple(
-            sorted(values, key=lambda item: (item.created_at, item.id), reverse=True)[:limit]
+            [
+                Incident.model_validate(row["data"])
+                async for row in cursor.sort([("data.created_at", -1), ("id", -1)]).limit(
+                    min(max(limit, 1), 500)
+                )
+            ]
         )
 
     async def count_incidents(

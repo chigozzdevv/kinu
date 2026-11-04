@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, ChevronRight } from "lucide-react"
 import { Detail, DetailCard, DetailList, DetailPage } from "../components/detail"
 import { PageHeader } from "../components/header"
@@ -45,7 +45,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   const [dismissing, setDismissing] = useState(false)
   const [dismissalReason, setDismissalReason] = useState(dismissalReasons[0])
   const [incidents, graph] = useQueries({ queries: [
-    { queryKey: ["incidents"], queryFn: () => api.getIncidents(), refetchInterval: 10_000 },
+    { queryKey: ["incidents", ["all", "resolved", "dismissed"].includes(status) ? status : "open"], queryFn: () => status === "all" ? api.getIncidents() : status === "resolved" || status === "dismissed" ? api.getIncidents(status) : api.getOpenIncidents(), refetchInterval: 10_000 },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
   ] })
 
@@ -59,7 +59,8 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
     })
   }, [incidents.data, graph.data, search, status])
 
-  const selected = incidents.data?.find((incident) => incident.id === selectedId)
+  const selectedIncident = useQuery({ queryKey: ["incident", selectedId], queryFn: () => api.getIncident(selectedId), enabled: Boolean(selectedId), refetchInterval: 10_000 })
+  const selected = selectedIncident.data ?? incidents.data?.find((incident) => incident.id === selectedId)
   const credential = (id: string | null) => graph.data?.credentials.find((item) => item.id === id)
 
   useEffect(() => {
@@ -87,9 +88,10 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       )
     },
     onSuccess: async ({ incident, run }) => {
-      queryClient.setQueryData<Incident[]>(["incidents"], (current) => current?.map((item) => item.id === incident.id ? incident : item))
+      queryClient.setQueryData(["incident", incident.id], incident)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["incidents"] }),
+        queryClient.invalidateQueries({ queryKey: ["incident", incident.id] }),
         queryClient.invalidateQueries({ queryKey: ["rotations"] }),
         queryClient.invalidateQueries({ queryKey: ["overview"] }),
       ])
@@ -100,12 +102,13 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   const dismiss = useMutation({
     mutationFn: () => api.dismissIncident(selected!.id, selected!.revision, dismissalReason),
     onSuccess: async (incident) => {
-      queryClient.setQueryData<Incident[]>(["incidents"], (current) => current?.map((item) => item.id === incident.id ? incident : item))
+      queryClient.setQueryData(["incident", incident.id], incident)
       setDismissing(false)
       setSelectedId("")
       onSelectIncident("")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["incidents"] }),
+        queryClient.invalidateQueries({ queryKey: ["incident", incident.id] }),
         queryClient.invalidateQueries({ queryKey: ["overview"] }),
       ])
     },
@@ -122,6 +125,8 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   if ([incidents, graph].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = [incidents, graph].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
+  if (selectedId && selectedIncident.isLoading && !selected) return <div className="page"><Loading /></div>
+  if (selectedId && selectedIncident.error) return <div className="page"><PageHeader eyebrow="Operations / Incidents" title="Incident" onBack={() => { setSelectedId(""); onSelectIncident("") }} /><Failure error={selectedIncident.error} /></div>
 
   if (selected) {
     const canResolve = selected.status === "action-required"

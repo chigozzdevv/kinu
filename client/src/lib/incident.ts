@@ -1,5 +1,11 @@
-import type { Incident, InventoryGraph } from "../types"
+import type { Incident, InventoryGraph, ManagedCredential } from "../types"
 import { titleCase } from "./format.ts"
+
+export function currentIncident(incidents: readonly Incident[], credential: ManagedCredential) {
+  const open = incidents.filter((incident) => incident.organisation_id === credential.organisation_id
+    && incident.credential_id === credential.id && !["resolved", "dismissed"].includes(incident.status))
+  return open.find((incident) => incident.status === "action-required") ?? open[0]
+}
 
 export function incidentReason(kind: string): string {
   const reasons: Record<string, string> = {
