@@ -1,0 +1,174 @@
+.new-landing {
+  --new-header-height: 73px;
+  --new-gutter: 36px;
+  --new-frame-width: min(calc(100% - 2 * var(--new-gutter)), 1040px);
+  min-height: 100svh;
+  background: #fff;
+  color: #191919;
+  font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: normal;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.new-landing :focus-visible {
+  outline: 2px solid #555;
+  outline-offset: 4px;
+}
+
+.new-skip {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  left: 16px;
+  padding: 8px 12px;
+  background: #fff;
+  transform: translateY(-160%);
+}
+.new-skip:focus-visible { transform: none; }
+
+.new-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--new-header-height);
+  border-bottom: 1px solid transparent;
+}
+.new-header--scrolled {
+  background-color: inherit;
+  border-bottom-color: #e9e9e9;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .new-header { transition: border-color 150ms ease; }
+}
+.new-hero-layout { scroll-margin-top: var(--new-header-height); }
+.new-header-inner,
+.new-hero {
+  width: var(--new-frame-width);
+  margin: 0 auto;
+}
+.new-header-inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.new-brand img { display: block; width: 78px; height: auto; }
+.new-header nav {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.new-header nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+}
+.new-header nav a:first-child { color: #606060; }
+.new-header nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.new-hero {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: calc((100svh - var(--new-header-height)) / 2);
+  padding-block: clamp(16px, 3svh, 32px);
+  text-align: left;
+}
+.new-hero h1 {
+  margin: 0;
+  color: #171717;
+  font-size: clamp(34px, calc(20px + 2vw), 48px);
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -.03em;
+  text-wrap: balance;
+}
+.new-subtitle {
+  max-width: 580px;
+  margin: 20px 0 0;
+  color: #626262;
+  font-size: clamp(16px, 1.35vw, 17px);
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-wrap: pretty;
+}
+.new-subtitle strong { font-weight: 600; }
+.new-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.new-primary-action,
+.new-secondary-action {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 19px;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  font: 500 14px/1 "Geist", sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+.new-primary-action {
+  color: #fff;
+  background: #1b1b1b;
+}
+.new-primary-action:hover { background: #373737; }
+.new-secondary-action {
+  color: #262626;
+  background: transparent;
+  border-color: #cecece;
+}
+.new-secondary-action:hover { border-color: #999; background: #fafafa; }
+.new-illustration {
+  --lift-limit: 16px;
+  --lift: clamp(0px, calc(8svh - 32px), var(--lift-limit));
+  width: 100%;
+  margin: calc(0px - var(--lift)) auto var(--lift);
+  padding: 12px 0 42px;
+  scroll-margin-top: calc(var(--new-header-height) + 12px);
+}
+
+@media (min-width: 701px) {
+  .new-hero-layout {
+    display: grid;
+    min-height: calc(100svh - var(--new-header-height));
+    grid-template-rows: auto auto;
+  }
+  .new-hero { min-height: 0; }
+  .new-illustration {
+    --lift-limit: 32px;
+    display: grid;
+    align-content: center;
+    padding: 4px 0 clamp(12px, 2svh, 24px);
+  }
+}
+
+@media (min-width: 960px) {
+  .new-subtitle { max-width: min(580px, calc(50vw - var(--new-gutter))); }
+}
+
+@media (max-width: 767px) {
+  .new-landing { --new-gutter: 20px; }
+}
+
+@media (max-width: 600px) {
+  .new-landing { --new-header-height: 63px; }
+  .new-brand img { width: 67px; }
+  .new-header nav { gap: 19px; font-size: 13px; }
+  .new-illustration { padding-top: 5px; }
+}
+
+@media (orientation: landscape) and (max-height: 420px) {
+  .new-hero { padding-block: 8px; }
+}

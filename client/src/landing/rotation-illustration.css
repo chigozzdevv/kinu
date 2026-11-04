@@ -1,0 +1,111 @@
+.rotation-illustration {
+  --ki-bg: #fff; --ki-ink: #181818; --ki-muted: #686868; --ki-line: #d4d4d4; --ki-edge: #bdbdbd;
+  width: 100%; position: relative; isolation: isolate; container-type: inline-size; overflow: hidden;
+  background: var(--ki-bg); color: var(--ki-ink);
+  font: 400 13px/1.45 "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.rotation-illustration * { box-sizing: border-box; }
+.rotation-illustration .ki-stage { --ki-card-width: 320px; --ki-caption: clamp(12px, 1.1cqi, 13px); position: relative; width: var(--new-frame-width); margin: 0 auto 24px; }
+.rotation-illustration .ki-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.rotation-illustration .ki-wire { fill: none; stroke: var(--ki-line); stroke-width: 1.25; }
+.rotation-illustration .ki-wires marker path { stroke: #999; }
+.rotation-illustration .ki-packet { fill: none; stroke: #111; stroke-width: 2.4; stroke-linecap: round; }
+.rotation-illustration .ki-top { display: flex; flex-direction: column; gap: 24px; }
+.rotation-illustration .ki-eyebrow { position: relative; z-index: 2; width: max-content; max-width: 100%; background: #fff; padding: 0 5px; margin: 0 auto 10px; color: var(--ki-muted); font-size: var(--ki-caption); font-weight: 500; letter-spacing: 0; text-align: center; }
+.rotation-illustration .ki-sources { display: grid; grid-template-columns: repeat(3,minmax(0,132px)); justify-content: space-between; gap: 10px; width: 100%; }
+.rotation-illustration .ki-sources .ki-eyebrow { grid-column: 1 / -1; margin-bottom: 2px; }
+.rotation-illustration .ki-source { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border: 1.5px solid var(--ki-edge); border-radius: 4px; background: transparent; font-size: 12px; padding: 0 12px; }
+.rotation-illustration .ki-source svg { width: 15px; height: 15px; flex-shrink: 0; stroke-width: 1.5; color: #555; }
+.rotation-illustration .ki-ai, .rotation-illustration .ki-context, .rotation-illustration .ki-execution { width: var(--ki-card-width); margin: 0 auto; min-width: 0; position: relative; }
+.rotation-illustration .ki-builder { display: flex; align-items: center; justify-content: center; gap: 10px; width: min(184px,100%); height: 52px; margin: 0 auto; border: 1.5px solid var(--ki-edge); border-radius: 4px; background: transparent; font-size: 14px; position: relative; }
+.rotation-illustration .ki-builder svg { width: 20px; height: 23px; }
+.rotation-illustration strong { font-weight: 500; }
+.rotation-illustration .ki-policy { display: flex; justify-content: center; width: max-content; margin: 8px auto 0; padding: 1px 6px; background: #fff; color: var(--ki-muted); font-size: var(--ki-caption); position: relative; z-index: 2; }
+.rotation-illustration .ki-policy.is-ready { color: #444; }
+.rotation-illustration .ki-incident { border: 1.5px solid var(--ki-edge); border-radius: 4px; background: transparent; position: relative; }
+.rotation-illustration .ki-details { margin: 0; display: grid; gap: 11px; padding: 13px 14px 14px; }
+.rotation-illustration .ki-details > div { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: 10px; align-items: baseline; }
+.rotation-illustration .ki-details dt { font-size: var(--ki-caption); color: var(--ki-muted); }
+.rotation-illustration .ki-details dd { margin: 0; font-size: 12px; }
+.rotation-illustration .ki-details code { padding: 0; background: transparent; border-radius: 0; color: #222; font: 400 var(--ki-caption)/1.45 "Geist Mono", monospace; overflow-wrap: anywhere; }
+.rotation-illustration .ki-execution-row { display: flex; flex-direction: column; padding-top: 25px; }
+.rotation-illustration .ki-execution { order: 0; }
+.rotation-illustration .ki-browser { border: 1.5px solid var(--ki-edge); border-radius: 4px; background: transparent; position: relative; }
+.rotation-illustration .ki-browser-head { padding: 12px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #e5e5e5; }
+.rotation-illustration .ki-browser-head svg { width: 16px; height: 16px; color: #555; stroke-width: 1.5; }
+.rotation-illustration .ki-command { padding: 10px 14px; display: flex; gap: 8px; align-items: center; color: #666; font-size: var(--ki-caption); }
+.rotation-illustration .ki-key-diff { min-height: 64px; display: grid; grid-template-rows: 18px 18px; gap: 4px; align-content: center; }
+.rotation-illustration .ki-key-line { display: flex; align-items: baseline; gap: 6px; color: #444; }
+.rotation-illustration .ki-key-line[hidden] { display: none; }
+.rotation-illustration .ki-key-sign { display: inline-block; width: 1ch; flex-shrink: 0; white-space: pre; font-family: "Geist Mono", monospace; }
+.rotation-illustration .ki-key-line code { background: transparent; padding: 0; color: inherit; font: 400 var(--ki-caption)/18px "Geist Mono", monospace; }
+.rotation-illustration .ki-key-old.is-retired { color: #c23c3c; }
+.rotation-illustration .ki-key-new { color: #22804c; }
+.rotation-illustration .ki-privacy { order: 1; position: relative; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 6px; margin: 16px auto 0; width: max-content; max-width: 100%; background: #fff; color: var(--ki-muted); font-size: var(--ki-caption); }
+.rotation-illustration .ki-privacy svg { width: 13px; height: 13px; color: var(--ki-muted); stroke-width: 1.5; }
+.rotation-illustration .ki-wire-label { position: absolute; z-index: 2; width: 88px; padding: 5px 3px; background: #fff; color: var(--ki-muted); font-size: var(--ki-caption); text-align: center; transform: translate(-50%,-50%); }
+.rotation-illustration .ki-lifecycle { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); position: relative; width: min(100%,440px); margin: 0 auto; padding-top: 48px; }
+.rotation-illustration .ki-step { min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; }
+.rotation-illustration .ki-step-symbol { width: 22px; height: 22px; display: inline-grid; place-items: center; border: 1.5px solid #ededed; border-radius: 50%; background: #ededed; color: #666; position: relative; transition: color .25s,border-color .25s,background-color .25s; }
+.rotation-illustration .ki-step-number { font-size: var(--ki-caption); font-variant-numeric: tabular-nums; }
+.rotation-illustration .ki-step-check { display: none; place-items: center; }
+.rotation-illustration .ki-step-check svg { width: 12px; height: 12px; stroke-width: 1.8; }
+.rotation-illustration .ki-step.is-done .ki-step-number { display: none; }
+.rotation-illustration .ki-step.is-done .ki-step-check { display: grid; }
+.rotation-illustration .ki-step-label { display: block; color: var(--ki-muted); font-size: var(--ki-caption); margin-top: 6px; padding: 0 3px; transition: color .25s; }
+.rotation-illustration .ki-step.is-current .ki-step-symbol { color: #fff; border-color: #666; background: #666; }
+.rotation-illustration .ki-step.is-done .ki-step-symbol { color: #fff; border-color: #555; background: #555; }
+.rotation-illustration .ki-step.is-current .ki-step-label, .rotation-illustration .ki-step.is-done .ki-step-label { color: #444; }
+@container (max-width: 600px) {
+  .rotation-illustration .ki-stage { --ki-card-width: calc(100% - 72px); }
+  .rotation-illustration .ki-sources { grid-template-columns: repeat(3,minmax(0,132px)); gap: 8px; }
+  .rotation-illustration .ki-source { padding-inline: 6px; }
+  .rotation-illustration .ki-details > div { display: block; }
+  .rotation-illustration .ki-details dt { margin-bottom: 3px; }
+  .rotation-illustration .ki-wire-label { width: max-content; white-space: nowrap; padding: 3px 5px; transform: translate(-50%,-50%) rotate(90deg); }
+  .rotation-illustration .ki-wire-label br { display: none; }
+}
+@container (max-width: 380px) {
+  .rotation-illustration .ki-source { flex-direction: column; gap: 4px; height: 53px; font-size: var(--ki-caption); }
+}
+@container (min-width: 701px) {
+  .rotation-illustration .ki-stage {
+    display: grid;
+    margin-bottom: 0;
+    grid-template-columns: minmax(100px, .8fr) minmax(132px, 1fr) minmax(172px, 1.4fr) minmax(164px, 1.2fr);
+    grid-template-rows: clamp(198px, 26svh, 242px) clamp(74px, 9svh, 90px) auto;
+    column-gap: clamp(30px, 3.1cqi, 40px);
+  }
+  .rotation-illustration .ki-top { display: contents; }
+  .rotation-illustration .ki-sources { grid-column: 1; grid-row: 1; align-self: center; grid-template-columns: minmax(0,1fr); gap: 10px; }
+  .rotation-illustration .ki-sources .ki-eyebrow { grid-column: 1; }
+  .rotation-illustration .ki-source { padding-inline: 8px; height: clamp(46px, 5.6svh, 54px); font-size: clamp(13px, 1.2cqi, 15px); }
+  .rotation-illustration .ki-source svg { width: 18px; height: 18px; }
+  .rotation-illustration .ki-ai { grid-column: 2; grid-row: 1; width: 100%; align-self: center; }
+  .rotation-illustration .ki-policy { height: 26px; margin: 0 auto; align-items: center; }
+  .rotation-illustration .ki-builder { width: 100%; height: 62px; font-size: clamp(14px, 1.3cqi, 17px); gap: 10px; }
+  .rotation-illustration .ki-builder svg { width: 23px; height: 27px; }
+  .rotation-illustration .ki-context { grid-column: 3; grid-row: 1; width: 100%; align-self: center; }
+  .rotation-illustration .ki-context::after { content: ""; display: block; height: 26px; }
+  .rotation-illustration .ki-details { padding: clamp(12px, 1.2cqi, 17px); gap: 12px; }
+  .rotation-illustration .ki-details > div { display: block; }
+  .rotation-illustration .ki-details dt { margin-bottom: 3px; }
+  .rotation-illustration .ki-execution-row { grid-column: 4; grid-row: 1; padding-top: 0; align-self: center; min-width: 0; }
+  .rotation-illustration .ki-execution { width: 100%; }
+  .rotation-illustration .ki-browser-head { padding: 12px; font-size: clamp(14px, 1.2cqi, 16px); gap: 8px; }
+  .rotation-illustration .ki-browser-head svg { width: 19px; height: 19px; }
+  .rotation-illustration .ki-command { padding: 10px 12px; }
+  .rotation-illustration .ki-privacy { height: 26px; margin-block: 0; padding-inline: 3px; gap: 4px; white-space: nowrap; }
+  .rotation-illustration .ki-lifecycle {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: clamp(520px, 65%, 680px);
+    padding-top: 0;
+  }
+  .rotation-illustration .ki-step-symbol { width: 28px; height: 28px; }
+  .rotation-illustration .ki-step-check svg { width: 15px; height: 15px; }
+  .rotation-illustration .ki-wire-label { width: max-content; max-width: 140px; padding: 2px 7px; }
+  .rotation-illustration .ki-wire-label br { display: none; }
+}
+@media(prefers-reduced-motion:reduce) { .rotation-illustration * { transition: none !important; } }

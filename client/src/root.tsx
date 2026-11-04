@@ -11,8 +11,12 @@ import { claimInstallation, setupKey } from "./lib/setup"
 import { SignInPage } from "./pages/signin"
 import { connectionCallbackIntegration, dashboardLocation } from "./lib/callback"
 
-const HomePage = lazy(() => import("./landing/pages/home").then((module) => ({ default: module.HomePage })))
+const HomePage = lazy(() => import("./pages/home"))
+const PublicInfoPage = lazy(() => import("./pages/public-info"))
 const Dashboard = lazy(() => import("./App.tsx"))
+const publicPages: Readonly<Record<string, "vercel" | "terms" | "privacy" | undefined>> = {
+  "/docs/vercel": "vercel", "/terms": "terms", "/privacy": "privacy",
+}
 
 function dashboardReturnLocation() {
   const location = sessionStorage.getItem(dashboardReturnKey)
@@ -25,6 +29,7 @@ function LoadingScreen() {
 }
 
 export function AuthenticationBoundary() {
+  const publicPage = publicPages[window.location.pathname]
   const [authentication, setAuthentication] = useState<Authentication | null>(null)
   const [authError, setAuthError] = useState("")
   const identity = authentication?.session?.identity ?? null
@@ -34,6 +39,7 @@ export function AuthenticationBoundary() {
   const [sessionError, setSessionError] = useState("")
 
   useEffect(() => {
+    if (publicPage) return
     let current = true
     const expired = () => setLoading(true)
     window.addEventListener(sessionExpiredEvent, expired)
@@ -43,15 +49,15 @@ export function AuthenticationBoundary() {
       if (current) setAuthError(reason instanceof Error ? reason.message : "Sign-in is unavailable")
     }).finally(() => { if (current) setLoading(false) })
     return () => { current = false; window.removeEventListener(sessionExpiredEvent, expired) }
-  }, [])
+  }, [publicPage])
 
   useEffect(() => {
-    if (!authentication?.session || window.location.pathname === "/") return
+    if (publicPage || !authentication?.session || window.location.pathname === "/") return
     return watchSession(authentication.session.expires_at)
-  }, [authentication?.session])
+  }, [authentication?.session, publicPage])
 
   useEffect(() => {
-    if (!identity || window.location.pathname === "/") {
+    if (publicPage || !identity || window.location.pathname === "/") {
       setSession(null)
       setActive(null)
       setSessionError("")
@@ -71,14 +77,16 @@ export function AuthenticationBoundary() {
       if (current) setSessionError(reason instanceof Error ? reason.message : "Account could not be loaded")
     })
     return () => { current = false }
-  }, [identity])
+  }, [identity, publicPage])
 
-  if (loading) return <LoadingScreen />
+  if (publicPage) return <Suspense fallback={<LoadingScreen />}><PublicInfoPage page={publicPage} /></Suspense>
+
   if (window.location.pathname === "/" && connectionCallbackIntegration()) {
     window.location.replace(dashboardLocation())
     return <LoadingScreen />
   }
   if (window.location.pathname === "/") return <Suspense fallback={<LoadingScreen />}><HomePage authenticated={Boolean(identity)} /></Suspense>
+  if (loading) return <LoadingScreen />
   if (authError) return <main className="grid min-h-screen place-items-center bg-[var(--workspace)] px-6"><div className="text-center"><p role="alert" className="text-[12px] text-[var(--red)]">{authError}</p><Button className="mt-4" onClick={() => window.location.reload()}>Try again</Button></div></main>
   if (window.location.pathname === "/auth") {
     if (identity) {

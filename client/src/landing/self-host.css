@@ -1,0 +1,48 @@
+.new-self-host {
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  overflow: auto;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid #cecece;
+  border-radius: .75rem;
+  background: white;
+  color: #171717;
+  font-family: inherit;
+  font-size: .9375rem;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.new-self-host::backdrop { background: rgb(0 0 0 / .3); }
+
+.new-self-host__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.new-self-host__header h2 { margin: 0; font-size: 1.5rem; font-weight: 550; letter-spacing: -.04em; }
+.new-self-host__close {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid #d6d6d6;
+  border-radius: .375rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.new-self-host__close:hover { background: #f5f5f5; }
+.new-self-host__close:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+.new-self-host p { margin: .75rem 0 1.5rem; color: #555; }
+.new-self-host ol { margin: 0; padding-left: 1.4rem; list-style: decimal; }
+.new-self-host li { padding-left: .15rem; }
+.new-self-host li + li { margin-top: 1.25rem; }
+.new-self-host li strong { font-weight: 600; }
+.new-self-host pre {
+  margin: .375rem 0;
+  overflow-x: auto;
+  padding: .625rem .75rem;
+  border: 1px solid #dedede;
+  border-radius: .375rem;
+  background: #fafafa;
+}
+.new-self-host code { font-family: "Geist Mono", ui-monospace, monospace; font-size: .875em; overflow-wrap: anywhere; }

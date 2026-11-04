@@ -1,9 +1,14 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
+import { captureSetupLink } from "./lib/setup"
 import { AuthenticationBoundary } from "./root"
 
-import { captureSetupLink } from "./lib/setup"
+const path = window.location.pathname.replace(/\/$/, "")
+if (path === "/new" || path === "/new/demo") {
+  const hash = path === "/new/demo" ? "#rotation-example" : window.location.hash
+  window.history.replaceState(window.history.state, "", `/${window.location.search}${hash}`)
+}
 
 captureSetupLink()
 
