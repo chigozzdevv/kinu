@@ -9,7 +9,7 @@ import { activeOrganisationId, api, type ImportCredentialInput } from "../lib/ap
 import { connectionCallbackIntegration } from "../lib/callback"
 import { credentialReturn, finishCredentialConnection, saveCredentialReturn } from "../lib/credential-return"
 import { isHostingPlatform } from "../lib/hosting"
-import { ConnectionSetup } from "./connections"
+import { ConnectionSetup } from "../connections/setup"
 import { HostKeys } from "./host-keys"
 
 export function CredentialOnboarding({ onFinish }: { onFinish: (credentialId: string) => void }) {

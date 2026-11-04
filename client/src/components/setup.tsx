@@ -9,7 +9,7 @@ import { Detail, DetailList, Section } from "./detail"
 import { Provider } from "./provider"
 import { Button } from "./ui/button"
 import { FormGrid, ResourceSelect, SelectControl, SetupPage } from "./workspace"
-import { ConnectionSetup } from "../pages/connections"
+import { ConnectionSetup } from "../connections/setup"
 
 const steps = ["Credential", "Controls", "Review"]
 const field = "focus-ring h-11 w-full rounded-xl border border-[var(--border)] bg-white px-3.5 text-[11px] text-[var(--ink)] outline-none"

@@ -89,7 +89,7 @@ async def form(request: Request, response: Response) -> dict[str, str]:
         max_age=max(1, int((current.expires_at - datetime.now(UTC)).total_seconds())),
         secure=browser.options.secure,
         httponly=True,
-        samesite="lax",
+        samesite=browser.options.same_site,
         path="/",
     )
     return {"csrf_token": current.csrf_token}
@@ -113,14 +113,14 @@ async def signin(body: SignInRequest, request: Request, response: Response) -> d
             max_age=max(1, int((current.expires_at - datetime.now(UTC)).total_seconds())),
             secure=browser.options.secure,
             httponly=True,
-            samesite="lax",
+            samesite=browser.options.same_site,
             path="/",
         )
         response.delete_cookie(
             browser.options.form_cookie,
             secure=browser.options.secure,
             httponly=True,
-            samesite="lax",
+            samesite=browser.options.same_site,
             path="/",
         )
     return {"next": step, "return_to": destination}
@@ -163,7 +163,7 @@ async def reset(body: ResetRequest, request: Request, response: Response) -> dic
         browser.options.cookie_name,
         secure=browser.options.secure,
         httponly=True,
-        samesite="lax",
+        samesite=browser.options.same_site,
         path="/",
     )
     return {"next": "signin"}
@@ -224,7 +224,7 @@ async def logout(request: Request) -> JSONResponse:
         browser.options.cookie_name,
         secure=browser.options.secure,
         httponly=True,
-        samesite="lax",
+        samesite=browser.options.same_site,
         path="/",
     )
     return response

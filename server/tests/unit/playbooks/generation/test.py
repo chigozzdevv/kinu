@@ -32,3 +32,25 @@ def test_unusable_model_output_cannot_be_saved_as_a_generated_procedure(invalid:
         value["steps"][1]["tool"] = "browser.screenshot"
     with pytest.raises(PlaybookError):
         validate_generated(PlaybookDraft.model_validate(value))
+
+
+@pytest.mark.parametrize(
+    "change", ["missing-identity", "writable-identity", "read-only-create", "read-only-revoke"]
+)
+def test_api_playbooks_require_private_identity_checks_and_write_operations(change: str) -> None:
+    from contracts.api_playbook import ApiPlaybookDraft
+    from pydantic import ValidationError
+    from testkit import make_http_provider_api
+
+    api = make_http_provider_api().model_dump(mode="json")
+    if change == "missing-identity":
+        api["test_credential"] = None
+        api["credential_auth"] = None
+    elif change == "writable-identity":
+        api["test_credential"]["method"] = "POST"
+    elif change == "read-only-create":
+        api["create_credential"]["method"] = "GET"
+    else:
+        api["revoke_credential"]["method"] = "GET"
+    with pytest.raises(ValidationError):
+        ApiPlaybookDraft.model_validate({"name": "Example", "platform": "example", "http": api})

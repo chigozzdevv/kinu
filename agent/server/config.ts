@@ -1,6 +1,7 @@
 export interface Config {
   apiUrl: string
   publicUrl: string
+  publicApiUrl: string
   cookieName: string
 }
 
@@ -17,19 +18,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const api = new URL(env.KINU_API_URL ?? "http://127.0.0.1:8000")
   const publicUrl = new URL(env.KINU_PUBLIC_URL ?? "http://localhost:5173")
-  for (const url of [api, publicUrl]) {
+  const publicApi = new URL(env.KINU_API_PUBLIC_URL || publicUrl.origin)
+  for (const url of [api, publicUrl, publicApi]) {
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
         url.pathname !== "/" || url.search || url.hash) {
       throw new Error("Kinu service URLs must be HTTP origins without credentials")
     }
   }
-  if (publicUrl.protocol !== "https:" &&
-      (env.KINU_ENVIRONMENT === "production" || publicUrl.hostname !== "localhost")) {
+  if ([publicUrl, publicApi].some((url) => url.protocol !== "https:" &&
+      (env.KINU_ENVIRONMENT === "production" || url.hostname !== "localhost"))) {
     throw new Error("Kinu requires HTTPS outside development localhost")
   }
   return {
     apiUrl: api.origin,
     publicUrl: publicUrl.origin,
-    cookieName: publicUrl.protocol === "https:" ? "__Host-kinu" : "kinu.session",
+    publicApiUrl: publicApi.origin,
+    cookieName: publicApi.protocol === "https:" ? "__Host-kinu" : "kinu.session",
   }
 }

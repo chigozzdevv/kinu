@@ -51,6 +51,8 @@ class Connection(Contract):
     rpc: LambdaProviderApi | None = None
     playbook_id: Identifier | None = None
     playbook_version_id: Identifier | None = None
+    api_playbook_id: Identifier | None = None
+    api_playbook_version_id: Identifier | None = None
     verification_connection_id: Identifier | None = None
     status: ConnectionStatus
     authenticated_at: AwareDatetime | None = None
@@ -97,6 +99,10 @@ class Connection(Contract):
             not browser or self.platform != "resend" or self.verification_connection_id == self.id
         ):
             raise ValueError("receipt verification requires a separate Resend API connection")
+        if (self.api_playbook_id is None) != (self.api_playbook_version_id is None):
+            raise ValueError("API playbook identity and version must be set together")
+        if self.api_playbook_id and (browser or self.http is None):
+            raise ValueError("API playbooks require an HTTP provider connection")
         playbook_attached = self.playbook_id is not None and self.playbook_version_id is not None
         if (self.playbook_id is None) != (self.playbook_version_id is None):
             raise ValueError("connection playbook identity and version must be set together")

@@ -61,6 +61,8 @@ async def connect(
 ) -> Connection:
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
+    if body.api_playbook_id:
+        await api.access.require(identity, organisation_id, Permission.PLAYBOOK_READ)
     return Connection.model_validate(
         await required(api.private, "private execution").call(
             "/providers",
@@ -70,6 +72,8 @@ async def connect(
                 "platform": body.platform,
                 "http": body.http.model_dump(mode="json") if body.http else None,
                 "domain_id": body.domain_id,
+                "api_playbook_id": body.api_playbook_id,
+                "api_playbook_version_id": body.api_playbook_version_id,
                 "token": body.token.get_secret_value(),
             },
         )

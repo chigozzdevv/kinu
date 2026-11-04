@@ -7,8 +7,9 @@ from core.private import PrivateClient
 
 
 class Bridge:
-    def __init__(self, private: PrivateClient, origin: str) -> None:
+    def __init__(self, private: PrivateClient, origin: str, api_origin: str | None = None) -> None:
         self.private, self.origin = private, origin.rstrip("/")
+        self.api_origin = (api_origin or origin).rstrip("/")
 
     @property
     def setup_url(self) -> str:
@@ -16,7 +17,7 @@ class Bridge:
 
     @property
     def gateway_url(self) -> str:
-        return self.origin + "/browser-gateway"
+        return self.api_origin + "/browser-gateway"
 
     async def begin(
         self,

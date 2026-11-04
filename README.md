@@ -56,20 +56,73 @@ queued messages with a stable provider idempotency key and rechecks recipient ac
 Receipts distinguish provider acceptance from delivery. Receipt lookup requires a Resend key with
 read access; sending-only keys can still send email.
 
+## Firebase frontend and VPS backend
+
+The frontend can be deployed separately through Firebase Hosting. Build it with the public
+HTTPS address of the VPS gateway:
+
+```sh
+VITE_API_BASE_URL=https://YOUR_API_HOST npm --prefix client run build
+npx firebase-tools deploy --only hosting:kinu --project YOUR_FIREBASE_PROJECT
+```
+
+Set the VPS configuration before starting its containers:
+
+```dotenv
+KINU_ENVIRONMENT=production
+KINU_PUBLIC_URL=https://YOUR_SITE.web.app
+KINU_API_PUBLIC_URL=https://YOUR_API_HOST
+KINU_COOKIE_SAMESITE=none
+```
+
+The API and agent allow credentialed requests only from `KINU_PUBLIC_URL`. CSRF and workspace
+checks still apply; browser sessions connect directly to the configured VPS gateway over WSS.
+OAuth apps must register their callbacks on `KINU_API_PUBLIC_URL`; Kinu redirects users back
+to the frontend after completing authorization. With separate sites, browser third-party-cookie
+policies still apply. Custom frontend and API domains under the same site can retain `lax` cookies.
+
+On a shared VPS, `deploy/vps.yaml` removes Kinu's host-port bindings and exposes only its web
+gateway to an external `kinu-edge` network. Use it only with an explicitly configured edge proxy.
+Do not attach Kinu's data or application networks to other projects.
+Create `kinu-edge` before running Compose with both `compose.yaml` and `deploy/vps.yaml`.
+Connect the existing HTTPS proxy to that edge network and route the API hostname to
+`kinu-web-1:80`. Retain that network attachment when recreating the proxy.
+
 ## Connections
 
-Open **Settings → Integrations** to configure the OAuth apps used by this installation. These
-settings require the verified installation administrator. Workspace administrators then connect
-their own accounts through **Connections**. OAuth client secrets and account tokens are encrypted
-in the private executor database; the dashboard receives configuration status only.
+Workspace users connect their accounts through **Connections**. Installation OAuth apps are
+configured on the host. Set the following in `.env` before starting Kinu:
+
+```dotenv
+KINU_VERCEL_SLUG=
+KINU_VERCEL_CLIENT_ID=
+KINU_VERCEL_CLIENT_SECRET=
+KINU_RAILWAY_CLIENT_ID=
+KINU_RAILWAY_CLIENT_SECRET=
+```
+
+Register `/connections/vercel/callback` and `/connections/railway/callback` on the API origin
+(`KINU_API_PUBLIC_URL`, or `KINU_PUBLIC_URL` for single-host installations) with the respective apps. For
+[Vercel](https://vercel.com/docs/integrations/create-integration), enable Projects (read),
+Global Project Environment Variables (read/write), and Deployments (read/write). For
+[Railway](https://docs.railway.com/integrations/oauth/quickstart), register a web OAuth app;
+Kinu requests `openid offline_access project:member` and uses PKCE.
+
+Only the executor and worker receive these credentials. Supply all fields for each provider
+being enabled; partial configuration fails startup without printing credential values.
+Environment configuration takes precedence over older encrypted installation settings.
+Restart the executor and worker after changing it. Direct executor deployments can instead
+mount client secrets and set `KINU_VERCEL_CLIENT_SECRET_FILE` or
+`KINU_RAILWAY_CLIENT_SECRET_FILE` to the mounted container path.
 
 Gmail uses Google's read-only OAuth scope. Add exact alert senders and select their credential
 providers after connecting. Kinu reads new matching messages every five minutes, ignores
 attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
 sender-aligned DKIM using SHA-256 with an RSA key of at least 1024 bits, a unique credential match
 and permitted controls. Senders should use 2048-bit keys where available.
-Invalid signatures require manual review; temporary DNS failures are retried. Register Google's web OAuth
-client with the callback shown in Settings. Public Gmail use requires Google's verification;
+Invalid signatures require manual review; temporary DNS failures are retried. Existing Gmail OAuth
+connections retain their encrypted installation settings and the callback
+`/connections/gmail/callback` on the API origin. Public Gmail use requires Google's verification;
 Testing applications require test users and have limited refresh-token lifetimes.
 
 Custom API providers accept their management token once. The executor keeps it encrypted and
@@ -96,7 +149,7 @@ page scripts frozen and sensitive fields covered; secret values and screenshots 
 In **Credentials → Add credential**, choose a hosting account or connect Vercel, Railway or Render.
 Select the project, its key variables and their issuer, then review the rotation controls. Kinu creates inventory and
 consumer bindings automatically and reuses the existing connections across keys. Render uses an
-API key; Vercel and Railway use installation-owned OAuth apps configured in Settings. Register the
+API key; Vercel and Railway use installation-owned OAuth apps configured on the host. Register the
 exact callback shown there. Vercel needs project, environment-variable and deployment permissions;
 Railway requests project membership and refresh access. No live provider registration is performed
 by the application setup command.

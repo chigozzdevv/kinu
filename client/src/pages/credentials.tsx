@@ -17,7 +17,7 @@ import { api } from "../lib/api"
 import { Field, formControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
 import { isHostingPlatform, validHealthUrl } from "../lib/hosting"
-import { ConnectionSetup } from "./connections"
+import { ConnectionSetup } from "../connections/setup"
 
 type CredentialTarget = "approvals" | "rotations" | "connections" | "incidents"
 

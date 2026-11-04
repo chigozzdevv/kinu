@@ -29,6 +29,7 @@ from core.inventory import InventoryService
 from core.notification import NotificationService
 from core.overview import OverviewService
 from core.playbook import PlaybookService, WalkthroughService
+from core.playbook.api_store import ApiPlaybookStore
 from core.private import PrivateClient
 from core.verification import ProbeService
 from core.workflow import RunWorkflow
@@ -44,6 +45,7 @@ class ApiServices:
     workflow: RunWorkflow | None = None
     inventory: InventoryService | None = None
     playbooks: PlaybookService | None = None
+    api_playbooks: ApiPlaybookStore | None = None
     approvals: ApprovalService | None = None
     incidents: IncidentService | None = None
     browsers: BrowserAccessService | None = None
@@ -84,7 +86,7 @@ async def authenticated_identity(
 
 async def browser_session(request: Request) -> BrowserSession:
     config = cast(Settings, request.app.state.config)
-    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
+    name = "__Host-kinu" if config.api_origin.startswith("https://") else "kinu.session"
     token = session_cookie(request, name)
     if not token:
         raise AuthenticationError("session cookie is required")
@@ -101,7 +103,7 @@ async def browser_session(request: Request) -> BrowserSession:
 
 def session_binding(request: Request) -> str:
     config = cast(Settings, request.app.state.config)
-    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
+    name = "__Host-kinu" if config.api_origin.startswith("https://") else "kinu.session"
     return hashlib.sha256((session_cookie(request, name) or "").encode()).hexdigest()
 
 

@@ -32,3 +32,16 @@ test("unfinished or oversized model output cannot become a draft", async () => {
   } }
   await assert.rejects(draft(input, tools, "test"), /cannot execute tools/)
 })
+
+test("API playbooks use provider operations without browser instructions", async () => {
+  const apiEngine: AgentEngine = { ...createBuilderEngine(), async *stream(options) {
+    assert.deepEqual(options.tools, [])
+    assert.match(options.systemPrompt, /read-only identity check/)
+    assert.match(options.systemPrompt, /\{provider_id\}/)
+    assert.doesNotMatch(options.systemPrompt, /browser\.secure-capture|deterministic selector/)
+    yield { type: "text-delta", text: '{"error":"Add the provider identity endpoint."}' }
+    yield { type: "stop", reason: "end_turn" }
+  } }
+  assert.deepEqual(await draft({ ...input, execution: "api" }, apiEngine, "test"), { error: "Add the provider identity endpoint." })
+  assert.equal(playbookSchema.safeParse({ ...input, execution: "shell" }).success, false)
+})

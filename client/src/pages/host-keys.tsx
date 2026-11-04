@@ -11,7 +11,7 @@ import { finishCredentialConnection, saveCredentialReturn, type HostKeyForm } fr
 import { titleCase } from "../lib/format"
 import { approvedProjects, validHealthUrl, variableLabel } from "../lib/hosting"
 import type { Connection, ManagedCredential, Playbook } from "../types"
-import { ConnectionSetup } from "./connections"
+import { ConnectionSetup } from "../connections/setup"
 
 const emptyForm: HostKeyForm = {
   project: "", variable: "", provider: "", choices: {}, health: {}, createReference: "", scopes: "", step: 0,

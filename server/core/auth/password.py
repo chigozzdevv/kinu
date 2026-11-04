@@ -195,12 +195,5 @@ class PasswordClient:
 
 def _password(password: SecretStr) -> None:
     value = password.get_secret_value()
-    if len(value) < 12 or not all(
-        (
-            any(c.isupper() for c in value),
-            any(c.islower() for c in value),
-            any(c.isdigit() for c in value),
-            any(not c.isalnum() for c in value),
-        )
-    ):
-        raise FormError("Use 12+ characters with uppercase, lowercase, a number and a symbol.")
+    if len(value) < 8:
+        raise FormError("Use at least 8 characters.")

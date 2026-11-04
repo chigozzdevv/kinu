@@ -3,9 +3,18 @@ name: kinu
 x-app: &app
   KINU_ENVIRONMENT: ${KINU_ENVIRONMENT:-development}
   KINU_PUBLIC_URL: ${KINU_PUBLIC_URL:-http://localhost:8080}
+  KINU_API_PUBLIC_URL: ${KINU_API_PUBLIC_URL:-}
+  KINU_COOKIE_SAMESITE: ${KINU_COOKIE_SAMESITE:-lax}
   KINU_MONGO_DATABASE: kinu
   KINU_REDIS_URL: redis://redis:6379/0
   KINU_TELEMETRY_ENABLED: "false"
+
+x-hosting: &hosting
+  KINU_VERCEL_SLUG: ${KINU_VERCEL_SLUG:-}
+  KINU_VERCEL_CLIENT_ID: ${KINU_VERCEL_CLIENT_ID:-}
+  KINU_VERCEL_CLIENT_SECRET: ${KINU_VERCEL_CLIENT_SECRET:-}
+  KINU_RAILWAY_CLIENT_ID: ${KINU_RAILWAY_CLIENT_ID:-}
+  KINU_RAILWAY_CLIENT_SECRET: ${KINU_RAILWAY_CLIENT_SECRET:-}
 
 services:
   mongo:
@@ -94,6 +103,7 @@ services:
     environment:
       KINU_ENVIRONMENT: ${KINU_ENVIRONMENT:-development}
       KINU_PUBLIC_URL: ${KINU_PUBLIC_URL:-http://localhost:8080}
+      KINU_API_PUBLIC_URL: ${KINU_API_PUBLIC_URL:-}
       KINU_API_URL: http://api:8000
       KINU_NATIVE_MONGO_URL: mongodb://native:${KINU_MONGO_NATIVE_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_NATIVE_KEY_FILE: /run/secrets/native
@@ -108,7 +118,7 @@ services:
     build: {context: ., target: executor}
     restart: unless-stopped
     environment:
-      <<: *app
+      <<: [*app, *hosting]
       KINU_MONGO_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_VAULT_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu
       KINU_VAULT_KEY_FILE: /run/secrets/vault
@@ -132,7 +142,7 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "jobs.worker"]
     environment:
-      <<: *app
+      <<: [*app, *hosting]
       KINU_RESEND_KEY: ${KINU_RESEND_KEY:-}
       KINU_EMAIL_SENDER: ${KINU_EMAIL_SENDER:-Kinu <noreply@example.com>}
       KINU_MONGO_URL: mongodb://executor:${KINU_MONGO_EXECUTOR_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=kinu

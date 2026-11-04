@@ -51,12 +51,10 @@ export function HostingSetup({ platform, connectionId, connection, onBack, onClo
   })
   if (!identity || reconnecting) return <ConnectPage eyebrow="Inventory / Connections" title={`${reconnecting ? "Reconnect" : "Connect"} ${names[platform]}`} onBack={onBack} onClose={onClose}
     error={begin.error?.message || (callbackError === "failed" ? "Authorization failed. Try again." : callbackError === "expired" ? "Sign in and connect again." : undefined)}
-    action={<Button onClick={() => begin.mutate()} disabled={begin.isPending || !name.trim() || platform === "render" && !token.trim()}>{begin.isPending ? "Connecting…" : reconnecting ? "Reconnect" : `Connect ${names[platform]}`}</Button>}>
-    <IntegrationMark kind={platform} />
-    <div className="mt-6 w-full space-y-4">
-      {!reconnecting && <Field label="Connection name"><input className={formControl} value={name} maxLength={100} onChange={(event) => setName(event.target.value)} /></Field>}
-      {platform === "render" && <Field label="API key"><input className={formControl} type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} /></Field>}
-    </div>
+    action={<Button onClick={() => begin.mutate()} disabled={begin.isPending || !name.trim() || platform === "render" && !token.trim()}>{begin.isPending ? "Connecting…" : reconnecting ? "Reconnect" : "Connect"}</Button>}>
+    <IntegrationMark kind={platform} name={reconnecting ? projects.data?.connection?.display_name ?? connection?.display_name ?? name : name}
+      onNameChange={reconnecting ? undefined : setName} disabled={begin.isPending} />
+    {platform === "render" && <div className="w-72 max-w-full"><Field label="API key"><input className={formControl} type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} /></Field></div>}
   </ConnectPage>
   if (projects.isLoading) return <div className="page"><Loading /></div>
   if (projects.error) return <div className="page"><Failure error={projects.error} /><div className="mt-4 flex gap-2">{connection && <Button onClick={() => setReconnecting(true)}>Reconnect</Button>}<Button variant="secondary" onClick={onBack}>Back</Button></div></div>

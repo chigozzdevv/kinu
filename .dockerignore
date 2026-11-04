@@ -22,3 +22,7 @@ agent/data
 **/*.key
 **/.output
 **/.nitro
+
+.deploy/
+.firebase/
+firebase-debug.log*

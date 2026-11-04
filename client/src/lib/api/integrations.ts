@@ -19,7 +19,4 @@ export const integrations = {
   getIntegrations(): Promise<IntegrationSettings> {
     return request(`${workspacePath()}/integrations`)
   },
-  configureIntegration(id: string, values: Record<string, string>): Promise<{ configured: boolean }> {
-    return request(`${workspacePath()}/integrations/${id}`, { method: "PUT", body: JSON.stringify({ values }) })
-  },
 }

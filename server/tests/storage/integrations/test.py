@@ -14,6 +14,7 @@ from executor.app import app as executor
 from executor.config import ExecutorSettings
 from executor.runtime import Runtime
 from executor.vault import Vault
+from hosting.models import Platform
 from jobs.queue import Jobs
 from pydantic import SecretStr
 from tests.browser import HEADERS, make_browser
@@ -169,4 +170,89 @@ async def test_provider_management_tokens_are_private_and_failed_setup_leaves_no
             json={"token": token},
         )
         assert invalid.status_code == 422 and token not in invalid.text
+    await queue.close()
+
+
+@pytest.mark.parametrize("platform", ["vercel", "railway"])
+async def test_host_configuration_drives_workspace_connect_without_exposing_app_credentials(
+    database: Database, identity: AuthenticatedIdentity, platform: Platform
+) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    from core.errors import ResourceConflictError
+    from hosting.models import Begin
+
+    accounts = AccountStore(database, lambda: datetime.now(UTC))
+    org = (
+        await AccountService(accounts, lambda: datetime.now(UTC)).create_organisation(
+            identity, "Hosting"
+        )
+    ).organisation.id
+    installation = Installation(database)
+    key = SecretStr("vault-test-encryption-material-at-least-32")
+    legacy = Vault(database, key)
+    await legacy.initialize()
+    await legacy.configure(
+        platform, {"client_id": "old-app", "client_secret": "old-private", "slug": "old-slug"}
+    )
+    config = ExecutorSettings(
+        public_url="https://kinu.example.com",
+        environment="production",
+        vault_key=key,
+        executor_token=SecretStr("executor-private"),
+        native_token=SecretStr("native-private"),
+        vercel_slug="kinu",
+        vercel_client_id=SecretStr("hosted-vercel-app"),
+        vercel_client_secret=SecretStr("private-hosted-vercel"),
+        railway_client_id=SecretStr("hosted-railway-app"),
+        railway_client_secret=SecretStr("private-hosted-railway"),
+    )
+    vault = Vault(database, key, config.oauth_apps)
+    # A runtime read cannot mutate the authoritative host configuration.
+    copied = await vault.integration(platform)
+    copied["client_id"] = "modified"
+    assert (await vault.integration(platform))["client_id"] == f"hosted-{platform}-app"
+    with pytest.raises(ResourceConflictError):
+        await vault.configure(platform, {"client_id": "dashboard-override"})
+    assert (await legacy.integration(platform))["client_id"] == "old-app"
+    queue = Jobs("redis://localhost:6379")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=executor), base_url="http://executor"
+    ) as private_http:
+        service = Runtime(config, database, vault, private_http, queue)
+        executor.state.service = service
+        private = PrivateClient(private_http, "http://executor", SecretStr("executor-private"))
+        app = create_app(
+            ApiServices(access=AccessControl(accounts), private=private, installation=installation),
+            browser=make_browser(identity),
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as http:
+            status = await http.get(f"/v1/organisations/{org}/integrations", headers=HEADERS)
+            assert status.status_code == 200, status.text
+            item = next(item for item in status.json()["integrations"] if item["id"] == platform)
+            assert item["configured"]
+            assert (
+                item["callback_url"] == f"https://kinu.example.com/connections/{platform}/callback"
+            )
+            assert (
+                "private-hosted" not in status.text and f"hosted-{platform}-app" not in status.text
+            )
+            assert not status.json()["editable"]
+        result = await service.hosts.begin(
+            org,
+            identity.actor_id,
+            "browser-session",
+            Begin(platform=platform, display_name="Hosting"),
+        )
+        url = urlsplit(result["authorization_url"])
+        assert "private-hosted" not in url.geturl()
+        if platform == "vercel":
+            assert url.hostname == "vercel.com" and url.path == "/integrations/kinu/new"
+        else:
+            query = parse_qs(url.query)
+            assert query["client_id"] == ["hosted-railway-app"]
+            assert query["redirect_uri"] == [item["callback_url"]]
+            assert query["scope"] == ["openid offline_access project:member"]
     await queue.close()

@@ -17,7 +17,7 @@ async def setup(websocket: WebSocket) -> None:
     config = cast(Settings, websocket.app.state.config)
     browser = cast(BrowserAuth | None, websocket.app.state.browser)
     api = websocket.app.state.services
-    name = "__Host-kinu" if config.public_url.startswith("https://") else "kinu.session"
+    name = "__Host-kinu" if config.api_origin.startswith("https://") else "kinu.session"
     cookie = websocket.cookies.get(name, "")
     if (
         websocket.headers.get("origin") != config.public_url

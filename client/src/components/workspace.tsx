@@ -118,9 +118,9 @@ export function Field({ label, hint, children, wide = false }: { label: string; 
 type SelectSize = "sm" | "md"
 type SelectWidth = "compact" | "full"
 
-export function ResourceSelect({ label, value, onChange, addLabel, onAdd, children, className, wide = false, size = "md", width = "full" }: { label: string; value: string; onChange: (value: string) => void; addLabel: string; onAdd: () => void; children: ReactNode; className?: string; wide?: boolean; size?: SelectSize; width?: SelectWidth }) {
+export function ResourceSelect({ label, value, onChange, addLabel, onAdd, children, className, wide = false, hideLabel = false, size = "md", width = "full" }: { label: string; value: string; onChange: (value: string) => void; addLabel: string; onAdd: () => void; children: ReactNode; className?: string; wide?: boolean; hideLabel?: boolean; size?: SelectSize; width?: SelectWidth }) {
   return <label className={wide ? "block sm:col-span-2" : "block"}>
-    <span className="mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)]">{label}</span>
+    <span className={hideLabel ? "sr-only" : "mb-1.5 block text-[10px] font-semibold text-[var(--ink-soft)]"}>{label}</span>
     <div className={cn("relative", width === "compact" && "w-52 max-w-full")}>
       <select className={cn(size === "sm" ? compactControl : formControl, "appearance-none pr-10", className)} value={value} onChange={(event) => {
         if (event.target.value === "__add_resource__") onAdd()

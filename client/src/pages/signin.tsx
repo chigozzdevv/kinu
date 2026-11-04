@@ -120,12 +120,12 @@ export function SignInPage({ configured, returnTo }: { configured: boolean; retu
               <label htmlFor="auth-password">{mode === "reset" ? "New password" : "Password"}</label>
               {mode === "signin" && <button className="focus-ring rounded-md text-[var(--ink-soft)] hover:text-[var(--ink)]" type="button" disabled={disabled} onClick={() => change("forgot")}>Forgot password?</button>}
             </div>
-            <input id="auth-password" name="password" className={formControl} type="password" autoComplete={newPassword ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={newPassword ? 12 : 1} maxLength={256} required disabled={disabled} aria-describedby={newPassword ? "password-help" : undefined} />
-            {newPassword && <p id="password-help" className="mt-2 text-[11px] leading-5 text-[var(--ink-muted)]">At least 12 characters, with uppercase, lowercase, a number and a symbol.</p>}
+            <input id="auth-password" name="password" className={formControl} type="password" autoComplete={newPassword ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={newPassword ? 8 : 1} maxLength={256} required disabled={disabled} aria-describedby={newPassword ? "password-help" : undefined} />
+            {newPassword && <p id="password-help" className="mt-2 text-[11px] leading-5 text-[var(--ink-muted)]">At least 8 characters.</p>}
           </div>}
           {newPassword && <label className="block" htmlFor="auth-confirm">
             <span className={labelClass}>Confirm password</span>
-            <input id="auth-confirm" name="confirm" className={formControl} type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={12} maxLength={256} required disabled={disabled} />
+            <input id="auth-confirm" name="confirm" className={formControl} type="password" autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={8} maxLength={256} required disabled={disabled} />
           </label>}
           <Button className="h-12 w-full text-[14px] group-invalid:opacity-45" type="submit" disabled={disabled}>{busy ? "Continuing…" : actions[mode]}</Button>
         </form>

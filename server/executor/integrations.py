@@ -35,7 +35,7 @@ async def manage(
                     "authorization": item.authorization,
                     "fields": item.fields,
                     "configured": all(saved.get(field) for field in item.fields),
-                    "callback_url": service.config.public_url + f"/connections/{item.id}/callback"
+                    "callback_url": service.config.api_origin + f"/connections/{item.id}/callback"
                     if item.fields
                     else None,
                 }

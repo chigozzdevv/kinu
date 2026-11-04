@@ -17,6 +17,7 @@ from core.connection.provider import ProviderInput, ResendAccess
 from core.errors import ResourceConflictError
 from core.ids import new_id
 from core.inventory.store import InventoryStore
+from core.playbook.api_store import ApiPlaybookStore
 from fastapi import APIRouter, Depends
 from hosting.browser import Browsers
 from pydantic import Field
@@ -71,6 +72,14 @@ async def domains(
 async def create(
     body: ProviderRequest, service: Annotated[Runtime, Depends(authenticated)]
 ) -> Connection:
+    http = body.http
+    if body.api_playbook_id and body.api_playbook_version_id:
+        version = await ApiPlaybookStore(service.database).published(
+            body.organisation_id, body.api_playbook_id, body.api_playbook_version_id
+        )
+        if version.definition.platform != body.platform:
+            raise ResourceConflictError("The API playbook belongs to another provider")
+        http = version.definition.http
     now, identity = datetime.now(UTC), new_id("connection")
     connection = Connection(
         id=identity,
@@ -83,7 +92,9 @@ async def create(
         authorization_reference="private://" + identity,
         capabilities=HttpProviderConnector.tools,
         allowed_resources=(body.platform + ":credentials:*",),
-        http=body.http,
+        http=http,
+        api_playbook_id=body.api_playbook_id,
+        api_playbook_version_id=body.api_playbook_version_id,
         status=ConnectionStatus.READY,
         region="global",
         created_at=now,

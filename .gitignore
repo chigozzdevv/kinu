@@ -29,3 +29,8 @@ htmlcov/
 *.pem
 *.key
 .secrets/
+
+.firebase/
+firebase-debug.log*
+
+.deploy/

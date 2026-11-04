@@ -1,0 +1,12 @@
+# Shared VPS: the existing edge proxy terminates TLS and reaches only Kinu's web gateway.
+services:
+  web:
+    build: {context: ., target: gateway}
+    environment:
+      KINU_PUBLIC_URL: ${KINU_PUBLIC_URL}
+    ports: !reset []
+    networks: [app, edge]
+networks:
+  edge:
+    external: true
+    name: kinu-edge

@@ -1,6 +1,7 @@
 import { createAuthPlugin, defineAppConfig, type AuthSession } from "@agent-native/core/server"
 import { HTTPError } from "h3"
 import { definePlugin } from "nitro"
+import { withCors } from "../cors"
 import { loadConfig } from "../config"
 import { resolveSession, sessionCookie } from "../session"
 import { capabilityPath, capabilityResponse } from "../capabilities"
@@ -31,7 +32,7 @@ export default definePlugin((app) => {
     },
   })(app)
   const handle = app.fetch
-  app.fetch = async (request) => {
+  const serve = async (request: Request) => {
     let response: Response
     try {
       const url = new URL(request.url)
@@ -73,4 +74,5 @@ export default definePlugin((app) => {
     response.headers.set("referrer-policy", "no-referrer")
     return response
   }
+  app.fetch = (request) => withCors(request, config, () => serve(request))
 })

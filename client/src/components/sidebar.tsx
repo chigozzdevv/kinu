@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import kinuLogo from "../assets/kinu-logo.svg"
 import { api } from "../lib/api"
-import type { NavItem } from "../lib/navigation"
+import { inventoryPages, operationPages, type NavItem } from "../lib/navigation"
 
 interface NavEntry {
   id: NavItem
@@ -26,7 +26,7 @@ interface NavGroup {
   id: "inventory" | "operations"
   label: string
   icon: LucideIcon
-  items: NavEntry[]
+  items: readonly NavEntry[]
 }
 
 const groups: NavGroup[] = [
@@ -34,21 +34,13 @@ const groups: NavGroup[] = [
     id: "inventory",
     label: "Inventory",
     icon: KeyRound,
-    items: [
-      { id: "credentials", label: "Credentials" },
-      { id: "connections", label: "Connections" },
-      { id: "playbooks", label: "Playbooks" },
-    ],
+    items: inventoryPages,
   },
   {
     id: "operations",
     label: "Operations",
     icon: Workflow,
-    items: [
-      { id: "incidents", label: "Incidents" },
-      { id: "rotations", label: "Rotations" },
-      { id: "approvals", label: "Approvals" },
-    ],
+    items: operationPages,
   },
 ]
 
@@ -61,7 +53,7 @@ function Brand() {
 }
 
 function SidebarContent({ currentNav, onNavigate, onLogout }: { currentNav: NavItem; onNavigate: (item: NavItem) => void; onLogout: () => void }) {
-  const summary = useQuery({ queryKey: ["overview"], queryFn: () => api.getOverview() })
+  const summary = useQuery({ queryKey: ["overview"], queryFn: () => api.getOverview(), refetchInterval: 10_000 })
   const profile = useQuery({ queryKey: ["profile"], queryFn: () => api.getProfile() })
   const [expanded, setExpanded] = useState<Record<NavGroup["id"], boolean>>({
     inventory: true,
@@ -195,7 +187,7 @@ export function Shell({ currentNav, onNavigate, onLogout, children }: { currentN
         <SidebarContent currentNav={currentNav} onNavigate={onNavigate} onLogout={onLogout} />
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
         <header className="flex h-14 items-center justify-between bg-[var(--workspace)] px-6 lg:hidden">
           <Brand />
           <button aria-label="Open navigation" className="focus-ring rounded-lg p-2 text-[var(--ink-soft)] hover:bg-white/50" onClick={() => setMobileOpen(true)}>

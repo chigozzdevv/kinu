@@ -30,6 +30,7 @@ from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.overview import OverviewService
 from core.overview.store import OverviewStore
 from core.playbook import PlaybookService, WalkthroughService
+from core.playbook.api_store import ApiPlaybookStore
 from core.playbook.sources import Sources
 from core.playbook.store import PlaybookStore
 from core.private import PrivateClient
@@ -108,6 +109,7 @@ async def runtime(
                     if bridge and config.connection_principals
                     else None,
                     workflow=workflow,
+                    api_playbooks=ApiPlaybookStore(database),
                     playbooks=PlaybookService(PlaybookStore(database), _now, inventory),
                     walkthroughs=WalkthroughService(Sources(database), _now),
                     playbook_builder=PlaybookBuilder(private) if private else None,
@@ -117,13 +119,18 @@ async def runtime(
                     agent_repository=agents,
                     agent_continuity=AgentMemoryService(agents, _now),
                     history=HistoryStore(
-                        database, BrowserBridge(private, config.public_url) if private else None
+                        database,
+                        BrowserBridge(private, config.public_url, config.api_origin)
+                        if private
+                        else None,
                     ),
                     notifications=notifications,
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
                     private=private,
-                    browser_setup=BrowserBridge(private, config.public_url) if private else None,
+                    browser_setup=BrowserBridge(private, config.public_url, config.api_origin)
+                    if private
+                    else None,
                     installation=Installation(database),
                     audit=audit,
                     incidents=IncidentService(
@@ -142,7 +149,7 @@ async def runtime(
                     FormStore(database, _now),
                     PasswordClient(
                         database,
-                        Resend(http, config.resend_key, config.email_sender),
+                        Resend(http, config.resend_key, config.email_sender, config.public_url),
                         config.browser.issuer,
                         config.auth_secret,
                         _now,

@@ -4,15 +4,21 @@ import json
 import secrets
 from typing import Any
 
-from core.errors import ResourceNotFoundError
+from core.errors import ResourceConflictError, ResourceNotFoundError
 from core.storage.database import Database
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import SecretStr
 
 
 class Vault:
-    def __init__(self, database: Database, key: SecretStr) -> None:
+    def __init__(
+        self,
+        database: Database,
+        key: SecretStr,
+        integrations: dict[str, dict[str, str]] | None = None,
+    ) -> None:
         self.database = database
+        self._integrations = integrations or {}
         self.cipher = AESGCM(hashlib.sha256(key.get_secret_value().encode()).digest())
 
     async def initialize(self) -> None:
@@ -53,10 +59,14 @@ class Vault:
         )
 
     async def integration(self, identity: str) -> dict[str, Any]:
+        if identity in self._integrations:
+            return dict(self._integrations[identity])
         row = await self.database.collection("integrations").find_one({"id": identity})
         return self.open(row["value"], "integration:" + identity) if row else {}
 
     async def configure(self, identity: str, value: dict[str, Any]) -> None:
+        if identity in self._integrations:
+            raise ResourceConflictError("This integration is managed by installation configuration")
         await self.database.collection("integrations").update_one(
             {"id": identity},
             {"$set": {"value": self.seal(value, "integration:" + identity)}},

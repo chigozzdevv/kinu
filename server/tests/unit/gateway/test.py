@@ -24,6 +24,7 @@ class Access:
         )
 
 
+@pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize(
     "origin,cookie,org,success",
     [
@@ -38,7 +39,12 @@ def test_gateway_requires_current_cookie_origin_workspace_and_private_setup_toke
     cookie: str,
     org: str,
     success: bool,
+    split: bool,
 ) -> None:
+    front = "https://kinu.web.app" if split else "http://localhost:5173"
+    if split:
+        origin = front if origin == "http://localhost:5173" else origin
+        cookie = cookie.replace("kinu.session=", "__Host-kinu=")
     calls = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -57,7 +63,12 @@ def test_gateway_requires_current_cookie_origin_workspace_and_private_setup_toke
     app = create_app(
         ApiServices(access=AccessControl(Access()), private=private),
         browser=make_browser(IDENTITY),
-        settings=Settings(mongo_url=SecretStr("")),
+        settings=Settings(
+            mongo_url=SecretStr(""),
+            public_url=front,
+            api_public_url="https://api.example.com" if split else None,
+            cookie_samesite="none" if split else "lax",
+        ),
     )
     client = TestClient(app)
 

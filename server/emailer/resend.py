@@ -6,13 +6,15 @@ from emailer.templates import verification
 
 
 class Resend:
-    def __init__(self, http: httpx.AsyncClient, key: SecretStr | None, sender: str) -> None:
-        self.http, self.key, self.sender = http, key, sender
+    def __init__(
+        self, http: httpx.AsyncClient, key: SecretStr | None, sender: str, origin: str
+    ) -> None:
+        self.http, self.key, self.sender, self.origin = http, key, sender, origin
 
     async def code(self, email: str, code: str, purpose: str, message_id: str) -> None:
         if not self.key:
             raise IdentityUnavailableError("Email delivery is not configured.")
-        subject, text, html = verification(code, purpose)
+        subject, text, html = verification(code, purpose, self.origin)
         try:
             response = await self.http.post(
                 "https://api.resend.com/emails",

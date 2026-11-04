@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,15 @@ class Settings(BaseSettings):
     auth_secret_file: Path | None = None
     connection_principals: str | None = None
     public_url: str = "http://localhost:5173"
+    api_public_url: str | None = None
+    cookie_samesite: Literal["lax", "none"] = "lax"
+
+    @property
+    def api_origin(self) -> str:
+        return self.api_public_url or self.public_url
+
+    def frontend_location(self, path: str) -> str:
+        return self.public_url + path if self.api_origin != self.public_url else path
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
@@ -36,6 +46,12 @@ class Settings(BaseSettings):
             if path:
                 setattr(self, key, SecretStr(path.read_text().strip()))
         self.public_url = validate_origin(self.public_url, self.environment == "development")
+        if self.api_public_url:
+            self.api_public_url = validate_origin(
+                self.api_public_url, self.environment == "development"
+            )
+        if self.cookie_samesite == "none" and not self.api_origin.startswith("https://"):
+            raise ValueError("Cross-site session cookies require an HTTPS API")
         if self.auth_secret and len(self.auth_secret.get_secret_value()) < 32:
             raise ValueError("authentication secret requires at least 32 characters")
         if not 1 <= self.session_hours <= 24:
@@ -48,4 +64,10 @@ class Settings(BaseSettings):
 
     @property
     def browser(self) -> BrowserOptions | None:
-        return BrowserOptions(self.public_url, self.session_hours) if self.auth_secret else None
+        return (
+            BrowserOptions(
+                self.public_url, self.session_hours, self.cookie_samesite, self.api_origin
+            )
+            if self.auth_secret
+            else None
+        )

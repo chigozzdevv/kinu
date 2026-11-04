@@ -27,6 +27,7 @@ from contracts import (
     ProbeVersion,
     ProtectedAction,
 )
+from contracts.api_playbook import ApiPlaybook, ApiPlaybookVersion
 from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.errors import DuplicateKeyError
 
@@ -41,6 +42,8 @@ _KINDS: dict[type[Contract], str] = {
     Approval: "approval",
     ProtectedAction: "protected-action",
     Playbook: "playbook",
+    ApiPlaybook: "api-playbook",
+    ApiPlaybookVersion: "api-playbook-version",
     Probe: "probe",
     Incident: "incident",
     Notification: "notification",
@@ -158,7 +161,9 @@ class RecordTransaction:
         if not result.deleted_count:
             raise RevisionConflictError("consumer binding changed")
 
-    async def publish[T: (PlaybookVersion, ProbeVersion)](self, previous: T, changed: T) -> T:
+    async def publish[T: (PlaybookVersion, ProbeVersion, ApiPlaybookVersion)](
+        self, previous: T, changed: T
+    ) -> T:
         mutable = {"state", "published_by", "published_at", "approved_by", "approved_at"}
         if previous.model_dump(exclude=mutable) != changed.model_dump(exclude=mutable):
             raise ResourceConflictError("publication cannot change an immutable definition")

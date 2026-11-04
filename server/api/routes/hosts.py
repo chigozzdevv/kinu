@@ -88,7 +88,7 @@ async def callback(
     except KinuError:
         pass
     return RedirectResponse(
-        destination,
+        request.app.state.config.frontend_location(destination),
         status_code=303,
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )

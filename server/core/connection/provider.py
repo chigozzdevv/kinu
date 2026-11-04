@@ -1,7 +1,7 @@
 from typing import Any
 
 from connectors.resend.config import definition
-from contracts import Contract, HttpProviderApi
+from contracts import Contract, HttpProviderApi, Identifier
 from pydantic import Field, SecretStr, model_validator
 
 
@@ -9,6 +9,8 @@ class ProviderInput(Contract):
     display_name: str = Field(min_length=1, max_length=100)
     platform: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
     http: HttpProviderApi | None = None
+    api_playbook_id: Identifier | None = None
+    api_playbook_version_id: Identifier | None = None
     token: SecretStr = Field(min_length=1, max_length=16384)
     domain_id: str | None = Field(default=None, max_length=64)
 
@@ -16,6 +18,17 @@ class ProviderInput(Contract):
     @classmethod
     def configure(cls, value: Any) -> Any:
         if not isinstance(value, dict):
+            return value
+        book, version = value.get("api_playbook_id"), value.get("api_playbook_version_id")
+        if (book is None) != (version is None):
+            raise ValueError("Choose an API playbook and its published version")
+        if book is not None:
+            if (
+                value.get("http") is not None
+                or value.get("domain_id")
+                or value.get("platform") == "resend"
+            ):
+                raise ValueError("Use the selected API playbook configuration")
             return value
         if value.get("platform") == "resend":
             if not isinstance(value.get("domain_id"), str) or not value["domain_id"]:

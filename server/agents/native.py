@@ -3,6 +3,7 @@ from typing import Any
 
 from connectors.base.errors import ConnectorError
 from contracts import AgentKind, AgentResult, AgentTask, PlaybookDraft, WalkthroughAnalysis
+from contracts.api_playbook import ApiPlaybookDraft
 from core.errors import PlaybookError, ResourceConflictError
 from core.private import PrivateClient
 
@@ -36,7 +37,12 @@ class NativeAgent:
                         }
                         for source in sources
                     ],
-                    "schema": PlaybookDraft.model_json_schema(),
+                    "execution": task.context.get("execution", "browser"),
+                    "schema": (
+                        ApiPlaybookDraft
+                        if task.context.get("execution") == "api"
+                        else PlaybookDraft
+                    ).model_json_schema(),
                 },
             },
             timeout=150,

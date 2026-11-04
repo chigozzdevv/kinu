@@ -23,14 +23,18 @@ class OAuth:
 
     def begin(self, state: str) -> tuple[str, str]:
         if not all(self.settings.get(key) for key in ("client_id", "client_secret")):
-            raise ResourceSetupRequiredError("Configure this integration in Settings")
+            raise ResourceSetupRequiredError(
+                "This hosting connection is not configured on this Kinu installation"
+            )
         verifier = secrets.token_urlsafe(48)
         if self.platform == "vercel":
             slug = self.settings.get("slug")
             if not slug or any(
                 value not in "abcdefghijklmnopqrstuvwxyz0123456789-" for value in slug
             ):
-                raise ResourceSetupRequiredError("Configure the Vercel integration slug")
+                raise ResourceSetupRequiredError(
+                    "The Vercel connection is not configured on this Kinu installation"
+                )
             return (
                 "https://vercel.com/integrations/"
                 + slug

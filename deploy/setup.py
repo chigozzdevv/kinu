@@ -21,12 +21,19 @@ def setup() -> None:
     keys = {line.partition("=")[0].strip() for line in existing.splitlines() if "=" in line}
     values = {
         "KINU_PUBLIC_URL": "http://localhost:8080",
+        "KINU_API_PUBLIC_URL": "",
+        "KINU_COOKIE_SAMESITE": "lax",
         "KINU_SITE": ":80",
         "KINU_HTTP_PORT": "8080",
         "KINU_HTTPS_PORT": "8443",
         "KINU_ENVIRONMENT": "development",
         "KINU_RESEND_KEY": "",
         "KINU_EMAIL_SENDER": "Kinu <noreply@example.com>",
+        "KINU_VERCEL_SLUG": "",
+        "KINU_VERCEL_CLIENT_ID": "",
+        "KINU_VERCEL_CLIENT_SECRET": "",
+        "KINU_RAILWAY_CLIENT_ID": "",
+        "KINU_RAILWAY_CLIENT_SECRET": "",
         **{
             f"KINU_MONGO_{role}_PASSWORD": secrets.token_hex(24)
             for role in ("ROOT", "API", "EXECUTOR", "NATIVE")

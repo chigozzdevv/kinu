@@ -78,7 +78,7 @@ class Runtime:
                 ),
             ),
         )
-        self.hosts = Hosts(database, vault, http, config.public_url)
+        self.hosts = Hosts(database, vault, http, config.api_origin)
         self.browser_catalog = BrowserCatalog(database, vault)
         self.browser_setups = Setups(self.browser_catalog)
         self.browser_worker = BrowserWorker(
@@ -122,7 +122,7 @@ class Runtime:
             Google(config, self.http),
             MailVault(config),
             self.database,
-            self.config.public_url,
+            self.config.api_origin,
         )
 
     async def poll(self) -> int:
@@ -148,7 +148,7 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
         await database.open()
         await private.open()
         assert config.vault_key is not None
-        vault = Vault(private, config.vault_key)
+        vault = Vault(private, config.vault_key, config.oauth_apps)
         await vault.initialize()
         async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as http:
             service = Runtime(config, database, vault, http, queue)

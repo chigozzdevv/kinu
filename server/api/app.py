@@ -25,6 +25,7 @@ from core.errors import (
 )
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from policy import PolicyViolationError
 from telemetry import instrument
@@ -48,6 +49,7 @@ from api.routes import (
     settings_router,
     walkthroughs_router,
 )
+from api.routes.api_playbooks import router as api_playbooks_router
 from api.routes.auth import router as auth_router
 from api.routes.connections import router as connections_router
 from api.routes.demo import router as demo_router
@@ -78,6 +80,13 @@ def create_app(
         redoc_url=None,
         lifespan=lambda app: runtime(app, config, services, browser),
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[config.public_url],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "X-CSRF-Token", "X-Kinu-Workspace", "Idempotency-Key"],
+    )
     app.state.services = services
     app.state.browser = browser
     app.state.config = config
@@ -96,6 +105,7 @@ def create_app(
     app.include_router(gateway_router)
     app.include_router(notifications_router)
     app.include_router(playbooks_router)
+    app.include_router(api_playbooks_router)
     app.include_router(probes_router)
     app.include_router(approvals_router)
     app.include_router(agents_router)

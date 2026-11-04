@@ -55,6 +55,10 @@ RUN npm ci
 COPY client/ ./
 RUN npm run build
 
+FROM caddy:2-alpine AS gateway
+COPY deploy/Caddy-vps /etc/caddy/Caddyfile
+EXPOSE 80
+
 FROM caddy:2-alpine AS web
 COPY --from=client-build /app/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile

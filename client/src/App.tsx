@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Shell } from "./components/sidebar"
+import { DashboardLinkNavigation } from "./lib/dashboard-link-navigation"
 import { OverviewPage } from "./pages/overview"
 import { CredentialsPage } from "./pages/credentials"
 import { CredentialOnboarding } from "./pages/credential-onboarding"
@@ -140,7 +141,7 @@ export function App({
       <QueryClientProvider client={queryClient}>
         <Shell currentNav={currentNav} onNavigate={handleNavigate} onLogout={() => { void handleLogout() }}>
           {logoutError && <p role="alert" className="px-6 py-3 text-[12px] text-[var(--red)]">{logoutError}</p>}
-          {renderContent()}
+          <DashboardLinkNavigation value={handleNavigate}>{renderContent()}</DashboardLinkNavigation>
         </Shell>
       </QueryClientProvider>
     </OrganisationProvider>

@@ -13,10 +13,23 @@ export function builderPath(path: string, method: string): boolean {
     method === "POST" && /^\/_agent-native\/kinu\/builder\/(connect|disconnect|model)$/.test(path)
 }
 
-export async function builderCallback(request: Request, config: Config): Promise<Response> {
+export function builderCallbackUrl(request: Request, config: Config): URL {
   const url = new URL(request.url)
+  if (url.origin !== config.publicApiUrl) {
+    const expected = new URL(config.publicApiUrl)
+    // The private agent receives HTTP from Caddy, which overwrites these forwarding headers.
+    if (url.protocol !== "http:" || expected.protocol !== "https:" || url.host !== expected.host ||
+        request.headers.get("x-forwarded-proto") !== "https" ||
+        request.headers.get("x-forwarded-host") !== expected.host) throw new HTTPError({ status: 400 })
+    url.protocol = "https:"
+  }
   const names = [...url.searchParams.keys()]
-  if (url.origin !== config.publicUrl || names.some((name) => !["state", "code", "iss", "error", "error_description"].includes(name)) || names.some((name) => url.searchParams.getAll(name).length !== 1)) throw new HTTPError({ status: 400 })
+  if (url.origin !== config.publicApiUrl || names.some((name) => !["state", "code", "iss", "error", "error_description"].includes(name)) || names.some((name) => url.searchParams.getAll(name).length !== 1)) throw new HTTPError({ status: 400 })
+  return url
+}
+
+export async function builderCallback(request: Request, config: Config): Promise<Response> {
+  const url = builderCallbackUrl(request, config)
   const cookie = sessionCookie(request.headers, config)
   if (!cookie) throw new HTTPError({ status: 401 })
   return withStorage(async (db) => {
@@ -37,7 +50,7 @@ export async function builderResponse(request: Request, session: AuthSession, co
   await checkWrite(request, session, config)
   const path = new URL(request.url).pathname
   return withStorage(async (db) => {
-    if (path.endsWith("/connect")) return Response.json({ authorization_url: await begin(db, session, sessionCookie(request.headers, config)!, config.publicUrl) })
+    if (path.endsWith("/connect")) return Response.json({ authorization_url: await begin(db, session, sessionCookie(request.headers, config)!, config.publicApiUrl) })
     if (path.endsWith("/disconnect")) { await disconnect(db, session.orgId!); return Response.json({ connected: false }) }
     const schema = z.strictObject({ model: z.enum(BUILDER_SUPPORTED_MODELS).refine((model) => model !== "auto") })
     const parsed = schema.safeParse(await boundedBody(request))

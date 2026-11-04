@@ -1,0 +1,6 @@
+{
+  "projects": { "default": "kinu-muwa" },
+  "targets": {
+    "kinu-muwa": { "hosting": { "kinu": ["kinu"] } }
+  }
+}

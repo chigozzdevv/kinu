@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import urlsplit
 
 
@@ -28,9 +29,15 @@ def validate_origin(value: str, development: bool) -> str:
 class BrowserOptions:
     origin: str
     session_hours: int = 12
+    same_site: Literal["lax", "none"] = "lax"
+    api_origin: str | None = None
 
     def __post_init__(self) -> None:
         validate_origin(self.origin, True)
+        if self.api_origin:
+            validate_origin(self.api_origin, True)
+        if self.same_site == "none" and not self.secure:
+            raise ValueError("Cross-site session cookies require HTTPS")
         if not 1 <= self.session_hours <= 24:
             raise ValueError("session lifetime must be between 1 and 24 hours")
 
@@ -40,7 +47,7 @@ class BrowserOptions:
 
     @property
     def secure(self) -> bool:
-        return self.origin.startswith("https://")
+        return (self.api_origin or self.origin).startswith("https://")
 
     @property
     def cookie_name(self) -> str:

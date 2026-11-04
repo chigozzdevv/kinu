@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
-import { IntegrationsSettings } from "./integrations"
 import { AiSettings } from "../components/ai"
 import { DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
@@ -17,7 +16,7 @@ import { titleCase } from "../lib/format"
 import { cn } from "../lib/utils"
 import type { EmailNotificationEndpoint, MemberRole, NotificationTopic, TeamMember } from "../types"
 
-type Tab = "profile" | "team" | "notifications" | "ai" | "integrations"
+type Tab = "profile" | "team" | "notifications" | "ai"
 
 const roles: Array<{ value: MemberRole; label: string }> = [
   { value: "viewer", label: "Viewer" },
@@ -52,8 +51,8 @@ export function SettingsPage() {
     if (profile.data && !administrator && tab === "team") setTab("profile")
   }, [administrator, profile.data, tab])
   const tabs = administrator
-    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
-    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }, { id: "integrations" as const, label: "Integrations" }]
+    ? [{ id: "profile" as const, label: "Profile" }, { id: "team" as const, label: "Team" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
+    : [{ id: "profile" as const, label: "Profile" }, { id: "notifications" as const, label: "Notifications" }, { id: "ai" as const, label: "AI" }]
   const actions = tab === "team"
     ? <Button size="sm" onClick={() => setInviting(true)}><Plus className="size-3.5" /> Invite member</Button>
     : tab === "notifications"
@@ -67,12 +66,11 @@ export function SettingsPage() {
 
   return <div className="page">
     <div className="max-w-[640px]">
-      <PageHeader title="Settings" />
+      <PageHeader eyebrow="System" title="Settings" />
       <DetailTabs items={tabs} value={tab} onChange={setTab} className="mb-0" />
       <div className="px-4 pb-4 pt-2">
         {actions && <div className="flex justify-end py-4">{actions}</div>}
         {tab === "profile" && <ProfileSettings profile={profile.data!} />}
-        {tab === "integrations" && <IntegrationsSettings />}
         {tab === "ai" && <AiSettings administrator={administrator} />}
         {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
         {tab === "notifications" && <>

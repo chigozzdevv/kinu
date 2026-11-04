@@ -1,3 +1,5 @@
+import { apiCredentials, apiUrl } from "./api-origin.ts"
+
 export interface Identity {
   uid: string
   email: string
@@ -58,7 +60,7 @@ export function clearSession(): void {
 }
 
 export async function readSession(): Promise<BrowserSession | null> {
-  const response = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
+  const response = await fetch(apiUrl("/auth/session"), { credentials: apiCredentials, cache: "no-store" })
   if (response.status === 401) {
     clearSession()
     return null
@@ -69,7 +71,7 @@ export async function readSession(): Promise<BrowserSession | null> {
 }
 
 export async function readAuthentication(): Promise<Authentication> {
-  const response = await fetch("/auth/status", { credentials: "same-origin", cache: "no-store" })
+  const response = await fetch(apiUrl("/auth/status"), { credentials: apiCredentials, cache: "no-store" })
   if (!response.ok) throw new Error("Sign-in is temporarily unavailable. Try again.")
   const status = await response.json() as { configured: boolean }
   return { configured: status.configured, session: status.configured ? await readSession() : null }
@@ -81,11 +83,11 @@ export interface AuthResult {
 }
 
 export async function submitAuth(action: "signin" | "signup" | "verify" | "resend" | "forgot" | "reset", body: Record<string, string>): Promise<AuthResult> {
-  const form = await fetch("/auth/form", { credentials: "same-origin", cache: "no-store" })
+  const form = await fetch(apiUrl("/auth/form"), { credentials: apiCredentials, cache: "no-store" })
   if (!form.ok) throw new Error("Sign-in is temporarily unavailable. Please try again.")
   const state = await form.json() as { csrf_token: string }
-  const response = await fetch(`/auth/${action}`, {
-    method: "POST", credentials: "same-origin", cache: "no-store",
+  const response = await fetch(apiUrl(`/auth/${action}`), {
+    method: "POST", credentials: apiCredentials, cache: "no-store",
     headers: { "content-type": "application/json", "x-csrf-token": state.csrf_token },
     body: JSON.stringify(body),
   })
@@ -116,7 +118,7 @@ export async function sessionFetch(path: string, options?: RequestInit): Promise
   const authentication = await sessionHeaders(options?.method)
   authentication.forEach((value, name) => headers.set(name, value))
   if (options?.body && !headers.has("content-type")) headers.set("content-type", "application/json")
-  const response = await fetch(path, { ...options, credentials: "same-origin", headers })
+  const response = await fetch(apiUrl(path), { ...options, credentials: apiCredentials, headers })
   if (response.status === 401) {
     redirectToSignIn()
     throw new SessionExpiredError()
@@ -126,9 +128,9 @@ export async function sessionFetch(path: string, options?: RequestInit): Promise
 
 export async function signOutIdentity(): Promise<string> {
   const current = cachedSession ?? await readSession()
-  const response = await fetch("/auth/logout", {
+  const response = await fetch(apiUrl("/auth/logout"), {
     method: "POST",
-    credentials: "same-origin",
+    credentials: apiCredentials,
     headers: current ? { "X-CSRF-Token": current.csrf_token } : {},
   })
   if (!response.ok) throw new Error("Sign-out could not be completed. Try again.")

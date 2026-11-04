@@ -17,6 +17,24 @@ export type DashboardRoute = {
   controlVersionId?: string
 }
 
+export const inventoryPages = [
+  { id: "connections", label: "Connections" },
+  { id: "playbooks", label: "Playbooks" },
+  { id: "credentials", label: "Credentials" },
+] as const
+
+export const operationPages = [
+  { id: "incidents", label: "Incidents" },
+  { id: "rotations", label: "Rotations" },
+  { id: "approvals", label: "Approvals" },
+] as const
+
+export const breadcrumbGroups = [
+  { label: "Inventory", pages: inventoryPages },
+  { label: "Operations", pages: operationPages },
+  { label: "System", pages: [{ id: "audits", label: "Audit" }, { id: "settings", label: "Settings" }] },
+] as const
+
 const sections = new Set<NavItem>([
   "credentials",
   "incidents",
