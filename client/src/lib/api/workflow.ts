@@ -3,7 +3,46 @@ import type { StartRotationInput } from "./types"
 import { nativeRequest } from "../native"
 import { request, requestBlob, workspacePath, activeOrganisationId } from "./http"
 
+export type IncidentKind = "exposure" | "expiry" | "drift"
+export interface IncidentReportOptions {
+  email_sender: string
+  recipient: string | null
+  sources: Array<{ id: string; name: string; address: string; linked: boolean }>
+  subject: string
+  preview: string
+}
+export interface IncidentReportInput {
+  credential_id: string
+  kind: IncidentKind
+  details: string
+  simulate: boolean
+  source_connection_id: string | null
+  recipient: string | null
+}
+export interface IncidentReportStatus {
+  id: string
+  simulate: boolean
+  state: string
+  recipient: string | null
+  message: string | null
+  incident: Incident | null
+}
+
 export const workflow = {
+  getIncidentReportOptions(credentialId?: string, kind: IncidentKind = "exposure"): Promise<IncidentReportOptions> {
+    const parameters = new URLSearchParams({ kind })
+    if (credentialId) parameters.set("credential_id", credentialId)
+    return request(`${workspacePath()}/incidents/report-options?${parameters}`)
+  },
+  createIncidentReport(input: IncidentReportInput, requestId: string): Promise<IncidentReportStatus> {
+    return request(`${workspacePath()}/incidents/reports`, {
+      method: "POST", headers: { "Idempotency-Key": requestId }, body: JSON.stringify(input),
+    })
+  },
+  getIncidentReportStatus(reportId: string): Promise<IncidentReportStatus> {
+    return request(`${workspacePath()}/incidents/reports/${encodeURIComponent(reportId)}`)
+  },
+
   async getOverview(): Promise<OverviewSummary> {
     return request(`${workspacePath()}/overview`)
   },
@@ -74,10 +113,6 @@ export const workflow = {
       reason: input.reason, urgency: input.urgency,
     })
     return response.run
-  },
-
-  async getDemo(): Promise<{ configured: boolean }> {
-    return request(`${workspacePath()}/demo`)
   },
 
   async getRotation(runId: string): Promise<RotationRun> {

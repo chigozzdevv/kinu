@@ -118,6 +118,9 @@ mount client secrets and set `KINU_VERCEL_CLIENT_SECRET_FILE` or
 For email alerts, open **Connections → Incident sources → Email** and forward mail to the
 workspace address. Kinu shows Gmail forwarding confirmations in that setup screen and marks
 the connection as receiving when mail arrives. No Gmail OAuth app is required.
+Use **Incidents → Create incident → Simulate** to send a credential-specific test alert to
+your mailbox. Forward mail from `KINU_EMAIL_SENDER` to the workspace address; received tests
+follow the key's controls and can start real rotations. Test requests expire after 30 minutes.
 Automatic forwarded alerts currently require a Resend sender with aligned DKIM,
 an exact credential match, and permitted controls; other senders require review.
 On the host, configure `KINU_INBOUND_EMAIL_DOMAIN`, `KINU_RESEND_KEY`, and

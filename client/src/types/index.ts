@@ -277,6 +277,7 @@ export interface Playbook {
 }
 
 export interface Incident {
+  description?: string | null
   id: Identifier
   organisation_id: Identifier
   event_id: Identifier

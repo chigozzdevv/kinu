@@ -13,6 +13,7 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState("")
   const inbox = useQuery({ queryKey: ["email-inbox"], queryFn: api.getEmailInbox, refetchInterval: 5_000 })
+  const reportOptions = useQuery({ queryKey: ["incident-report-config"], queryFn: () => api.getIncidentReportOptions() })
   const create = useMutation({ mutationFn: api.createEmailInbox, onSuccess: async (value) => {
     cache.setQueryData(["email-inbox"], value)
     await onChanged()
@@ -51,6 +52,7 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
         <li>Tick <strong>Forward it to</strong>, select your Kinu address, then click <strong>Create filter</strong>.</li>
         <li>Click <strong>Done</strong> here.</li>
       </ol>
+      {reportOptions.data?.email_sender && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">For Kinu test alerts, enter <span className="font-medium text-[var(--ink)]">{reportOptions.data.email_sender}</span> in <span className="font-medium text-[var(--ink)]">From</span>.</p>}
       <div className="flex flex-col items-start gap-4">
         {box.confirmation_url && <a className="focus-ring inline-flex rounded-lg bg-[var(--ink)] px-4 py-2 text-[11px] font-semibold text-white" href={box.confirmation_url} target="_blank" rel="noreferrer">Confirm forwarding ↗</a>}
         {(!box.confirmation_url || box.receiving) && <p className="inline-flex items-center gap-2 text-[11px] leading-5 text-[var(--ink-soft)]" role="status">

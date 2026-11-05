@@ -5,6 +5,7 @@ from contracts import Contract, Identifier
 from core.errors import ResourceConflictError, ResourceSetupRequiredError
 from fastapi import APIRouter, Depends, HTTPException
 from mail.models import ForwardInbox
+from mail.reports import IncidentKind, ReportRequest
 from pydantic import Field
 
 from executor.deps import authenticated
@@ -16,6 +17,9 @@ router = APIRouter()
 class SourceRequest(Contract):
     operation: Literal[
         "status",
+        "report-options",
+        "report-create",
+        "report-status",
         "email-get",
         "email-create",
         "email-dismiss-confirmation",
@@ -25,6 +29,10 @@ class SourceRequest(Contract):
         "webhook",
     ]
     organisation_id: Identifier | None = None
+    credential_id: Identifier | None = None
+    kind: IncidentKind = "exposure"
+    report: ReportRequest | None = None
+    request_id: Identifier | None = None
     confirmation_url: str | None = Field(default=None, min_length=1, max_length=8192)
     subject: str | None = Field(default=None, min_length=1, max_length=512)
     session_id: Identifier | None = None
@@ -44,6 +52,13 @@ async def control(
     sources, org = service.sources, body.organisation_id
     if body.operation == "status":
         return sources.status()
+    if org:
+        if body.operation == "report-options":
+            return await sources.reports.options(org, body.credential_id, body.kind)
+        if body.operation == "report-create" and body.report and body.subject and body.request_id:
+            return await sources.reports.create(org, body.subject, body.request_id, body.report)
+        if body.operation == "report-status" and body.request_id:
+            return await sources.reports.status(org, body.request_id)
     if body.operation == "webhook" and body.source and body.body is not None:
         try:
             raw = base64.b64decode(body.body, validate=True)

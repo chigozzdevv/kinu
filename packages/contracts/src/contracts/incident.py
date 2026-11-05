@@ -47,6 +47,7 @@ class IngestionEvent(Contract):
     source: str = Field(min_length=1, max_length=64)
     source_event_id: str = Field(min_length=1, max_length=256)
     kind: str = Field(min_length=1, max_length=96)
+    description: str | None = Field(default=None, max_length=1024)
     observed_at: AwareDatetime
     severity: Severity
     confidence: Confidence
@@ -71,6 +72,7 @@ class Incident(Contract):
     event_id: Identifier
     source: str = Field(min_length=1, max_length=64)
     kind: str = Field(default="security-signal", min_length=1, max_length=96)
+    description: str | None = Field(default=None, max_length=1024)
     source_event_id: str = Field(min_length=1, max_length=256)
     severity: Severity
     confidence: Confidence

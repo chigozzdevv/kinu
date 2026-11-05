@@ -134,6 +134,7 @@ class IncidentService:
             event_id=event.id,
             source=event.source,
             kind=event.kind,
+            description=event.description,
             source_event_id=event.source_event_id,
             severity=event.severity,
             confidence=event.confidence,
@@ -478,7 +479,14 @@ class IncidentService:
     async def _notify(self, incident: Incident, event: IngestionEvent) -> None:
         if self._notifier is None:
             return
-        if event.source == "schedule":
+        if event.source == "test-email":
+            kind = NotificationKind.INCIDENT
+            title = "Test incident received"
+            body = (
+                "A simulated incident was received. "
+                "Its credential controls determine the next action."
+            )
+        elif event.source == "schedule":
             kind = NotificationKind.ROTATION_DUE
             title = "Scheduled credential rotation is due"
             body = f"Kinu incident {incident.id} is ready for its scheduled rotation."

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowUpRight, ChevronRight } from "lucide-react"
+import { ArrowUpRight, ChevronRight, Plus } from "lucide-react"
 import { Detail, DetailCard, DetailList, DetailPage } from "../components/detail"
 import { PageHeader } from "../components/header"
-import { DemoAlert } from "../components/demo"
+import { IncidentCreate } from "../components/incident-create"
 import { Provider } from "../components/provider"
 import { Failure, Loading } from "../components/state"
 import { Toolbar } from "../components/toolbar"
@@ -15,6 +15,7 @@ import { Field, SelectControl } from "../components/workspace"
 import { api } from "../lib/api"
 import { formatDate, titleCase } from "../lib/format"
 import { affectedResource, incidentReason } from "../lib/incident"
+import { useOrganisation } from "../lib/useorganisation"
 import type { Incident } from "../types"
 
 const dismissalReasons = [
@@ -36,13 +37,15 @@ function statusVariant(status: Incident["status"]) {
   return "active" as const
 }
 
-export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavigateRotation }: { initialIncidentId?: string; onSelectIncident: (incidentId: string) => void; onNavigateRotation: (runId: string) => void }) {
+export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavigateRotation, onAddCredential, onConnectSource }: { initialIncidentId?: string; onSelectIncident: (incidentId: string) => void; onNavigateRotation: (runId: string) => void; onAddCredential: () => void; onConnectSource: () => void }) {
+  const { active } = useOrganisation()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("all")
   const [selectedId, setSelectedId] = useState(initialIncidentId)
   const [selectedCandidateId, setSelectedCandidateId] = useState("")
   const [dismissing, setDismissing] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [dismissalReason, setDismissalReason] = useState(dismissalReasons[0])
   const [incidents, graph] = useQueries({ queries: [
     { queryKey: ["incidents", ["all", "resolved", "dismissed"].includes(status) ? status : "open"], queryFn: () => status === "all" ? api.getIncidents() : status === "resolved" || status === "dismissed" ? api.getIncidents(status) : api.getOpenIncidents(), refetchInterval: 10_000 },
@@ -143,6 +146,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
       <PageHeader eyebrow="Operations / Incidents" title={titleCase(selected.source)} onBack={() => { setSelectedId(""); onSelectIncident("") }} actions={actions} />
       {(resolve.error || dismiss.error) && <div role="alert" className="mb-5 text-[10px] text-[var(--red)]">{(resolve.error ?? dismiss.error)?.message}</div>}
       <DetailCard>
+        {selected.description && <p className="mb-5 whitespace-pre-line text-[11px] leading-5 text-[var(--ink-soft)]">{selected.description}</p>}
         <DetailList><Detail label="Reason">{incidentReason(selected.kind)}</Detail><Detail label="Affected resource">{affectedResource(selected, graph.data).name}</Detail>{selected.credential_id && <Detail label="Credential">{credential(selected.credential_id)?.display_name ?? "Credential"}</Detail>}<Detail label="Status">{titleCase(selected.status)}</Detail><Detail label="Reference">{selected.source_event_id}</Detail>{selected.resolution_run_id && selected.run_id && selected.resolution_run_id !== selected.run_id && <Detail label="Previous attempt"><button type="button" className="focus-ring rounded hover:underline" onClick={() => onNavigateRotation(selected.run_id!)}>View rotation</button></Detail>}{selected.resource.repository && <Detail label="Repository">{selected.resource.repository}</Detail>}{selected.resource.project && <Detail label="Project">{selected.resource.project}</Detail>}{selected.resource.service && <Detail label="Service">{selected.resource.service}</Detail>}<Detail label="Observed">{formatDate(selected.created_at, true)}</Detail></DetailList>
         {requiresCredentialChoice && <section className="mt-6 border-t border-[var(--border-soft)] pt-5"><h3 className="eyebrow mb-2">Credential</h3><div className="divide-y divide-[var(--border-soft)] border-y border-[var(--border-soft)]">
           {selected.candidates.map((candidate) => {
@@ -163,8 +167,7 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
   }
 
   return <div className="page">
-    <PageHeader eyebrow="Operations" title="Incidents" />
-    <DemoAlert />
+    <PageHeader eyebrow="Operations" title="Incidents" actions={active.role !== "viewer" && <Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Create incident</Button>} />
     <Toolbar value={search} onChange={setSearch} placeholder="Search incidents, repositories, or services" onClear={() => { setSearch(""); setStatus("all") }} filters={[{ label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All incidents</option><option value="open">Open incidents</option><option value="action-required">Action required</option><option value="rotation-started">Rotation started</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></> }]} />
     <Table responsive>
       <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Affected resource</TableHead><TableHead>Credential</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader>
@@ -180,5 +183,13 @@ export function IncidentsPage({ initialIncidentId = "", onSelectIncident, onNavi
         </TableRow>
       })}</TableBody>
     </Table>
+    {creating && <IncidentCreate credentials={(graph.data?.credentials ?? []).filter((item) => !item.archived_at)} onClose={() => setCreating(false)}
+      onAddCredential={() => { setCreating(false); onAddCredential() }} onConnectSource={() => { setCreating(false); onConnectSource() }}
+      onCreated={(incident) => {
+        setCreating(false)
+        queryClient.setQueryData(["incident", incident.id], incident)
+        void Promise.all(["incidents", "overview", "rotations"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
+        openIncident(incident)
+      }} />}
   </div>
 }

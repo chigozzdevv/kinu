@@ -24,6 +24,7 @@ from core.storage.records import Records
 from mail.assessment import Assessment
 from mail.forwarding import Forwarding
 from mail.receiving import Receiving, confirmation, verify_webhook
+from mail.reports import Reports
 from pymongo import ReturnDocument
 
 if TYPE_CHECKING:
@@ -57,6 +58,7 @@ class Sources:
         )
         self.github_store = GitHubStore(self.database)
         self.automation = service.monitor.automation
+        self.reports = Reports(service, self.forwarding)
 
     def status(self) -> dict[str, bool]:
         return {
@@ -268,6 +270,7 @@ class Sources:
         )
 
     async def drain(self) -> None:
+        await self.reports.drain()
         jobs = self.database.collection("source_deliveries")
         for _ in range(10):
             row = await jobs.find_one_and_update(
@@ -363,6 +366,8 @@ class Sources:
             link = confirmation(data, inbox.address)
             await self.forwarding.received(inbox, link)
             if link:
+                continue
+            if await self.reports.receive(inbox, identity, data):
                 continue
             box, _ = await self.forwarding.mailbox(inbox.organisation_id, inbox.id)
             prepared = await self.forwarding.message(inbox.organisation_id, inbox.id, identity)

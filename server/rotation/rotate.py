@@ -362,6 +362,19 @@ class Rotation:
         ).run
 
     async def _guard(self, run: RotationRun, state: Snapshot) -> None:
+        if not run.current_generation_id:
+            event = await self.database.collection("inventory").find_one(
+                {
+                    "organisation_id": run.organisation_id,
+                    "kind": "ingestion-event",
+                    "id": run.trigger.event_id,
+                }
+            )
+            if event and event["data"]["resource"].get("generation_id") not in {
+                None,
+                state.current.id,
+            }:
+                raise ResourceConflictError("The incident refers to a previous key generation")
         current = await RunStore(self.database).get(run.organisation_id, run.id)
         if (
             current.fencing_token != run.fencing_token

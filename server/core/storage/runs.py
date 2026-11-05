@@ -16,6 +16,7 @@ from pymongo.asynchronous.client_session import AsyncClientSession
 from core.errors import (
     ActiveRunConflictError,
     IdempotencyConflictError,
+    ResourceConflictError,
     RevisionConflictError,
     RunNotFoundError,
     StorageIntegrityError,
@@ -106,6 +107,25 @@ class RunStore:
                 if not row:
                     raise StorageIntegrityError("source event has no command")
                 return await self._duplicate(org, row["data"], request_hash, session)
+            event = await self._database.collection("inventory").find_one(
+                {"organisation_id": org, "kind": "ingestion-event", "id": run.trigger.event_id},
+                session=session,
+            )
+            if event and event["data"]["resource"].get("generation_id"):
+                credential = await self._database.collection("inventory").find_one(
+                    {"organisation_id": org, "kind": "credential", "id": run.credential_id},
+                    session=session,
+                )
+                resource = event["data"]["resource"]
+                if (
+                    not credential
+                    or credential["data"].get("archived_at")
+                    or credential["data"]["active_generation_id"] != resource["generation_id"]
+                    or credential["data"]["control_version"] != run.control_version
+                    or resource.get("credential_id") not in {None, run.credential_id}
+                    or event["data"]["source"] != run.trigger.source
+                ):
+                    raise ResourceConflictError("The incident no longer matches the current key")
             if await self._database.collection("run_locks").find_one(
                 {"organisation_id": org, "credential_id": run.credential_id},
                 session=session,

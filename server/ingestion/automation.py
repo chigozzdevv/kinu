@@ -37,9 +37,18 @@ class IncidentAutomation:
         self._controls = controls
         self._dispatcher = dispatcher
 
-    async def ingest(self, event: IngestionEvent) -> tuple[Incident, bool]:
+    async def ingest(
+        self,
+        event: IngestionEvent,
+        *,
+        actor_id: str = "kinu_ingestion",
+        allow_automatic: bool = True,
+        reason: str | None = None,
+    ) -> tuple[Incident, bool]:
         incident_id = _identifier("incident", event.id)
         incident, applied = await self._incidents.ingest(incident_id, event)
+        if not allow_automatic:
+            return incident, applied
         if incident.status is IncidentStatus.ROTATING:
             if self._dispatcher and incident.run_id:
                 await self._dispatcher.submit(event.organisation_id, incident.run_id)
@@ -56,6 +65,7 @@ class IncidentAutomation:
                     incident.id,
                     incident.revision,
                     credential.id,
+                    actor_id,
                 )
         if incident.status is not IncidentStatus.ACTION or incident.credential_id is None:
             return incident, applied
@@ -74,9 +84,9 @@ class IncidentAutomation:
                 event.organisation_id,
                 incident.id,
                 command_id,
-                "kinu_ingestion",
+                actor_id,
                 controls.id,
-                _rotation_reason(event.kind),
+                reason or _rotation_reason(event.kind),
                 urgency,
                 event.observed_at,
             )

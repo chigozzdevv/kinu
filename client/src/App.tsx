@@ -120,7 +120,7 @@ export function App({
       case "playbooks":
         return <PlaybooksPage />
       case "incidents":
-        return <IncidentsPage key={dashboardPath(route)} initialIncidentId={route.resourceId} onSelectIncident={(incidentId) => navigate({ section: "incidents", resourceId: incidentId || undefined })} onNavigateRotation={handleNavigateRotation} />
+        return <IncidentsPage key={dashboardPath(route)} initialIncidentId={route.resourceId} onSelectIncident={(incidentId) => navigate({ section: "incidents", resourceId: incidentId || undefined })} onNavigateRotation={handleNavigateRotation} onAddCredential={() => navigate({ section: "credentials", addCredential: true })} onConnectSource={() => navigate({ section: "connections" })} />
       case "rotations":
         return <RotationsPage key={dashboardPath(route)} activeRunId={route.resourceId} onSelectRotation={(runId) => navigate({ section: "rotations", resourceId: runId || undefined })} onNavigateApproval={() => navigate({ section: "approvals" })} onNavigateControls={handleNavigateControls} onNavigateConnection={handleNavigateConnection} />
       case "approvals":

@@ -12,6 +12,7 @@ from contracts import (
 from core.auth import Permission
 from core.errors import ResourceConflictError
 from fastapi import APIRouter, Query, Request, Response, status
+from mail.reports import IncidentKind, ReportOptions, ReportRequest, ReportStatus
 from pydantic import AwareDatetime, Field
 
 from api.deps import IdempotencyKey, Identity, command_id, required, services
@@ -48,6 +49,75 @@ class RotationResponse(Contract):
     incident: Incident
     run: RotationRun
     applied: bool
+
+
+@router.get("/report-options", response_model=ReportOptions)
+async def report_options(
+    organisation_id: Identifier,
+    identity: Identity,
+    request: Request,
+    credential_id: Identifier | None = None,
+    kind: IncidentKind = "exposure",
+) -> ReportOptions:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.INVENTORY_READ)
+    result = await required(api.private, "incident reporting").call(
+        "/incident-sources",
+        {
+            "operation": "report-options",
+            "organisation_id": organisation_id,
+            "credential_id": credential_id,
+            "kind": kind,
+        },
+    )
+    return ReportOptions.model_validate(result | {"recipient": identity.email})
+
+
+@router.post("/reports", response_model=ReportStatus)
+async def report(
+    organisation_id: Identifier,
+    body: ReportRequest,
+    identity: Identity,
+    key: IdempotencyKey,
+    request: Request,
+    response: Response,
+) -> ReportStatus:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.INCIDENT_WRITE)
+    await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
+    result = await required(api.private, "incident reporting").call(
+        "/incident-sources",
+        {
+            "operation": "report-create",
+            "organisation_id": organisation_id,
+            "subject": identity.subject,
+            "request_id": command_id(identity, organisation_id, key),
+            "report": body.model_dump(mode="json"),
+        },
+    )
+    response.status_code = status.HTTP_202_ACCEPTED if body.simulate else status.HTTP_201_CREATED
+    return ReportStatus.model_validate(result)
+
+
+@router.get("/reports/{report_id}", response_model=ReportStatus)
+async def report_status(
+    organisation_id: Identifier,
+    report_id: Identifier,
+    identity: Identity,
+    request: Request,
+) -> ReportStatus:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.INCIDENT_WRITE)
+    return ReportStatus.model_validate(
+        await required(api.private, "incident reporting").call(
+            "/incident-sources",
+            {
+                "operation": "report-status",
+                "organisation_id": organisation_id,
+                "request_id": report_id,
+            },
+        )
+    )
 
 
 @router.post("/ingest", response_model=IncidentResponse)
