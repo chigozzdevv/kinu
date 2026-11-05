@@ -276,6 +276,8 @@ async def test_ai_plan_is_recorded_and_cannot_bypass_required_stages(
             "app_count": 1,
             "approval_required": False,
             "observation_seconds": 60,
+            "provider": "other",
+            "preflight_checks": ["controls-checked"],
         }
     ]
     history = await HistoryStore(database).get(demo.organisation_id, run_id)

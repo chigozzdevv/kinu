@@ -110,6 +110,17 @@ class Stages:
             )
         if stage is Stage.PLAN:
             initial = await self.output(Stage.PREFLIGHT)
+            progress = await self.database.collection("run_progress").find_one(
+                {"_id": f"{run.organisation_id}:{run.id}:{run.fencing_token}"}
+            )
+            allowed_checks = {
+                "controls-checked",
+                "approver-checked",
+                "provider-checked",
+                "credential-checked",
+                "apps-checked",
+            }
+            completed_checks = progress.get("checks", []) if progress else []
             agent_input = {
                 "trigger": {
                     "credential-exposure-detected": "exposure",
@@ -130,6 +141,12 @@ class Stages:
                 "app_count": len(state.targets),
                 "approval_required": state.controls.definition.require_revoke_approval,
                 "observation_seconds": state.controls.definition.maximum_observation_seconds,
+                "provider": "resend" if state.provider.platform == "resend" else "other",
+                "preflight_checks": [
+                    item
+                    for item in completed_checks
+                    if isinstance(item, str) and item in allowed_checks
+                ],
             }
             proposal = (
                 await self.planner(run.organisation_id, agent_input) if self.planner else None
@@ -139,7 +156,7 @@ class Stages:
                 or proposal.get("strategy") != "parallel"
                 or proposal.get("stages") != list(PLAN_STAGES)
                 or not isinstance(proposal.get("rationale"), str)
-                or not 1 <= len(proposal["rationale"].strip()) <= 1024
+                or not 1 <= len(proposal["rationale"].strip()) <= 2048
             ):
                 raise ResourceConflictError("Builder AI proposed an invalid rotation plan")
             plan = RotationPlan(

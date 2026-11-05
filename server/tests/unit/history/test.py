@@ -67,6 +67,8 @@ def test_plan_history_exposes_only_recorded_bounded_input_and_actual_proposal() 
                 "app_count": 2,
                 "approval_required": True,
                 "observation_seconds": 60,
+                "provider": "resend",
+                "preflight_checks": ["provider-checked", "apps-checked"],
                 "secret": "do-not-show",
             },
             "agent": {
@@ -88,10 +90,12 @@ def test_plan_history_exposes_only_recorded_bounded_input_and_actual_proposal() 
     public = _activity(result)
     assert [(item.label, item.value) for item in public.agent_input] == [
         ("Trigger", "Exposure"),
+        ("Provider", "Resend"),
         ("Method", "Browser"),
         ("Connected apps", "2"),
         ("Revocation approval", "Required"),
         ("Observation", "1 minute"),
+        ("Passed preflight", "Provider, App mappings and verification"),
     ]
     assert public.plan_steps == (Stage.CREATE, Stage.VERIFY, Stage.REVOKE)
     assert public.agent_decisions[0].explanation == "Verify before revoking."

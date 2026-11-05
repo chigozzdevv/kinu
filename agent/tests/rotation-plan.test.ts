@@ -4,7 +4,7 @@ import { createBuilderEngine, type AgentEngine } from "@agent-native/core/agent/
 import { planInput, planStages, propose } from "../server/rotation-plan"
 import { internalResponse } from "../server/internal"
 
-const input = { trigger: "exposure" as const, method: "browser" as const, app_count: 1, approval_required: true, observation_seconds: 60 }
+const input = { trigger: "exposure" as const, method: "browser" as const, app_count: 1, approval_required: true, observation_seconds: 60, provider: "resend" as const, preflight_checks: ["provider-checked", "apps-checked"] as ("provider-checked" | "apps-checked")[] }
 function engine(value: unknown, complete = true): AgentEngine {
   return { ...createBuilderEngine(), async *stream(options) {
     assert.deepEqual(options.tools, [])
@@ -17,6 +17,7 @@ const good = { strategy: "parallel", stages: [...planStages], rationale: "Keep t
 
 test("rotation planning receives only bounded facts and preserves the model response", async () => {
   assert.equal(planInput.safeParse({ ...input, secret: "not allowed" }).success, false)
+  assert.equal(planInput.safeParse({ ...input, preflight_checks: ["not-actually-checked"] }).success, false)
   assert.deepEqual(await propose(input, engine(good), "test"), good)
   await assert.rejects(propose(input, engine(good, false), "test"), /incomplete/)
 })

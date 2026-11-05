@@ -87,13 +87,33 @@ def _plan_input(stage: Stage, output: dict[str, Any]) -> tuple[StageDetail, ...]
         or type(observation) is not int
     ):
         return ()
-    return (
+    details = [
         StageDetail(label="Trigger", value=labels[trigger]),
         StageDetail(label="Method", value="Browser" if method == "browser" else "API"),
         StageDetail(label="Connected apps", value=str(count)),
         StageDetail(label="Revocation approval", value="Required" if approval else "Not required"),
         StageDetail(label="Observation", value=_duration(observation)),
-    )
+    ]
+    if value.get("provider") in ("resend", "other"):
+        details.insert(
+            1,
+            StageDetail(
+                label="Provider", value="Resend" if value["provider"] == "resend" else "Other"
+            ),
+        )
+    checks = value.get("preflight_checks")
+    known = {
+        "controls-checked": "Key controls",
+        "approver-checked": "Approver",
+        "provider-checked": "Provider",
+        "credential-checked": "Current key",
+        "apps-checked": "App mappings and verification",
+    }
+    if isinstance(checks, list):
+        names = [known[item] for item in checks if isinstance(item, str) and item in known]
+        if names:
+            details.append(StageDetail(label="Passed preflight", value=", ".join(names)))
+    return tuple(details)
 
 
 def _plan_steps(stage: Stage, output: dict[str, Any]) -> tuple[Stage, ...]:
