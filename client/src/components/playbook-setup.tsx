@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query"
 import { Detail, DetailList, Section } from "./detail"
 import { Provider } from "./provider"
 import { Button } from "./ui/button"
-import { Field, FormGrid, SetupPage, formControl } from "./workspace"
+import { Field, FormGrid, SelectControl, SetupPage, formControl } from "./workspace"
 import { api, type PlaybookDetail, type PreparedPlaybook } from "../lib/api"
 import { useOrganisation } from "../lib/useorganisation"
 import type { ApiPlaybookDetail, PreparedApiPlaybook } from "../lib/api/api-playbooks"
@@ -21,27 +21,30 @@ function slug(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
 }
 
-export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = "", execution = "browser", showIntroduction = true }: { onClose: () => void; onCreated: (playbook: Playbook) => Promise<void>; existing?: PlaybookDetail | ApiPlaybookDetail; initialPlatform?: string; execution?: "browser" | "api"; showIntroduction?: boolean }) {
+export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = "", execution: fixedExecution, showIntroduction = true }: { onClose: () => void; onCreated: (playbook: Playbook, execution: "browser" | "api") => Promise<void>; existing?: PlaybookDetail | ApiPlaybookDetail; initialPlatform?: string; execution?: "browser" | "api"; showIntroduction?: boolean }) {
   const { active } = useOrganisation()
   const canPublish = active.role === "administrator"
   const [step, setStep] = useState(0)
+  const [execution, setExecution] = useState<"browser" | "api" | null>(fixedExecution ?? null)
+  const selectedExecution = execution ?? "browser"
+  const showExecutionSelect = !fixedExecution && !existing
   const [sourceMode, setSourceMode] = useState<"instructions" | "links">("instructions")
   const [source, setSource] = useState("")
   const [sourceTouched, setSourceTouched] = useState(false)
   const [links, setLinks] = useState("")
   const urls = [...new Set(links.split(/\r?\n/).map((url) => url.trim()).filter(Boolean))]
   const [prepared, setPrepared] = useState<PreparedPlaybook | PreparedApiPlaybook | null>(null)
-  const prepare = useMutation({ mutationFn: async (): Promise<PreparedPlaybook | PreparedApiPlaybook> => (execution === "api" ? api.prepareApiPlaybook : api.preparePlaybook)({
+  const prepare = useMutation({ mutationFn: async (): Promise<PreparedPlaybook | PreparedApiPlaybook> => (selectedExecution === "api" ? api.prepareApiPlaybook : api.preparePlaybook)({
     playbook_id: existing?.playbook.id ?? identifier("playbook"),
     version_id: identifier("playbook_version"),
     sources: sourceMode === "instructions"
       ? [{ id: identifier("source_text"), kind: "text" as const, text: source.trim() }]
       : urls.map((url) => ({ id: identifier("source_link"), kind: "link" as const, resource: url })),
     objective: existing
-      ? `Build the next ${execution} credential-rotation procedure. Use the exact name ${JSON.stringify(existing.playbook.name)} and exact platform ${JSON.stringify(existing.playbook.platform)}.`
+      ? `Build the next ${selectedExecution} credential-rotation procedure. Use the exact name ${JSON.stringify(existing.playbook.name)} and exact platform ${JSON.stringify(existing.playbook.platform)}.`
       : initialPlatform
-        ? `Build a ${execution} credential-rotation procedure for the exact platform ${JSON.stringify(slug(initialPlatform))}.`
-        : `Build a ${execution} credential-rotation procedure from the supplied source.`,
+        ? `Build a ${selectedExecution} credential-rotation procedure for the exact platform ${JSON.stringify(slug(initialPlatform))}.`
+        : `Build a ${selectedExecution} credential-rotation procedure from the supplied source.`,
   }), onSuccess: (result) => { setPrepared(result); setStep(1) } })
   const save = useMutation({ mutationFn: async () => {
     if (!prepared) throw new Error("Generate the playbook first")
@@ -57,15 +60,16 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
     }
     await api.publishPlaybook(book.id, prepared.version_id)
     return (await api.getPlaybook(book.id)).playbook
-  }, onSuccess: onCreated })
-  const sourceError = execution === "api" && sourceMode === "instructions" ? apiSourceError(source) : undefined
+  }, onSuccess: (playbook) => onCreated(playbook, selectedExecution) })
+  const sourceError = selectedExecution === "api" && sourceMode === "instructions" ? apiSourceError(source) : undefined
   const visibleSourceError = sourceTouched ? sourceError : undefined
-  const sourceReady = sourceMode === "instructions" ? Boolean(source.trim()) && !sourceError : urls.length > 0 && urls.length <= 5
+  const sourceReady = Boolean(execution) && (sourceMode === "instructions" ? Boolean(source.trim()) && !sourceError : urls.length > 0 && urls.length <= 5)
 
-  return <SetupPage eyebrow="Inventory / Playbooks" title={existing ? "New playbook version" : execution === "api" ? "Add API playbook" : "Add browser playbook"} steps={steps} current={step} onBack={() => { setStep(0); save.reset() }} onCancel={onClose} error={(prepare.error ?? save.error)?.message} primary={step === 0 ? <Button onClick={() => { save.reset(); prepare.mutate() }} disabled={!sourceReady || prepare.isPending}>{prepare.isPending ? "Generating…" : "Generate"}</Button> : <Button onClick={() => save.mutate()} disabled={!prepared || save.isPending}>{save.isPending ? "Saving…" : canPublish ? "Publish playbook" : "Save draft"}</Button>}>
+  return <SetupPage eyebrow="Inventory / Playbooks" title={existing ? "New playbook version" : !execution ? "Add playbook" : execution === "api" ? "Add API playbook" : "Add Computer Use playbook"} steps={steps} current={step} onBack={() => { setStep(0); save.reset() }} onCancel={onClose} error={(prepare.error ?? save.error)?.message} primary={step === 0 ? <Button onClick={() => { save.reset(); prepare.mutate() }} disabled={!sourceReady || prepare.isPending}>{prepare.isPending ? "Generating…" : "Generate"}</Button> : <Button onClick={() => save.mutate()} disabled={!prepared || save.isPending}>{save.isPending ? "Saving…" : canPublish ? "Publish playbook" : "Save draft"}</Button>}>
     {step === 0 && <div className="space-y-5">
-      {showIntroduction && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use {execution === "api" ? "the API" : "the provider’s website"}. Add a docs link or instructions.</p>}
+      {showIntroduction && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use {execution === "api" ? "the API" : execution === "browser" ? "the provider’s website" : "your chosen access method"}. Add a docs link or instructions.</p>}
       <FormGrid>
+        {showExecutionSelect && <Field label="Type" wide><SelectControl value={execution ?? ""} disabled={prepare.isPending} onChange={(event) => { const value = event.target.value as "browser" | "api" | ""; setExecution(value || null); setPrepared(null); setSourceTouched(false); prepare.reset(); save.reset() }}><option value="">Select type</option><option value="api">API</option><option value="browser">Computer use</option></SelectControl></Field>}
         <div role="group" aria-label="Source type" className="flex gap-2 sm:col-span-2">{(["instructions", "links"] as const).map((mode) => <Button key={mode} size="sm" variant={sourceMode === mode ? "primary" : "secondary"} aria-pressed={sourceMode === mode} disabled={prepare.isPending} onClick={() => { setSourceMode(mode); setPrepared(null); prepare.reset(); save.reset() }}>{mode === "instructions" ? "Instructions" : "Links"}</Button>)}</div>
         {sourceMode === "instructions"
           ? <div className="sm:col-span-2"><Field label="Instructions"><textarea className={`${formControl} h-40 py-3`} value={source} disabled={prepare.isPending} maxLength={100000} onBlur={() => setSourceTouched(true)} aria-invalid={Boolean(visibleSourceError)} aria-describedby={visibleSourceError ? "playbook-source-error" : undefined} onChange={(event) => { setSource(event.target.value); prepare.reset() }} placeholder={execution === "api" ? "Describe the list, create, verify and revoke API operations." : "Describe how to create and revoke the credential."} /></Field>{visibleSourceError && <p id="playbook-source-error" role="alert" className="mt-2 text-[10px] text-[var(--red)]">{visibleSourceError}</p>}</div>

@@ -1,6 +1,6 @@
-import { useMemo, useState, type MouseEvent } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { BookOpenText, Braces, ChevronDown, ChevronRight, MonitorCog, Plus } from "lucide-react"
+import { BookOpenText, ChevronRight, Plus } from "lucide-react"
 import { Detail, DetailCard, DetailList, DetailPage, DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
 import { ManageResourceModal } from "../components/manage"
@@ -33,7 +33,7 @@ export function PlaybooksPage() {
   const [type, setType] = useState("all")
   const [selected, setSelected] = useState<PlaybookRow | null>(null)
   const [tab, setTab] = useState<"overview" | "procedure" | "connections">("overview")
-  const [creating, setCreating] = useState<PlaybookType | null>(null)
+  const [creating, setCreating] = useState(false)
   const [versioning, setVersioning] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState("")
@@ -93,15 +93,13 @@ export function PlaybooksPage() {
   if (error) return <div className="page"><Failure error={error} /></div>
 
   const attached = (playbook: Playbook) => connections.data!.filter((connection) => connection.playbook_id === playbook.id && connection.playbook_version_id === playbook.active_version_id)
-  const closeMenu = (event: MouseEvent<HTMLButtonElement>) => event.currentTarget.closest("details")?.removeAttribute("open")
-
-  if (creating) return <PlaybookSetup execution={creating === "api" ? "api" : "browser"} onClose={() => setCreating(null)} onCreated={async (playbook) => {
-    const createdType = creating
+  if (creating) return <PlaybookSetup onClose={() => setCreating(false)} onCreated={async (playbook, execution) => {
+    const createdType: PlaybookType = execution === "api" ? "api" : "computer-use"
     await queryClient.invalidateQueries({ queryKey: [createdType === "api" ? "api-playbooks" : "playbooks"] })
     setSelected({ type: createdType, playbook })
-    setCreating(null)
+    setCreating(false)
   }} />
-  if (versioning && detail.data) return <PlaybookSetup existing={detail.data} onClose={() => setVersioning(false)} onCreated={async (playbook) => {
+  if (versioning && detail.data) return <PlaybookSetup execution="browser" existing={detail.data} onClose={() => setVersioning(false)} onCreated={async (playbook) => {
     await Promise.all([queryClient.invalidateQueries({ queryKey: ["playbooks"] }), queryClient.invalidateQueries({ queryKey: ["playbooks", playbook.id] })])
     setSelected({ type: "computer-use", playbook })
     setTab("procedure")
@@ -123,13 +121,7 @@ export function PlaybooksPage() {
   </DetailPage>
 
   return <div className="page">
-    <PageHeader eyebrow="Inventory" title="Playbooks" actions={<details className="relative">
-      <summary className="focus-ring inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg bg-[var(--ink)] px-3 text-[11px] font-semibold text-white [&::-webkit-details-marker]:hidden"><Plus className="size-3.5" /> Add playbook <ChevronDown className="size-3.5" /></summary>
-      <div role="menu" className="absolute right-0 z-20 mt-2 w-48 rounded-xl border border-[var(--border)] bg-white p-1 shadow-lg">
-        <button type="button" role="menuitem" className="focus-ring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] hover:bg-[var(--surface-soft)]" onClick={(event) => { closeMenu(event); setCreating("computer-use") }}><MonitorCog className="size-3.5" />Computer use</button>
-        <button type="button" role="menuitem" className="focus-ring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] hover:bg-[var(--surface-soft)]" onClick={(event) => { closeMenu(event); setCreating("api") }}><Braces className="size-3.5" />API</button>
-      </div>
-    </details>} />
+    <PageHeader eyebrow="Inventory" title="Playbooks" actions={<Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add playbook</Button>} />
     <Toolbar value={search} onChange={setSearch} placeholder="Search playbooks or platforms" onClear={() => { setSearch(""); setPlatform("all"); setStatus("all"); setType("all") }} filters={[{ label: "Type", value: type, defaultValue: "all", onChange: (event) => setType(event.target.value), children: <><option value="all">All types</option><option value="computer-use">Computer use</option><option value="api">API</option></> }, { label: "Platform", value: platform, defaultValue: "all", onChange: (event) => setPlatform(event.target.value), children: <><option value="all">All platforms</option>{[...new Set([...browserBooks.data!, ...apiBooks.data!].map((item) => item.platform))].map((item) => <option key={item} value={item}>{providerName(item)}</option>)}</> }, { label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></> }]} />
     <Table responsive><TableHeader><TableRow><TableHead>Playbook</TableHead><TableHead>Type</TableHead><TableHead>Platform</TableHead><TableHead>Connections</TableHead><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody columns={7} emptyMessage={search.trim() || platform !== "all" || status !== "all" || type !== "all" ? "No matching playbooks." : "No playbooks yet."}>{rows.map(({ type: rowType, playbook }) => {
       const open = () => { setSelected({ type: rowType, playbook }); setTab("overview") }

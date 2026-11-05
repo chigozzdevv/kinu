@@ -143,7 +143,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   if (creating) return <>{playbookNotice && <div className="page pb-0">{playbookNotice}</div>}<ConnectionSetup initialIntegration={setupIntegration} onClose={() => { setCreating(false); setSetupIntegration(null) }} playbooks={playbooks.data ?? []} connections={connections.data!} onCreated={async (connection) => { setCreating(false); setSelected(connection); setTab("overview"); onSelectConnection(connection.id) }} onChanged={async () => { await queryClient.invalidateQueries({ queryKey: ["connections"] }) }} /></>
 
-  if (creatingPlaybook && currentSelected) return <PlaybookSetup showIntroduction={false} initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
+  if (creatingPlaybook && currentSelected) return <PlaybookSetup execution="browser" showIntroduction={false} initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     setSelectedPlaybookVersion(playbook.active_version_id ?? "")
     setCreatingPlaybook(false)

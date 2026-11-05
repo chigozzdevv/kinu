@@ -60,7 +60,7 @@ export function ComputerUseSetup({ onClose, onBack, onChanged, onCreated, playbo
     else onClose()
   }
 
-  if (creatingPlaybook) return <PlaybookSetup showIntroduction={false} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => { await queryClient.invalidateQueries({ queryKey: ["playbooks"] }); setPlaybookVersion(playbook.active_version_id ?? ""); setCreatingPlaybook(false) }} />
+  if (creatingPlaybook) return <PlaybookSetup execution="browser" showIntroduction={false} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => { await queryClient.invalidateQueries({ queryKey: ["playbooks"] }); setPlaybookVersion(playbook.active_version_id ?? ""); setCreatingPlaybook(false) }} />
   if (created) return <>
     <SuccessPage eyebrow="Inventory / Connections" title="Finish provider sign-in" onBack={finish} actions={<><Button variant="secondary" onClick={finish}>Finish later</Button><Button onClick={openBrowser} disabled={open.isPending}>{open.isPending ? "Provisioning…" : "Connect"}</Button></>}><DetailList><Detail label="Playbook">{chosenPlaybook?.name}</Detail><Detail label="Status">Authentication required</Detail></DetailList>{open.error && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{open.error.message}</div>}</SuccessPage>
     {browserSetup && <BrowserSetupModal connection={created} setup={browserSetup} onClose={() => {
