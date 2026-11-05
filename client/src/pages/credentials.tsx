@@ -14,7 +14,7 @@ import { Button } from "../components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import type { ConsumerService, ManagedCredential } from "../types"
 import { api } from "../lib/api"
-import { Field, formControl } from "../components/workspace"
+import { Field, formControl, SelectControl } from "../components/workspace"
 import { connectionStatus, formatDate, providerName, titleCase } from "../lib/format"
 import { isHostingPlatform, validHealthUrl } from "../lib/hosting"
 import { ConnectionSetup } from "../connections/setup"
@@ -256,7 +256,7 @@ export function CredentialsPage({ onAdd, initialCredentialId, initialControlVers
       >
         <div className="space-y-6">
           <Field label="Credential name"><input className={formControl} value={editName} onChange={(event) => setEditName(event.target.value)} /></Field>
-          {connections.data!.some((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready") && <Field label="Provider connection"><select className={formControl} value={editConnection} onChange={(event) => setEditConnection(event.target.value)}><option value={currentSelected.connection_id}>{selectedConnection?.display_name}</option>{connections.data!.filter((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready").map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></Field>}
+          {connections.data!.some((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready") && <Field label="Provider connection"><SelectControl value={editConnection} onChange={(event) => setEditConnection(event.target.value)}><option value={currentSelected.connection_id}>{selectedConnection?.display_name}</option>{connections.data!.filter((item) => item.verification_connection_id === currentSelected.connection_id && item.status === "ready").map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</SelectControl></Field>}
           <ControlsFields value={editControls} connections={connections.data!} onAddConnection={() => setAddingControlConnection(true)} onChange={setEditControls} />
         </div>
       </ManageResourceModal>

@@ -1,7 +1,9 @@
-import { ChevronDown, Search, X } from "lucide-react"
+import { Search, X } from "lucide-react"
 import type { SelectHTMLAttributes } from "react"
+import { SelectControl } from "./workspace"
+import { cn } from "../lib/utils"
 
-type ToolbarFilter = SelectHTMLAttributes<HTMLSelectElement> & { label: string; defaultValue?: string }
+type ToolbarFilter = Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { label: string; defaultValue?: string }
 
 export function Toolbar({ value, onChange, placeholder, filters, onClear }: { value: string; onChange: (value: string) => void; placeholder: string; filters?: ToolbarFilter[]; onClear?: () => void }) {
   const active = Boolean(value.trim()) || Boolean(filters?.some((filter) => String(filter.value ?? "") !== String(filter.defaultValue ?? "all")))
@@ -19,17 +21,11 @@ export function Toolbar({ value, onChange, placeholder, filters, onClear }: { va
           />
         </label>
 
-        {filters?.map(({ label, children, defaultValue: _defaultValue, ...props }) => (
-          <label key={label} className="relative block min-w-0 flex-1 basis-32 sm:flex-none">
-            <span className="sr-only">{label}</span>
-            <select
-              aria-label={label}
-              className="focus-ring h-10 w-full min-w-0 appearance-none rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 pr-8 text-[11px] font-medium text-[var(--ink)] sm:min-w-36"
-              {...props}
-            >
+        {filters?.map(({ label, children, defaultValue: _defaultValue, className, ...props }) => (
+          <label key={label} className="block min-w-0 flex-1 basis-32 sm:flex-none">
+            <SelectControl aria-label={label} variant="filter" className={cn("sm:min-w-36", className)} {...props}>
               {children}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+            </SelectControl>
           </label>
         ))}
         {active && onClear && <button className="focus-ring inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-[10px] font-semibold text-[var(--ink-soft)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--ink)]" onClick={onClear}><X className="size-3.5" /> Clear</button>}

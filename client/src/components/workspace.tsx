@@ -117,6 +117,7 @@ export function Field({ label, hint, children, wide = false }: { label: string; 
 
 type SelectSize = "sm" | "md"
 type SelectWidth = "compact" | "full"
+type SelectVariant = "field" | "filter"
 
 export function ResourceSelect({ label, value, onChange, addLabel, onAdd, children, className, wide = false, hideLabel = false, size = "md", width = "full" }: { label: string; value: string; onChange: (value: string) => void; addLabel: string; onAdd: () => void; children: ReactNode; className?: string; wide?: boolean; hideLabel?: boolean; size?: SelectSize; width?: SelectWidth }) {
   return <label className={wide ? "block sm:col-span-2" : "block"}>
@@ -134,10 +135,13 @@ export function ResourceSelect({ label, value, onChange, addLabel, onAdd, childr
   </label>
 }
 
-export function SelectControl({ children, className, size = "md", width = "full", ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: SelectSize; width?: SelectWidth }) {
+export function SelectControl({ children, className, size = "md", width = "full", variant = "field", ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> & { size?: SelectSize; width?: SelectWidth; variant?: SelectVariant }) {
+  const controlClass = variant === "filter"
+    ? "focus-ring h-10 w-full min-w-0 appearance-none rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 pr-8 text-[11px] font-medium text-[var(--ink)]"
+    : cn(size === "sm" ? compactControl : formControl, "appearance-none pr-10")
   return <div className={cn("relative", width === "compact" && "w-52 max-w-full")}>
-    <select className={cn(size === "sm" ? compactControl : formControl, "appearance-none pr-10", className)} {...props}>{children}</select>
-    <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+    <select className={cn(controlClass, className)} {...props}>{children}</select>
+    <ChevronDown className={`pointer-events-none absolute top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)] ${variant === "filter" ? "right-3" : "right-3.5"}`} />
   </div>
 }
 
