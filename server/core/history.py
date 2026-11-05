@@ -149,12 +149,11 @@ def _stage_presentation(
         )
     if stage is Stage.PREFLIGHT:
         connections = _string_items(output.get("connections"))
-        details = [
-            StageDetail(
-                label="Connections", value=f"{len(connections)} ready" if connections else "Ready"
-            ),
-            StageDetail(label="Approval", value="Available"),
-        ]
+        details = []
+        if connections:
+            details.append(StageDetail(label="Connections", value=f"{len(connections)} ready"))
+        if "approvers-known" in checks:
+            details.append(StageDetail(label="Approver", value="Available"))
         if _text(output.get("browser_playbook_version")):
             details.append(StageDetail(label="Playbook", value="Pinned"))
         return ("Ready to rotate", tuple(details))
@@ -194,9 +193,8 @@ def _stage_presentation(
         observation = values.get("observation_seconds")
         if isinstance(observation, int) and observation > 0:
             details.append(StageDetail(label="Observation", value=_duration(observation)))
-        details.append(
-            StageDetail(label="Recovery", value="Previous deployment retained for rollback")
-        )
+        if values.get("recovery_ids"):
+            details.append(StageDetail(label="Recovery", value="Rollback prepared"))
         summary = f"{rollout_summary} rollout" if rollout_summary else "Rotation plan ready"
         return (summary, tuple(details))
     if stage is Stage.CREATE:
@@ -226,17 +224,14 @@ def _stage_presentation(
             details.append(StageDetail(label="Secret store", value=_base_name(secret_store)))
         secret_reference = _text(output.get("secret_reference"))
         version = _resource_name(secret_reference) if secret_reference else None
-        details.append(
-            StageDetail(label="Version", value=f"{version} enabled" if version else "Enabled")
-        )
+        if version:
+            details.append(StageDetail(label="Version", value=f"{version} enabled"))
         consumer_access = output.get("consumer_access")
         access_count = len(consumer_access) if isinstance(consumer_access, list) else 0
-        details.append(
-            StageDetail(
-                label="Consumer access",
-                value=f"Confirmed for {access_count}" if access_count else "Confirmed",
+        if access_count:
+            details.append(
+                StageDetail(label="Consumer access", value=f"Confirmed for {access_count}")
             )
-        )
         return ("Secret verified", tuple(details))
     if stage is Stage.DEPLOY:
         deployments = run.deployments if run is not None else ()
@@ -260,11 +255,14 @@ def _stage_presentation(
         )
         return (summary, tuple(details))
     if stage is Stage.VERIFY:
-        details = [
-            StageDetail(label="Provider", value="Replacement valid"),
-            StageDetail(label="Secret store", value="Version enabled"),
-            StageDetail(label="Runtime", value="Candidate running"),
-        ]
+        details = []
+        for check, label, value in (
+            ("provider-valid", "Provider", "Replacement valid"),
+            ("store-valid", "Secret store", "Version enabled"),
+            ("deployment-valid", "Runtime", "Candidate running"),
+        ):
+            if check in checks:
+                details.append(StageDetail(label=label, value=value))
         if "telemetry-healthy" in checks:
             details.append(StageDetail(label="Telemetry", value="Healthy"))
         return ("Deployment verified", tuple(details))
@@ -312,9 +310,11 @@ def _stage_presentation(
                 if output.get("method") == "browser" or (run and run.browser_playbook_version)
                 else "Provider API",
             ),
-            StageDetail(label="Old credential", value="Rejected"),
-            StageDetail(label="Replacement", value="Valid"),
         ]
+        if "old-rejected" in checks:
+            details.append(StageDetail(label="Old credential", value="Rejected"))
+        if "replacement-valid" in checks:
+            details.append(StageDetail(label="Replacement", value="Valid"))
         if "old-secret-retired" in checks:
             details.append(StageDetail(label="Previous secret version", value="Retired"))
         return ("Previous credential revoked", tuple(details))

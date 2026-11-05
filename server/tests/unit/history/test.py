@@ -165,6 +165,24 @@ def test_preflight_history_turns_empty_agent_findings_into_a_clear_action() -> N
         public.agent_decisions[0].explanation
         == "No missing or stale mappings were found across 1 declared consumer."
     )
+    assert all(item.label != "Approver" for item in public.details)
+
+
+def test_history_does_not_invent_missing_verification_evidence() -> None:
+    result = StageExecutionResult(
+        id="stage_verify",
+        organisation_id="org_one",
+        run_id="run_one",
+        stage=Stage.VERIFY,
+        status=StageExecutionStatus.SUCCEEDED,
+        checks=frozenset({"provider-valid"}),
+        evidence_ids=("evidence_one",),
+        started_at=NOW,
+        completed_at=NOW,
+    )
+    assert [(item.label, item.value) for item in _activity(result).details] == [
+        ("Provider", "Replacement valid"),
+    ]
 
 
 def test_store_history_describes_verification_instead_of_repeating_capture() -> None:
