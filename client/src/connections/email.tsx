@@ -44,7 +44,13 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
           }}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
         </div>
       </div>
-      <p className="text-[11px] leading-5 text-[var(--ink-soft)]">Add this address in your mailbox’s forwarding settings, then enable forwarding.</p>
+      <ol className="list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[var(--ink-soft)] [&_strong]:font-medium [&_strong]:text-[var(--ink)]">
+        <li>Open Gmail → <strong>Settings → See all settings → Forwarding and POP/IMAP</strong>.</li>
+        <li>Add the address above, then return here and click <strong>Confirm forwarding</strong>.</li>
+        <li>In Gmail’s search bar, click the <strong>sliders icon</strong>. Enter your alert sender in <strong>From</strong>, then click <strong>Create filter</strong>.</li>
+        <li>Tick <strong>Forward it to</strong>, select your Kinu address, then click <strong>Create filter</strong>.</li>
+        <li>Click <strong>Done</strong> here.</li>
+      </ol>
       <div className="flex flex-col items-start gap-4">
         {box.confirmation_url && <a className="focus-ring inline-flex rounded-lg bg-[var(--ink)] px-4 py-2 text-[11px] font-semibold text-white" href={box.confirmation_url} target="_blank" rel="noreferrer">Confirm forwarding ↗</a>}
         {(!box.confirmation_url || box.receiving) && <p className="inline-flex items-center gap-2 text-[11px] leading-5 text-[var(--ink-soft)]" role="status">
