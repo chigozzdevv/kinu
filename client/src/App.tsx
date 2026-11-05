@@ -113,7 +113,7 @@ export function App({
   const renderContent = () => {
     switch (currentNav) {
       case "overview":
-        return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} />
+        return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} onNavigateAi={() => navigate({ section: "settings", tab: "ai" })} />
       case "credentials":
         if (route.addCredential) return <CredentialOnboarding onFinish={(id) => navigate({ section: "credentials", resourceId: id || undefined })} />
         return <CredentialsPage key={dashboardPath(route)} onAdd={() => navigate({ section: "credentials", addCredential: true })} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
@@ -130,9 +130,9 @@ export function App({
       case "audits":
         return <AuditsPage />
       case "settings":
-        return <SettingsPage />
+        return <SettingsPage key={dashboardPath(route)} />
       default:
-        return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} />
+        return <OverviewPage onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} onNavigateIncident={handleNavigateIncident} onNavigateApproval={handleNavigateApproval} onNavigateAi={() => navigate({ section: "settings", tab: "ai" })} />
     }
   }
 

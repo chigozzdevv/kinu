@@ -1,6 +1,8 @@
 import { useQueries } from "@tanstack/react-query"
 import { ArrowUpRight, Check, ChevronRight, ChevronUp } from "lucide-react"
 import { useState } from "react"
+import { Icon } from "@iconify/react"
+import builderIcon from "@iconify-icons/logos/builder-io-icon.js"
 import { PageHeader } from "../components/header"
 import { Provider } from "../components/provider"
 import { Failure, Loading, Notice } from "../components/state"
@@ -9,6 +11,8 @@ import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 import { incidentReason } from "../lib/incident"
 import { currentRotations, isActionableApproval } from "../lib/rotation-state"
+import { nativeRequest, type BuilderStatus } from "../lib/native"
+import { useOrganisation } from "../lib/useorganisation"
 import type { NavItem } from "../lib/navigation"
 import type { RotationRun } from "../types"
 
@@ -33,30 +37,32 @@ type OverviewProps = {
   onNavigateRotation: (runId: string) => void
   onNavigateIncident: (incidentId: string) => void
   onNavigateApproval: (approvalId: string) => void
+  onNavigateAi: () => void
 }
 
 type QuickStartStep = {
   label: string
   done: boolean
   target: NavItem
+  builder?: boolean
 }
 
-function QuickStart({ steps, onNavigate }: { steps: QuickStartStep[]; onNavigate: (nav: NavItem) => void }) {
+function QuickStart({ steps, onNavigate, onNavigateAi }: { steps: QuickStartStep[]; onNavigate: (nav: NavItem) => void; onNavigateAi: () => void }) {
   return <div className="flex flex-col items-center">
     <h2 className="text-[15px] font-semibold tracking-[-0.025em] text-[var(--ink)]">Quick start</h2>
     <ol className="mt-6 flex w-max max-w-full flex-col items-start gap-4">
       {steps.map((step, index) => <li key={step.label}>
         {step.done
           ? <div className="inline-grid grid-cols-[20px_auto_14px] items-center gap-x-3 text-[11px] text-[var(--ink-muted)]">
-            <span className="text-center font-semibold tabular-nums">{index + 1}</span>
+            {step.builder ? <Icon icon={builderIcon} className="mx-auto size-4" aria-hidden="true" /> : <span className="text-center font-semibold tabular-nums">{steps.slice(0, index + 1).filter((item) => !item.builder).length}</span>}
             <span className="line-through">{step.label}</span>
             <Check className="size-3.5" aria-hidden="true" />
           </div>
           : <button
             className="focus-ring content-hover inline-grid grid-cols-[20px_auto_14px] items-center gap-x-3 rounded-lg text-left text-[11px] font-medium text-[var(--ink)]"
-            onClick={() => onNavigate(step.target)}
+            onClick={() => step.builder ? onNavigateAi() : onNavigate(step.target)}
           >
-            <span className="text-center font-semibold tabular-nums text-[var(--ink-muted)]">{index + 1}</span>
+            {step.builder ? <Icon icon={builderIcon} className="mx-auto size-4" aria-hidden="true" /> : <span className="text-center font-semibold tabular-nums text-[var(--ink-muted)]">{steps.slice(0, index + 1).filter((item) => !item.builder).length}</span>}
             <span>{step.label}</span>
             <ChevronRight className="content-chevron size-3.5 text-[var(--ink-muted)]" aria-hidden="true" />
           </button>}
@@ -65,10 +71,11 @@ function QuickStart({ steps, onNavigate }: { steps: QuickStartStep[]; onNavigate
   </div>
 }
 
-export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateIncident, onNavigateApproval }: OverviewProps) {
+export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateIncident, onNavigateApproval, onNavigateAi }: OverviewProps) {
+  const org = useOrganisation().active.organisation.id
   const [showAllAttention, setShowAllAttention] = useState(false)
   const [showAllActivities, setShowAllActivities] = useState(false)
-  const [runs, currentRuns, incidents, approvals, graph, connections, playbooks] = useQueries({
+  const [runs, currentRuns, incidents, approvals, graph, connections, playbooks, builder] = useQueries({
     queries: [
       { queryKey: ["rotations"], queryFn: () => api.getRotations(), refetchInterval: 5_000 },
       { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
@@ -77,6 +84,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
       { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
       { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
       { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks() },
+      { queryKey: ["builder", org], queryFn: () => nativeRequest<BuilderStatus>(org, "builder/status"), retry: false },
     ],
   })
 
@@ -151,6 +159,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
 
   const browserConnectionExists = activeConnections.some((connection) => connection.interface === "browser")
   const quickStart = [
+    ...(!builder.isLoading ? [{ label: builder.error ? "Builder AI settings" : "Connect Builder AI", done: builder.data?.connected === true, target: "settings" as NavItem, builder: true }] : []),
     { label: "Add a connection", done: activeConnections.length > 0, target: "connections" as NavItem },
     { label: "Add a credential", done: credentials.length > 0, target: "credentials" as NavItem },
     ...(browserConnectionExists ? [{ label: "Add a Computer Use playbook", done: activePlaybooks.length > 0, target: "playbooks" as NavItem }] : []),
@@ -161,7 +170,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
   const emptyOverview = credentials.length === 0 && activeConnections.length === 0 && runs.data!.length === 0 && actionRows.length === 0
 
   if (emptyOverview) return <div className="page flex min-h-[calc(100vh-56px)] items-center justify-center py-12 lg:min-h-[calc(100vh-48px)]">
-    <QuickStart steps={quickStart} onNavigate={onNavigate} />
+    <QuickStart steps={quickStart} onNavigate={onNavigate} onNavigateAi={onNavigateAi} />
   </div>
 
   return <div className="page">
@@ -223,7 +232,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
               {showAllActivities ? "Show less" : "View all"}
               {showAllActivities ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ArrowUpRight className="size-3.5" aria-hidden="true" />}
             </button>}
-          </div> : <div className="grid min-h-[318px] place-items-center px-8 py-10"><QuickStart steps={quickStart} onNavigate={onNavigate} /></div>}
+          </div> : <div className="grid min-h-[318px] place-items-center px-8 py-10"><QuickStart steps={quickStart} onNavigate={onNavigate} onNavigateAi={onNavigateAi} /></div>}
         </div>
       </section>
     </div>
