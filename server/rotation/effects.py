@@ -18,6 +18,7 @@ from core.storage.database import Database
 from core.storage.runs import RunStore
 
 from rotation.journal import Journal
+from rotation.ports import Progress
 from rotation.stages import stable
 from rotation.state import Snapshot
 
@@ -45,7 +46,14 @@ class Effects:
         return matches[0]
 
     async def initial(self, state: Snapshot) -> dict[str, Any]:
+        async def noop(_: str) -> None:
+            pass
+
+        return await self.initial_with_progress(state, noop)
+
+    async def initial_with_progress(self, state: Snapshot, progress: Progress) -> dict[str, Any]:
         metadata = await self.provider.metadata(state.provider)
+        await progress("provider-checked")
         current = await self.metadata(state, state.current.provider_id or "")
         _active(current, state)
         alias = await self.runtime.current(
@@ -60,6 +68,8 @@ class Effects:
             state, state.current.provider_id or "", state.credential.secret_reference
         )
         await self.current_secret(state, state.credential.secret_reference)
+        await progress("credential-checked")
+        await progress("apps-checked")
         return {
             "deployments": {state.single.binding.id: alias},
             "provider_ids": [item["provider_id"] for item in metadata],

@@ -5,6 +5,7 @@ import { assessment } from "./assessment"
 import { inputSchema } from "./decision"
 import { navigationResponse, navigationSchema } from "./navigation"
 import { playbookResponse, playbookSchema } from "./playbooks"
+import { planInput, rotationPlanResponse } from "./rotation-plan"
 
 export async function internalResponse(request: Request): Promise<Response> {
   const token = process.env.KINU_NATIVE_TOKEN_FILE
@@ -15,11 +16,16 @@ export async function internalResponse(request: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
   }
   const path = new URL(request.url).pathname
-  if (!["/_internal/assessment", "/_internal/navigation", "/_internal/playbooks"].includes(path) || request.method !== "POST") {
+  if (!["/_internal/assessment", "/_internal/navigation", "/_internal/playbooks", "/_internal/rotation-plan"].includes(path) || request.method !== "POST") {
     return Response.json({ error: "Not found" }, { status: 404 })
   }
   const text = await request.text()
   if (Buffer.byteLength(text) > (path === "/_internal/playbooks" ? 256000 : path === "/_internal/navigation" ? 65536 : 16384)) return Response.json({ error: "Request too large" }, { status: 413 })
+  if (path === "/_internal/rotation-plan") {
+    const body = z.strictObject({ organisation_id: z.string().regex(/^[a-z][a-z0-9_-]{2,127}$/), input: planInput }).safeParse(JSON.parse(text))
+    if (!body.success) return Response.json({ error: "Invalid rotation plan request" }, { status: 422 })
+    return rotationPlanResponse(body.data.organisation_id, body.data.input, request.signal)
+  }
   if (path === "/_internal/playbooks") {
     const body = z.strictObject({ organisation_id: z.string().regex(/^[a-z][a-z0-9_-]{2,127}$/), input: playbookSchema }).safeParse(JSON.parse(text))
     if (!body.success) return Response.json({ error: "Invalid playbook instructions" }, { status: 422 })

@@ -394,6 +394,8 @@ export interface RunStageActivity {
   summary: string | null
   details: StageDetail[]
   agent_decisions: AgentDecisionSummary[]
+  agent_input?: StageDetail[]
+  plan_steps?: StageName[]
   browser_actions: BrowserActionSummary[]
   reason: string | null
   retryable: boolean
@@ -430,6 +432,7 @@ export interface RotationHistory {
   run_id: Identifier
   stages: RunStageActivity[]
   computer_use: ComputerUseActivity[]
+  preflight_checks?: string[]
 }
 
 export interface Approval {

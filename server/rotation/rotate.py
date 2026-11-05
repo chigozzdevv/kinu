@@ -19,7 +19,7 @@ from contracts import (
 )
 from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
-from core.errors import LeaseConflictError, ResourceConflictError
+from core.errors import LeaseConflictError, ResourceConflictError, ResourceSetupRequiredError
 from core.state import RotationMachine
 from core.storage.database import Database
 from core.storage.runs import RunStore
@@ -31,13 +31,31 @@ from rotation.generations import discard
 from rotation.journal import Journal
 from rotation.lease import Heartbeat
 from rotation.ports import Effects, Loader
-from rotation.stages import Stages, stable
+from rotation.stages import Planner, Stages, stable
 from rotation.state import Snapshot
+
+_CHECK_FAILURES = {
+    "host-lease": "The rotation no longer holds the key lock.",
+    "secret-current": "The active key changed. Check the credential before trying again.",
+    "browser-probe": "The current key cannot be verified for browser rotation.",
+    "provider-identity": "The provider key could not be identified.",
+    "host-variable": "An app's key mapping changed. Review its connection.",
+    "host-proof": "An app does not have a working verification path.",
+    "provider-management": "Use a separate provider management credential.",
+}
 
 
 class Rotation:
-    def __init__(self, database: Database, effects: Effects, loader: Loader, region: str) -> None:
+    def __init__(
+        self,
+        database: Database,
+        effects: Effects,
+        loader: Loader,
+        region: str,
+        planner: Planner | None = None,
+    ) -> None:
         self.database, self.effects, self.loader = database, effects, loader
+        self.planner = planner
         self.journal = Journal(database)
         self.audit = AuditWriter(AuditStore(database), region, lambda: datetime.now(UTC))
         self.approvals: RevocationApprovals | None = None
@@ -120,7 +138,15 @@ class Rotation:
             ).run
         elif not run.lease or run.lease.owner_id != owner:
             raise LeaseConflictError("another rotation worker owns this run")
-        stages = Stages(self.database, self.effects, state, run)
+
+        async def preflight_progress(check: str) -> None:
+            await self.database.collection("run_progress").update_one(
+                {"_id": f"{org}:{run_id}:{run.fencing_token}"},
+                {"$addToSet": {"checks": check}},
+                upsert=True,
+            )
+
+        stages = Stages(self.database, self.effects, state, run, self.planner, preflight_progress)
         heartbeat = Heartbeat(repository, workflow, run)
         heartbeat.start()
         try:
@@ -138,6 +164,7 @@ class Rotation:
                         if self.approvals is None:
                             raise ResourceConflictError("Revocation approval is not configured")
                         await self.approvals.ensure_approver(run)
+                        await preflight_progress("approver-checked")
                     if (
                         run.stage is Stage.APPROVAL
                         and state.controls.definition.require_revoke_approval
@@ -253,8 +280,21 @@ class Rotation:
             if restored and created:
                 await discard(self.database, org, stable("generation", run.id))
             failure = Failure(
-                code="api-rotation-failed" if restored else "api-cleanup-required",
-                message=f"Stopped during {current.stage.value} before retiring the old key."
+                code="builder-setup-required"
+                if current.stage is Stage.PLAN and isinstance(error, ResourceSetupRequiredError)
+                else "api-rotation-failed"
+                if restored
+                else "api-cleanup-required",
+                message="Connect Builder AI in Settings and start a new rotation."
+                if current.stage is Stage.PLAN and isinstance(error, ResourceSetupRequiredError)
+                else "Builder AI could not produce a valid plan. Check AI settings and try again."
+                if current.stage is Stage.PLAN
+                else _CHECK_FAILURES[error.code]
+                if restored
+                and current.stage is Stage.PREFLIGHT
+                and isinstance(error, ConnectorError)
+                and error.code in _CHECK_FAILURES
+                else f"Stopped during {current.stage.value} before retiring the old key."
                 if restored
                 else f"Stopped at {current.stage.value}. Review the saved checks before recovery.",
                 retryable=False,

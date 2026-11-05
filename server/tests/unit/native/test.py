@@ -5,7 +5,7 @@ import httpx
 import pytest
 from agents.native import NativeAgent
 from connectors.base.errors import ConnectorError
-from core.errors import ResourceConflictError
+from core.errors import ResourceConflictError, ResourceSetupRequiredError
 from core.private import PrivateClient
 from pydantic import SecretStr
 
@@ -92,3 +92,40 @@ async def test_daily_limit_retains_its_distinct_error_code() -> None:
         with pytest.raises(ConnectorError) as error:
             await agent.navigate("org_one", {})
         assert error.value.code == "ai-daily-limit"
+
+
+@pytest.mark.anyio
+async def test_rotation_plan_uses_private_agent_and_distinguishes_missing_setup() -> None:
+    facts = {
+        "trigger": "exposure",
+        "method": "api",
+        "app_count": 1,
+        "approval_required": True,
+        "observation_seconds": 60,
+    }
+    response = {
+        "strategy": "parallel",
+        "stages": ["create", "store"],
+        "rationale": "Keep the old key until verified.",
+    }
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/_internal/rotation-plan"
+        assert request.headers["Authorization"] == "Bearer worker-token"
+        assert json.loads(request.content) == {"organisation_id": "org_one", "input": facts}
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        agent = NativeAgent(
+            PrivateClient(http, "https://agent.internal", SecretStr("worker-token"))
+        )
+        assert await agent.plan_rotation("org_one", facts) == response
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(503))
+    ) as http:
+        agent = NativeAgent(
+            PrivateClient(http, "https://agent.internal", SecretStr("worker-token"))
+        )
+        with pytest.raises(ResourceSetupRequiredError):
+            await agent.plan_rotation("org_one", facts)

@@ -1,4 +1,5 @@
 import hashlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,8 +17,22 @@ from policy import digest
 
 from rotation import generations
 from rotation.journal import Journal
-from rotation.ports import Effects
+from rotation.ports import Effects, Progress
 from rotation.state import Snapshot
+
+Planner = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
+
+PLAN_STAGES = (
+    "create",
+    "store",
+    "deploy",
+    "verify",
+    "rollout",
+    "observe",
+    "approval",
+    "revoke",
+    "complete",
+)
 
 
 def stable(prefix: str, run_id: str) -> str:
@@ -26,9 +41,17 @@ def stable(prefix: str, run_id: str) -> str:
 
 class Stages:
     def __init__(
-        self, database: Database, effects: Effects, state: Snapshot, run: RotationRun
+        self,
+        database: Database,
+        effects: Effects,
+        state: Snapshot,
+        run: RotationRun,
+        planner: Planner | None = None,
+        progress: Progress | None = None,
     ) -> None:
         self.database, self.effects, self.state, self.run = database, effects, state, run
+        self.planner = planner
+        self.progress = progress
         self.journal = Journal(database)
 
     async def output(self, stage: Stage) -> dict[str, Any]:
@@ -53,7 +76,14 @@ class Stages:
                 raise ResourceConflictError(
                     "controls must preserve the old generation during rollout"
                 )
-            result = await self.effects.initial(state)
+            if self.progress:
+                await self.progress("controls-checked")
+            initial_progress = getattr(self.effects, "initial_with_progress", None)
+            result = (
+                await initial_progress(state, self.progress)
+                if initial_progress and self.progress
+                else await self.effects.initial(state)
+            )
             checks = {
                 "provider-ready",
                 "credential-known",
@@ -80,6 +110,38 @@ class Stages:
             )
         if stage is Stage.PLAN:
             initial = await self.output(Stage.PREFLIGHT)
+            agent_input = {
+                "trigger": {
+                    "credential-exposure-detected": "exposure",
+                    "credential-expiring": "expiry",
+                    "credential-rotation-due": "schedule",
+                    "credential-provider-drift": "drift",
+                    "credential-inventory-drift": "drift",
+                    "credential-runtime-drift": "drift",
+                }.get(
+                    run.trigger.kind,
+                    "schedule"
+                    if run.trigger.source == "schedule"
+                    else "manual"
+                    if run.trigger.source == "manual"
+                    else "other",
+                ),
+                "method": "browser" if state.playbook else "api",
+                "app_count": len(state.targets),
+                "approval_required": state.controls.definition.require_revoke_approval,
+                "observation_seconds": state.controls.definition.maximum_observation_seconds,
+            }
+            proposal = (
+                await self.planner(run.organisation_id, agent_input) if self.planner else None
+            )
+            if proposal is not None and (
+                set(proposal) != {"strategy", "stages", "rationale"}
+                or proposal.get("strategy") != "parallel"
+                or proposal.get("stages") != list(PLAN_STAGES)
+                or not isinstance(proposal.get("rationale"), str)
+                or not 1 <= len(proposal["rationale"].strip()) <= 1024
+            ):
+                raise ResourceConflictError("Builder AI proposed an invalid rotation plan")
             plan = RotationPlan(
                 id=stable("plan", run.id),
                 organisation_id=run.organisation_id,
@@ -95,10 +157,20 @@ class Stages:
             )
             result = {
                 "plan": plan.model_dump(mode="json"),
+                "plan_context": {
+                    "credential": state.credential.display_name,
+                    "provider": state.provider.display_name,
+                    "apps": [target.service.display_name for target in state.targets],
+                    "method": "browser" if state.playbook else "api",
+                    "approval_required": state.controls.definition.require_revoke_approval,
+                },
                 "rollback_revisions": {
                     key: value["version"] for key, value in initial["deployments"].items()
                 },
             }
+            if proposal is not None:
+                result["agent"] = proposal
+                result["agent_input"] = agent_input
             return (
                 frozenset({"plan-bound", "controls-pinned", "plan-hashed", "recovery-ready"}),
                 result,

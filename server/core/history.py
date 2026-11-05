@@ -50,12 +50,64 @@ def _activity(
         summary=summary,
         details=details,
         agent_decisions=_agent_decisions(result.stage, result.output),
+        agent_input=_plan_input(result.stage, result.output),
+        plan_steps=_plan_steps(result.stage, result.output),
         browser_actions=_browser_actions(result.output),
         reason=result.reason,
         retryable=result.retryable,
         started_at=result.started_at,
         completed_at=result.completed_at,
     )
+
+
+def _plan_input(stage: Stage, output: dict[str, Any]) -> tuple[StageDetail, ...]:
+    value = output.get("agent_input")
+    if stage is not Stage.PLAN or not isinstance(value, dict):
+        return ()
+    labels = {
+        "exposure": "Exposure",
+        "expiry": "Expiry",
+        "drift": "Drift",
+        "manual": "Manual",
+        "schedule": "Scheduled",
+        "other": "Other",
+    }
+    trigger = value.get("trigger")
+    method = value.get("method")
+    count = value.get("app_count")
+    approval = value.get("approval_required")
+    observation = value.get("observation_seconds")
+    if (
+        not isinstance(trigger, str)
+        or trigger not in labels
+        or not isinstance(method, str)
+        or method not in {"api", "browser"}
+        or type(count) is not int
+        or type(approval) is not bool
+        or type(observation) is not int
+    ):
+        return ()
+    return (
+        StageDetail(label="Trigger", value=labels[trigger]),
+        StageDetail(label="Method", value="Browser" if method == "browser" else "API"),
+        StageDetail(label="Connected apps", value=str(count)),
+        StageDetail(label="Revocation approval", value="Required" if approval else "Not required"),
+        StageDetail(label="Observation", value=_duration(observation)),
+    )
+
+
+def _plan_steps(stage: Stage, output: dict[str, Any]) -> tuple[Stage, ...]:
+    agent = output.get("agent")
+    if (
+        stage is not Stage.PLAN
+        or not isinstance(agent, dict)
+        or not isinstance(agent.get("stages"), list)
+    ):
+        return ()
+    try:
+        return tuple(Stage(item) for item in agent["stages"])
+    except (ValueError, TypeError):
+        return ()
 
 
 def _stage_presentation(
@@ -110,6 +162,31 @@ def _stage_presentation(
         plan = output.get("plan")
         values = plan if isinstance(plan, dict) else {}
         details = []
+        context = output.get("plan_context")
+        if isinstance(context, dict):
+            for key, label in (("credential", "Credential"), ("provider", "Provider")):
+                text = _text(context.get(key))
+                if text:
+                    details.append(StageDetail(label=label, value=text[:512]))
+            apps = _joined(_string_items(context.get("apps")))
+            if apps:
+                details.append(StageDetail(label="Apps", value=apps[:512]))
+            if context.get("method") in ("api", "browser"):
+                details.append(
+                    StageDetail(
+                        label="Method", value="Browser" if context["method"] == "browser" else "API"
+                    )
+                )
+            if type(context.get("approval_required")) is bool:
+                details.append(
+                    StageDetail(
+                        label="Revocation approval",
+                        value="Required" if context["approval_required"] else "Not required",
+                    )
+                )
+        scopes = _joined(_string_items(values.get("target_scopes")))
+        if scopes:
+            details.append(StageDetail(label="Permissions", value=scopes))
         rollout = values.get("rollout")
         rollout_summary = None
         if isinstance(rollout, list) and rollout and all(isinstance(item, int) for item in rollout):
@@ -117,13 +194,16 @@ def _stage_presentation(
         observation = values.get("observation_seconds")
         if isinstance(observation, int) and observation > 0:
             details.append(StageDetail(label="Observation", value=_duration(observation)))
-        details.append(StageDetail(label="Recovery", value="Branches pinned"))
+        details.append(
+            StageDetail(label="Recovery", value="Previous deployment retained for rollback")
+        )
         summary = f"{rollout_summary} rollout" if rollout_summary else "Rotation plan ready"
         return (summary, tuple(details))
     if stage is Stage.CREATE:
         generation = output.get("generation")
         values = generation if isinstance(generation, dict) else {}
         details = [
+            StageDetail(label="Operation", value="Create replacement"),
             StageDetail(
                 label="Method",
                 value="Browser"
@@ -131,14 +211,16 @@ def _stage_presentation(
                 or (run and run.browser_playbook_version)
                 or _browser_activity(output)
                 else "Provider API",
-            )
+            ),
         ]
-        provider_id = _text(values.get("provider_id"))
+        provider_id = _text(values.get("provider_id")) or _text(output.get("provider_id"))
         if provider_id:
             details.append(StageDetail(label="Provider credential", value=provider_id))
         return ("Replacement created", tuple(details))
     if stage is Stage.STORE:
         details = []
+        if output.get("stored") is True:
+            details.append(StageDetail(label="Storage", value="Replacement stored securely"))
         secret_store = _text(output.get("secret_store"))
         if secret_store:
             details.append(StageDetail(label="Secret store", value=_base_name(secret_store)))
@@ -203,6 +285,9 @@ def _stage_presentation(
         return ("100% on replacement", tuple(details))
     if stage is Stage.OBSERVE:
         details = []
+        samples = output.get("samples")
+        if isinstance(samples, int) and samples > 0:
+            details.append(StageDetail(label="Health checks", value=f"{samples} passed"))
         if "telemetry-healthy" in checks:
             details.append(StageDetail(label="Telemetry", value="Healthy"))
         if "old-use-clear" in checks:
@@ -220,6 +305,7 @@ def _stage_presentation(
         return _approval_presentation(output, approvals)
     if stage is Stage.REVOKE:
         details = [
+            StageDetail(label="Operation", value="Revoke previous key"),
             StageDetail(
                 label="Method",
                 value="Browser"
@@ -233,7 +319,14 @@ def _stage_presentation(
             details.append(StageDetail(label="Previous secret version", value="Retired"))
         return ("Previous credential revoked", tuple(details))
     if stage is Stage.COMPLETE:
-        return ("Rotation complete", ())
+        details = []
+        if "replacement-valid" in checks:
+            details.append(StageDetail(label="Replacement", value="Verified"))
+        if "old-rejected" in checks:
+            details.append(StageDetail(label="Previous key", value="Rejected"))
+        if "consumers-current" in checks:
+            details.append(StageDetail(label="Apps", value="Using the replacement"))
+        return ("Rotation complete", tuple(details))
 
 
 def _browser_error(output: dict[str, Any]) -> tuple[str, str] | None:

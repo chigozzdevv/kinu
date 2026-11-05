@@ -15,6 +15,7 @@ from hosting.service import Service
 from rotation.effects import _active, retire_replacement
 from rotation.guard import validate
 from rotation.journal import Journal
+from rotation.ports import Progress
 from rotation.stages import stable
 from rotation.state import Snapshot
 
@@ -52,6 +53,12 @@ class Effects:
             raise ConnectorError("provider-identity", "Stored replacement identifies another key")
 
     async def initial(self, state: Snapshot) -> dict[str, Any]:
+        async def noop(_: str) -> None:
+            pass
+
+        return await self.initial_with_progress(state, noop)
+
+    async def initial_with_progress(self, state: Snapshot, progress: Progress) -> dict[str, Any]:
         from core.storage.runs import RunStore
 
         lock = await self.hosts.database.collection("run_locks").find_one(
@@ -70,6 +77,7 @@ class Effects:
         )
         await acquire(self.hosts.database, state, run.id)
         await self.provider.preflight(state.provider, run)
+        await progress("provider-checked")
         if (
             await self.versions.current(state.store, state.credential.secret_resource)
             != state.credential.secret_reference
@@ -95,6 +103,7 @@ class Effects:
             )
         metadata = await self.provider.metadata(state.provider)
         _active(await self.metadata(state, state.current.provider_id or ""), state)
+        await progress("credential-checked")
         management_fingerprint = await self.provider.auth_fingerprint(state.provider)
         deployments = {}
         for target in state.targets:
@@ -129,6 +138,7 @@ class Effects:
                 "url": current.url,
                 "fingerprint": actual,
             }
+        await progress("apps-checked")
         return {
             "deployments": deployments,
             "provider_ids": [item["provider_id"] for item in metadata],

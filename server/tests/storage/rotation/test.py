@@ -24,7 +24,7 @@ from contracts import (
     Stage,
     Trigger,
 )
-from core.errors import ActiveRunConflictError
+from core.errors import ActiveRunConflictError, ResourceSetupRequiredError
 from core.incident.store import IncidentStore
 from core.storage.database import Database
 from core.storage.history import HistoryStore
@@ -36,7 +36,7 @@ from demo.effects import Effects
 from demo.mail import Mailbox, MailTask, investigate
 from demo.snapshot import loader
 from rotation.rotate import Rotation
-from rotation.stages import stable
+from rotation.stages import PLAN_STAGES, stable
 from rotation.state import Snapshot
 
 pytestmark = pytest.mark.anyio
@@ -247,6 +247,111 @@ async def test_rotation_records_all_stages_and_changes_generation_atomically(
     changed = await RunStore(database).reconcile_incidents(demo.organisation_id, run_id)
     assert len(changed) == 1 and changed[0].status is IncidentStatus.RESOLVED
     assert await RunStore(database).reconcile_incidents(demo.organisation_id, run_id) == ()
+
+
+async def test_ai_plan_is_recorded_and_cannot_bypass_required_stages(
+    database: Database, demo: DemoConfig
+) -> None:
+    run_id = await create(database, demo, "ai")
+    received: list[dict[str, Any]] = []
+
+    async def plan(org: str, value: dict[str, Any]) -> dict[str, Any]:
+        assert org == demo.organisation_id
+        received.append(value)
+        return {
+            "strategy": "parallel",
+            "stages": list(PLAN_STAGES),
+            "rationale": "Keep the old key until the replacement is verified.",
+        }
+
+    api = Api(demo)
+    run = await Rotation(database, api, loader(database, demo), demo.region, plan).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
+    assert run.status is RunStatus.COMPLETED
+    assert received == [
+        {
+            "trigger": "manual",
+            "method": "api",
+            "app_count": 1,
+            "approval_required": False,
+            "observation_seconds": 60,
+        }
+    ]
+    history = await HistoryStore(database).get(demo.organisation_id, run_id)
+    plan_stage = next(item for item in history.stages if item.stage is Stage.PLAN)
+    assert plan_stage.plan_steps == tuple(Stage(value) for value in PLAN_STAGES)
+    assert (
+        plan_stage.agent_decisions[0].explanation
+        == "Keep the old key until the replacement is verified."
+    )
+    assert any(item.label == "Method" and item.value == "API" for item in plan_stage.agent_input)
+    assert SECRET not in history.model_dump_json()
+
+    rejected_id = await create(database, demo, "invalid_plan")
+    rejected_api = Api(demo)
+
+    async def unsafe_plan(_: str, __: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "strategy": "parallel",
+            "stages": ["create", "revoke"],
+            "rationale": "Skip verification.",
+        }
+
+    rejected = await Rotation(
+        database, rejected_api, loader(database, demo), demo.region, unsafe_plan
+    ).execute(demo.organisation_id, rejected_id, "worker_one")
+    assert rejected.status is RunStatus.FAILED
+    assert rejected.stage is Stage.PLAN
+    assert not rejected_api.created and not rejected_api.old_revoked
+
+
+async def test_preflight_checks_are_visible_while_the_check_is_running(
+    database: Database, demo: DemoConfig
+) -> None:
+    run_id = await create(database, demo, "progress")
+    started, resume = asyncio.Event(), asyncio.Event()
+
+    class SlowApi(Api):
+        async def initial_with_progress(self, state: Snapshot, progress: Any) -> dict[str, Any]:
+            await progress("provider-checked")
+            started.set()
+            await resume.wait()
+            await progress("credential-checked")
+            return await self.initial(state)
+
+    api = SlowApi(demo)
+    task = asyncio.create_task(
+        Rotation(database, api, loader(database, demo), demo.region).execute(
+            demo.organisation_id, run_id, "worker_one"
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), 10)
+        history = await HistoryStore(database).get(demo.organisation_id, run_id)
+        assert "provider-checked" in history.preflight_checks
+        assert "credential-checked" not in history.preflight_checks
+        assert not api.created
+    finally:
+        resume.set()
+        await task
+
+
+async def test_missing_builder_stops_before_creating_a_key(
+    database: Database, demo: DemoConfig
+) -> None:
+    run_id = await create(database, demo, "no_builder")
+    api = Api(demo)
+
+    async def unavailable(_: str, __: dict[str, Any]) -> dict[str, Any]:
+        raise ResourceSetupRequiredError("Integration setup is incomplete")
+
+    run = await Rotation(database, api, loader(database, demo), demo.region, unavailable).execute(
+        demo.organisation_id, run_id, "worker_one"
+    )
+    assert run.status is RunStatus.FAILED and run.stage is Stage.PLAN
+    assert run.failure and run.failure.code == "builder-setup-required"
+    assert not api.created and not api.old_revoked
 
 
 @pytest.mark.parametrize("stage", [Stage.STORE, Stage.VERIFY, Stage.ROLLOUT, Stage.OBSERVE])

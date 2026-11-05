@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Any, cast
 
-from rotation.ports import Effects
+from rotation.ports import Effects, Progress, ProgressEffects
 from rotation.state import Snapshot
 
 
@@ -13,6 +13,11 @@ class Router:
 
     async def initial(self, state: Snapshot) -> dict[str, Any]:
         return await self.executor(state).initial(state)
+
+    async def initial_with_progress(self, state: Snapshot, progress: Progress) -> dict[str, Any]:
+        return await cast(ProgressEffects, self.executor(state)).initial_with_progress(
+            state, progress
+        )
 
     async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]:
         return await self.executor(state).issue(state, run_id)

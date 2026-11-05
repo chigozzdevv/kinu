@@ -14,6 +14,16 @@ class NativeAgent:
     def __init__(self, client: PrivateClient) -> None:
         self.client = client
 
+    async def plan_rotation(self, organisation_id: str, value: dict[str, Any]) -> dict[str, Any]:
+        result = await self.client.call(
+            "/_internal/rotation-plan",
+            {"organisation_id": organisation_id, "input": value},
+            timeout=60,
+        )
+        if not isinstance(result, dict):
+            raise ResourceConflictError("Builder AI returned an invalid rotation plan")
+        return result
+
     async def build(self, task: AgentTask) -> AgentResult:
         if task.agent is not AgentKind.PLAYBOOK or task.skill != "build_playbook":
             raise PlaybookError("Choose a playbook generation task")

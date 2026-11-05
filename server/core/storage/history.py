@@ -40,8 +40,12 @@ class HistoryStore:
         results.sort(key=lambda row: row["data"]["started_at"])
         async with Records(self._database).read() as rows:
             approvals = await rows.match(Approval, organisation_id, {"run_id": run_id})
+        progress = await self._database.collection("run_progress").find_one(
+            {"_id": f"{organisation_id}:{run_id}:{run.fencing_token}"}
+        )
         return RotationHistory(
             run_id=run_id,
+            preflight_checks=tuple(progress.get("checks", ())) if progress else (),
             computer_use=await self._browser_activity(organisation_id, run_id),
             stages=tuple(
                 _activity(StageExecutionResult.model_validate(row["data"]), run, approvals)

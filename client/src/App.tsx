@@ -122,7 +122,7 @@ export function App({
       case "incidents":
         return <IncidentsPage key={dashboardPath(route)} initialIncidentId={route.resourceId} onSelectIncident={(incidentId) => navigate({ section: "incidents", resourceId: incidentId || undefined })} onNavigateRotation={handleNavigateRotation} onAddCredential={() => navigate({ section: "credentials", addCredential: true })} onConnectSource={() => navigate({ section: "connections" })} />
       case "rotations":
-        return <RotationsPage key={dashboardPath(route)} activeRunId={route.resourceId} onSelectRotation={(runId) => navigate({ section: "rotations", resourceId: runId || undefined })} onNavigateApproval={() => navigate({ section: "approvals" })} onNavigateControls={handleNavigateControls} onNavigateConnection={handleNavigateConnection} />
+        return <RotationsPage key={dashboardPath(route)} activeRunId={route.resourceId} onSelectRotation={(runId) => navigate({ section: "rotations", resourceId: runId || undefined })} onNavigateApproval={() => navigate({ section: "approvals" })} onNavigateControls={handleNavigateControls} onNavigateConnection={handleNavigateConnection} onNavigateIncident={handleNavigateIncident} onNavigateAi={() => navigate({ section: "settings", tab: "ai" })} />
       case "approvals":
         return <ApprovalsPage key={dashboardPath(route)} initialApprovalId={route.resourceId} onSelectApproval={(approvalId) => navigate({ section: "approvals", resourceId: approvalId || undefined })} onNavigateRotation={handleNavigateRotation} />
       case "connections":

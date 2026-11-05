@@ -4,6 +4,13 @@ from typing import Any, Protocol
 from rotation.state import Snapshot
 
 Loader = Callable[[str, str, str], Awaitable[Snapshot]]
+Progress = Callable[[str], Awaitable[None]]
+
+
+class ProgressEffects(Protocol):
+    async def initial_with_progress(
+        self, state: Snapshot, progress: Progress
+    ) -> dict[str, Any]: ...
 
 
 class Effects(Protocol):

@@ -97,6 +97,7 @@ class Runtime:
             ),
             loader(database),
             config.aws_region,
+            self.agent.plan_rotation,
         )
         self.rotation.approvals = RevocationApprovals(
             database, vault, self.rotation.effects, self.rotation.audit

@@ -51,6 +51,18 @@ export const workflow = {
     return request(`${workspacePath()}/incidents${status ? `?status=${encodeURIComponent(status)}` : ""}`)
   },
 
+  async getRotationIncident(runId: string, eventId: string): Promise<Incident | null> {
+    const path = workspacePath()
+    let before = ""
+    while (true) {
+      const page = await request<Incident[]>(`${path}/incidents?limit=500${before ? `&before=${encodeURIComponent(before)}` : ""}`)
+      const match = page.find((item) => item.run_id === runId || item.resolution_run_id === runId || item.event_id === eventId)
+      if (match) return match
+      if (page.length < 500) return null
+      before = page[page.length - 1]!.id
+    }
+  },
+
   async getIncident(incidentId: string): Promise<Incident> {
     return request(`${workspacePath()}/incidents/${encodeURIComponent(incidentId)}`)
   },

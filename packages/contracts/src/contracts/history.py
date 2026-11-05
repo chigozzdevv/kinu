@@ -34,6 +34,8 @@ class RunStageActivity(Contract):
     summary: str | None = Field(default=None, max_length=160)
     details: tuple[StageDetail, ...] = ()
     agent_decisions: tuple[AgentDecisionSummary, ...] = ()
+    agent_input: tuple[StageDetail, ...] = ()
+    plan_steps: tuple[Stage, ...] = ()
     browser_actions: tuple[BrowserActionSummary, ...] = ()
     reason: str | None = Field(default=None, max_length=1024)
     retryable: bool = False
@@ -45,3 +47,4 @@ class RotationHistory(Contract):
     run_id: Identifier
     stages: tuple[RunStageActivity, ...] = ()
     computer_use: tuple[ComputerUseActivity, ...] = ()
+    preflight_checks: tuple[str, ...] = ()

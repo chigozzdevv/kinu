@@ -51,6 +51,53 @@ def test_stage_history_projects_only_safe_agent_and_browser_fields() -> None:
     assert "secret_reference" not in public
 
 
+def test_plan_history_exposes_only_recorded_bounded_input_and_actual_proposal() -> None:
+    result = StageExecutionResult(
+        id="stage_plan",
+        organisation_id="org_one",
+        run_id="run_one",
+        stage=Stage.PLAN,
+        status=StageExecutionStatus.SUCCEEDED,
+        checks=frozenset({"plan-bound"}),
+        evidence_ids=("evidence_one",),
+        output={
+            "agent_input": {
+                "trigger": "exposure",
+                "method": "browser",
+                "app_count": 2,
+                "approval_required": True,
+                "observation_seconds": 60,
+                "secret": "do-not-show",
+            },
+            "agent": {
+                "strategy": "parallel",
+                "stages": ["create", "verify", "revoke"],
+                "rationale": "Verify before revoking.",
+            },
+            "plan_context": {
+                "credential": "Sending key",
+                "provider": "Resend",
+                "apps": ["Muwa"],
+                "method": "browser",
+                "approval_required": True,
+            },
+        },
+        started_at=NOW,
+        completed_at=NOW,
+    )
+    public = _activity(result)
+    assert [(item.label, item.value) for item in public.agent_input] == [
+        ("Trigger", "Exposure"),
+        ("Method", "Browser"),
+        ("Connected apps", "2"),
+        ("Revocation approval", "Required"),
+        ("Observation", "1 minute"),
+    ]
+    assert public.plan_steps == (Stage.CREATE, Stage.VERIFY, Stage.REVOKE)
+    assert public.agent_decisions[0].explanation == "Verify before revoking."
+    assert "do-not-show" not in public.model_dump_json()
+
+
 def test_trigger_history_uses_the_trigger_story_not_internal_gate_checks() -> None:
     run = RotationRun(
         id="run_one",

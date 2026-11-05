@@ -46,6 +46,11 @@ const planSteps: Array<{ id: StageName; label: string }> = [
 ]
 
 const preflightLabels: Record<string, string> = {
+  "controls-checked": "Key controls checked",
+  "approver-checked": "Approver available",
+  "provider-checked": "Provider connection checked",
+  "credential-checked": "Current key checked",
+  "apps-checked": "Connected apps and verification checked",
   "provider-ready": "Provider connection ready",
   "credential-known": "Current credential identified",
   "scopes-known": "Credential permissions identified",
@@ -61,13 +66,14 @@ const preflightLabels: Record<string, string> = {
   "approvers-known": "Approver available",
 }
 
-function PlanProgress({ history, run }: { history: RotationHistory | undefined; run: RotationRun }) {
+function PlanProgress({ history, run, actual }: { history: RotationHistory | undefined; run: RotationRun; actual?: StageName[] }) {
+  const steps = actual?.length ? actual.flatMap((id) => planSteps.filter((step) => step.id === id)) : planSteps
   return <ol aria-label="Rotation plan" className="mt-5 space-y-3">
-    {planSteps.map((step) => {
+    {steps.map((step) => {
       const state = planStepState(history, run, step.id)
       const done = state === "done"
       const current = state === "current"
-      return <li key={step.id} className="flex items-start gap-3 text-[11px] leading-5">
+      return <li key={step.id} className="flex items-start gap-3 text-[12px] leading-5">
         {done ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[#198754] text-white" aria-label="Completed"><Check className="size-3" strokeWidth={3} /></span>
           : state === "stopped" ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[var(--red)] text-white" aria-label="Stopped"><X className="size-3" strokeWidth={3} /></span>
           : current ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-[var(--ink-soft)]" aria-label="Current step"><span className="size-1.5 rounded-full bg-[var(--ink-soft)]" /></span>
@@ -107,7 +113,7 @@ function activeStageSummary(stage: StageName, status: RotationRun["status"]) {
 function agentName(agent: "inventory" | "planner" | "playbook" | "operator") {
   return {
     inventory: "Inventory and Exposure Agent",
-    planner: "Rotation Planning and Recovery Agent",
+    planner: "Builder AI",
     playbook: "Playbook Builder Agent",
     operator: "Builder AI",
   }[agent]
@@ -115,8 +121,7 @@ function agentName(agent: "inventory" | "planner" | "playbook" | "operator") {
 
 function currentStageExecutor(run: RotationRun): { label: "Agent" | "Executor"; value: string } {
   if (run.status === "recovering") return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
-  if (run.stage === "preflight" && run.browser_playbook_version) return { label: "Agent", value: "Inventory and Exposure Agent" }
-  if (run.stage === "plan" && run.browser_playbook_version) return { label: "Agent", value: "Rotation Planning and Recovery Agent" }
+  if (run.stage === "plan") return { label: "Agent", value: "Builder AI" }
   if (["create", "revoke"].includes(run.stage) && run.browser_playbook_version) return { label: "Agent", value: "Builder AI" }
   const executors: Record<StageName, string> = {
     trigger: "Workflow",
@@ -164,7 +169,7 @@ function RunStatus({ run }: { run: RotationRun }) {
   </Badge>
 }
 
-export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApproval, onNavigateControls, onNavigateConnection }: { activeRunId?: string; onSelectRotation: (runId: string) => void; onNavigateApproval: () => void; onNavigateControls: (credentialId: string, controlVersionId: string) => void; onNavigateConnection: (connectionId: string) => void }) {
+export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApproval, onNavigateControls, onNavigateConnection, onNavigateIncident, onNavigateAi }: { activeRunId?: string; onSelectRotation: (runId: string) => void; onNavigateApproval: () => void; onNavigateControls: (credentialId: string, controlVersionId: string) => void; onNavigateConnection: (connectionId: string) => void; onNavigateIncident: (incidentId: string) => void; onNavigateAi: () => void }) {
   const queryClient = useQueryClient()
   const { active } = useOrganisation()
   const [search, setSearch] = useState("")
@@ -188,13 +193,15 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     queryKey: ["rotation", selectedId],
     queryFn: () => api.getRotation(selectedId),
     enabled: Boolean(selectedId),
-    refetchInterval: (query): number | false => query.state.data?.status === "cleanup-required" || !finished(query.state.data?.status) ? 5_000 : false,
+    refetchInterval: (query): number | false => query.state.data?.status === "cleanup-required" || !finished(query.state.data?.status) ? query.state.data?.stage === "preflight" ? 1_000 : 5_000 : false,
   })
+  const linkedIncident = useQuery({ queryKey: ["rotations", selectedId, "incident", selectedRun.data?.trigger.event_id],
+    queryFn: () => api.getRotationIncident(selectedId, selectedRun.data!.trigger.event_id), enabled: Boolean(selectedId && selectedRun.data) })
   const [graph, history, connections, currentRuns] = useQueries({ queries: [
     { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
     { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => {
       const run = queryClient.getQueryData<RotationRun>(["rotation", selectedId])
-      return finished(run?.status) ? false : run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
+      return finished(run?.status) ? false : run?.stage === "preflight" || run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
     } },
     { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
     { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
@@ -274,9 +281,14 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
         {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
         {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
       </>} />
+      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-[var(--ink-soft)]">
+        <span className="font-semibold text-[var(--ink)]">{selected.status === "compensated" ? selected.recovery_mode === "rollback" ? "Rolled back" : "Recovered" : titleCase(selected.status)}</span>
+        <span aria-hidden="true">·</span><span>Started {formatDate(selected.created_at, true)}</span>
+      </div>
       <DetailCard>
         <div>
           {selected.failure && <p role="status" className="mb-5 text-[11px] leading-5 text-[var(--red)]">{selected.failure.message}</p>}
+          {selected.failure?.code === "builder-setup-required" && <Button size="sm" variant="secondary" className="mb-5" onClick={onNavigateAi}>Open AI settings <ArrowUpRight className="size-3.5" /></Button>}
           {selected.status === "compensated" && <p className="mb-5 text-[11px] text-[var(--ink-soft)]">{selected.recovery_mode === "rollback" ? "Recovery completed · previous key restored" : "Recovery completed · replacement key active"}</p>}
           <div className="space-y-1" aria-label={`Rotation is at ${titleCase(selected.stage)}`}>
           {stages.map((stage, index) => {
@@ -288,12 +300,14 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
               && !(stage.id === "trigger" && detail.label === "Source" && selected.trigger.source === "agent-native")
             ) ?? []
             const attempts = history.data?.stages.filter((item) => item.stage === stage.id) ?? []
+            const liveChecks = stage.id === "preflight" ? history.data?.preflight_checks ?? [] : []
+            const checks = liveChecks.length ? liveChecks : activity?.status === "succeeded" && stage.id === "preflight" ? activity.checks : []
             const recovered = selected.status === "compensated" && selected.recovery_stage === stage.id && selected.recovery_evidence_ids.length > 0
             const completed = recovered || Boolean(activity && ["succeeded", "recovered"].includes(activity.status))
             const current = index === stageIndex && !["completed", "cancelled", "compensated"].includes(selected.status)
             const failed = !recovered && (activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status)))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
-            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason || (stage.id === "preflight" && activity.checks.length) || stage.id === "plan")) || computerUse.length)
+            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason || (stage.id === "preflight" && activity.checks.length) || stage.id === "plan")) || computerUse.length || checks.length)
             const liveExecutor = current && !activity && !computerUse.length ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
@@ -304,25 +318,29 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
               <button type="button" onClick={() => expandable && setSelectedStage(expanded ? null : stage.id)} aria-expanded={expanded} className={`focus-ring relative grid w-full grid-cols-[20px_minmax(0,1fr)_20px] items-start gap-3 rounded-lg px-2 py-2.5 text-left focus-visible:outline-[var(--border)] focus-visible:outline-offset-0 ${expandable ? "content-hover cursor-pointer" : "cursor-default"}`}>
                 <StageMarker completed={completed} current={current} failed={failed} paused={paused} />
                 <span className="min-w-0">
-                  <span className={`block text-[11px] font-semibold ${current || completed ? "text-[var(--ink)]" : "text-[var(--ink-muted)]"}`}>{stage.label}</span>
-                  {summary && <span className={`mt-0.5 block text-[9px] ${failed ? "text-[var(--red)]" : current ? "text-[var(--ink-soft)]" : "text-[var(--ink-muted)]"}`}>{summary}</span>}
+                  <span className={`block text-[12px] font-semibold ${current || completed ? "text-[var(--ink)]" : "text-[var(--ink-muted)]"}`}>{stage.label}</span>
+                  {summary && <span className={`mt-0.5 block text-[10px] ${failed ? "text-[var(--red)]" : current ? "text-[var(--ink-soft)]" : "text-[var(--ink-muted)]"}`}>{summary}</span>}
                 </span>
                 {expandable && <ChevronDown className={`mt-0.5 size-4 shrink-0 text-[var(--ink-muted)] transition-transform ${expanded ? "rotate-180" : ""}`} />}
               </button>
               {expanded && <div className="ml-10 px-2 pb-5 pt-1">
-                {liveExecutor && <div><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{liveExecutor.label}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{liveExecutor.value}</div></div>}
+                {liveExecutor && <div><div className="text-[10px] font-semibold text-[var(--ink-muted)]">{liveExecutor.label}</div><div className="mt-1 text-[12px] font-semibold text-[var(--ink)]">{liveExecutor.value}</div></div>}
+                {checks.some((check) => preflightLabels[check]) && <ul aria-label="Preflight checks" className="mb-5 mt-2 space-y-2.5">{checks.filter((check) => preflightLabels[check]).map((check) => <li key={check} className="flex items-center gap-2.5 text-[11px] text-[var(--ink-soft)]"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-[#198754] text-white"><Check className="size-3" strokeWidth={3} /></span><span className="line-through decoration-[var(--ink-muted)]">{preflightLabels[check]}</span></li>)}</ul>}
                 {activity && <>
                 {activity.reason && <p className={`mb-4 text-[11px] leading-5 ${recovered ? "text-[var(--ink-soft)]" : "text-[var(--red)]"}`}>{recovered ? "This step stopped earlier; recovery is complete." : activity.reason}</p>}
                 {needsConnectionRecovery && <Button size="sm" variant="secondary" className="mb-5" onClick={() => onNavigateConnection(needsConnectionRecovery)}>Open connection <ArrowUpRight className="size-3.5" /></Button>}
-                {stage.id === "preflight" && activity.status === "succeeded" && activity.checks.some((check) => preflightLabels[check]) && <ul aria-label="Preflight checks" className="mb-5 space-y-2.5">{activity.checks.filter((check) => preflightLabels[check]).map((check) => <li key={check} className="flex items-center gap-2.5 text-[11px] text-[var(--ink-soft)]"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-[#198754] text-white"><Check className="size-3" strokeWidth={3} /></span><span className="line-through decoration-[var(--ink-muted)]">{preflightLabels[check]}</span></li>)}</ul>}
+                {stage.id === "trigger" && linkedIncident.data && <div className="mb-4 text-[11px] leading-5"><div className="text-[10px] font-semibold text-[var(--ink-muted)]">Incident</div>{linkedIncident.data.description && <p className="mt-1 whitespace-pre-line text-[var(--ink-soft)]">{linkedIncident.data.description}</p>}<button type="button" className="focus-ring mt-1 inline-flex items-center gap-1 rounded font-semibold text-[var(--ink)]" onClick={() => onNavigateIncident(linkedIncident.data!.id)}>View incident <ArrowUpRight className="size-3" /></button></div>}
                 {details.length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{details.map((detail) => {
                   const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && rotationTrigger(selected.trigger) !== "Manual rotation"
-                  return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
+                  return <div key={`${detail.label}-${detail.value}`}><div className="text-[10px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
-                {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
-                {stage.id === "plan" && ["succeeded", "recovered"].includes(activity.status) && <PlanProgress history={history.data} run={selected} />}
-                {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Builder AI</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
+                {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[10px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[12px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[12px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
+                {stage.id === "plan" && (activity.agent_input?.length ?? 0) > 0 && <details className="mt-4 text-[11px] text-[var(--ink-soft)]"><summary className="focus-ring w-fit cursor-pointer rounded font-medium">What the agent considered</summary><dl className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2">{activity.agent_input!.map((item) => <div key={item.label}><dt className="text-[9px] text-[var(--ink-muted)]">{item.label}</dt><dd className="mt-1 text-[10px] text-[var(--ink)]">{item.value}</dd></div>)}</dl></details>}
+                {stage.id === "plan" && (activity.agent_input?.length ?? 0) > 0 && activity.status === "succeeded" && <p className="mt-4 text-[11px] font-medium text-[var(--ink-soft)]">Plan validated against this key’s controls.</p>}
+                {stage.id === "plan" && ["succeeded", "recovered"].includes(activity.status) && <PlanProgress history={history.data} run={selected} actual={activity.plan_steps} />}
+                {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[10px] font-semibold text-[var(--ink-muted)]">Builder AI</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[12px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
+                {!computerUse.length && <p className="mt-4 text-[10px] text-[var(--ink-muted)]">Recorded {formatDate(activity.completed_at, true)}</p>}
                 </>}
                 {computerUse.length > 0 && <RunActivity runId={selected.id} activities={computerUse} />}
               </div>}
