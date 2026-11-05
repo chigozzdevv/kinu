@@ -1,4 +1,12 @@
-import type { Approval, ManagedCredential, RotationRun } from "../types"
+import type { Approval, ManagedCredential, RotationHistory, RotationRun, StageName } from "../types"
+
+export function planStepState(history: RotationHistory | undefined, run: RotationRun, stage: StageName): "done" | "current" | "stopped" | "pending" {
+  const activity = history?.stages.filter((item) => item.stage === stage).at(-1)
+  if (activity?.status === "succeeded") return "done"
+  if (activity?.status === "failed" || (run.stage === stage && ["failed", "cleanup-required"].includes(run.status))) return "stopped"
+  if (run.stage === stage && ["pending", "running", "recovering", "paused"].includes(run.status)) return "current"
+  return "pending"
+}
 
 const priority: Partial<Record<RotationRun["status"], number>> = {
   "cleanup-required": 5, recovering: 4, running: 3, paused: 2, pending: 1,

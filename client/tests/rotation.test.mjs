@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { rotationTrigger } from "../src/lib/format.ts"
-import { currentRotation, currentRotations, isActionableApproval, isBlockingRotation } from "../src/lib/rotation-state.ts"
+import { currentRotation, currentRotations, isActionableApproval, isBlockingRotation, planStepState } from "../src/lib/rotation-state.ts"
 
 const credential = { id: "key_one", organisation_id: "org_one", control_version: "controls_one" }
 const run = (id, status, day, changes = {}) => ({
@@ -9,6 +9,17 @@ const run = (id, status, day, changes = {}) => ({
   created_at: `2026-10-${String(day).padStart(2, "0")}T00:00:00Z`,
   plan_hash: "plan_one", current_generation_id: "generation_one", target_generation_id: "generation_two",
   ...changes,
+})
+
+test("plan checks reflect recorded stage outcomes rather than timeline position", () => {
+  const running = run("one", "running", 1, { stage: "deploy" })
+  const history = { stages: [{ stage: "create", status: "succeeded" }, { stage: "store", status: "failed" }] }
+  assert.equal(planStepState(history, running, "create"), "done")
+  assert.equal(planStepState(history, running, "store"), "stopped")
+  assert.equal(planStepState(history, running, "deploy"), "current")
+  assert.equal(planStepState(history, running, "verify"), "pending")
+  assert.equal(planStepState({ stages: [...history.stages, { stage: "create", status: "recovered" }] }, running, "create"), "pending")
+  assert.equal(planStepState(undefined, { ...running, status: "failed" }, "deploy"), "stopped")
 })
 
 test("current key status does not keep old failed attempts after a later success", () => {

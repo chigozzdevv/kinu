@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { isBlockingRotation } from "../lib/rotation-state"
+import { isBlockingRotation, planStepState } from "../lib/rotation-state"
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowUpRight, Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, Pause, Plus, X } from "lucide-react"
 import { RunActivity } from "../components/activity"
@@ -32,6 +32,51 @@ const stages: Array<{ id: StageName; label: string }> = [
   { id: "revoke", label: "Revoke" },
   { id: "complete", label: "Complete" },
 ]
+
+const planSteps: Array<{ id: StageName; label: string }> = [
+  { id: "create", label: "Create a replacement key" },
+  { id: "store", label: "Store the replacement securely" },
+  { id: "deploy", label: "Deploy to connected apps" },
+  { id: "verify", label: "Verify the replacement and deployment" },
+  { id: "rollout", label: "Roll out the replacement" },
+  { id: "observe", label: "Observe the replacement" },
+  { id: "approval", label: "Check revocation approval" },
+  { id: "revoke", label: "Revoke and verify the previous key" },
+  { id: "complete", label: "Complete the rotation" },
+]
+
+const preflightLabels: Record<string, string> = {
+  "provider-ready": "Provider connection ready",
+  "credential-known": "Current credential identified",
+  "scopes-known": "Credential permissions identified",
+  "playbook-eligible": "Provider procedure ready",
+  "management-authenticated": "Provider access authenticated",
+  "store-ready": "Secret storage ready",
+  "consumers-known": "App mappings available",
+  "runtime-ready": "Connected apps ready",
+  "verifier-ready": "Verification ready",
+  "overlap-supported": "Key overlap supported",
+  "mutation-declared": "Provider operations available",
+  "no-conflict": "No conflicting rotation",
+  "approvers-known": "Approver available",
+}
+
+function PlanProgress({ history, run }: { history: RotationHistory | undefined; run: RotationRun }) {
+  return <ol aria-label="Rotation plan" className="mt-5 space-y-3">
+    {planSteps.map((step) => {
+      const state = planStepState(history, run, step.id)
+      const done = state === "done"
+      const current = state === "current"
+      return <li key={step.id} className="flex items-start gap-3 text-[11px] leading-5">
+        {done ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[#198754] text-white" aria-label="Completed"><Check className="size-3" strokeWidth={3} /></span>
+          : state === "stopped" ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[var(--red)] text-white" aria-label="Stopped"><X className="size-3" strokeWidth={3} /></span>
+          : current ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-[var(--ink-soft)]" aria-label="Current step"><span className="size-1.5 rounded-full bg-[var(--ink-soft)]" /></span>
+            : <span className="mt-0.5 size-4 shrink-0 rounded-full border border-[var(--border)]" aria-label="Not completed" />}
+        <span className={done ? "text-[var(--ink-soft)]" : "text-[var(--ink)]"}>{step.label}</span>
+      </li>
+    })}
+  </ol>
+}
 
 function latestActivity(history: RotationHistory | undefined, stage: StageName): RunStageActivity | undefined {
   return history?.stages.filter((item) => item.stage === stage).at(-1)
@@ -248,7 +293,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const current = index === stageIndex && !["completed", "cancelled", "compensated"].includes(selected.status)
             const failed = !recovered && (activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status)))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
-            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason)) || computerUse.length)
+            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason || (stage.id === "preflight" && activity.checks.length) || stage.id === "plan")) || computerUse.length)
             const liveExecutor = current && !activity && !computerUse.length ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
@@ -269,11 +314,13 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                 {activity && <>
                 {activity.reason && <p className={`mb-4 text-[11px] leading-5 ${recovered ? "text-[var(--ink-soft)]" : "text-[var(--red)]"}`}>{recovered ? "This step stopped earlier; recovery is complete." : activity.reason}</p>}
                 {needsConnectionRecovery && <Button size="sm" variant="secondary" className="mb-5" onClick={() => onNavigateConnection(needsConnectionRecovery)}>Open connection <ArrowUpRight className="size-3.5" /></Button>}
+                {stage.id === "preflight" && activity.status === "succeeded" && activity.checks.some((check) => preflightLabels[check]) && <ul aria-label="Preflight checks" className="mb-5 space-y-2.5">{activity.checks.filter((check) => preflightLabels[check]).map((check) => <li key={check} className="flex items-center gap-2.5 text-[11px] text-[var(--ink-soft)]"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-[#198754] text-white"><Check className="size-3" strokeWidth={3} /></span><span className="line-through decoration-[var(--ink-muted)]">{preflightLabels[check]}</span></li>)}</ul>}
                 {details.length > 0 && <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">{details.map((detail) => {
                   const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && rotationTrigger(selected.trigger) !== "Manual rotation"
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[9px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div><div className="mt-1 text-[10px] font-semibold text-[var(--ink)]">{decision.decision}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
+                {stage.id === "plan" && ["succeeded", "recovered"].includes(activity.status) && <PlanProgress history={history.data} run={selected} />}
                 {!computerUse.length && activity.browser_actions.length > 0 && <div className="mt-5"><div className="text-[9px] font-semibold text-[var(--ink-muted)]">Builder AI</div><div className="mt-3 space-y-3">{activity.browser_actions.map((action) => <div key={action.step_id}><div className="text-[10px] font-semibold">{titleCase(action.operation)}</div><div className="mt-1 text-[10px] leading-5 text-[var(--ink-soft)]">{action.objective}</div><div className="mt-0.5 text-[9px] text-[var(--ink-muted)]">{action.outcome}</div></div>)}</div></div>}
                 {attempts.length > 1 && <div className="mt-5 text-[9px] text-[var(--ink-muted)]">Attempt {attempts.length}</div>}
                 </>}
