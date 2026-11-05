@@ -39,7 +39,7 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
     primary={step < 2 ? <Button onClick={() => setStep((value) => value + 1)} disabled={step === 0 ? !version || detail.isFetching : !token}>Continue</Button>
       : <Button onClick={() => create.mutate()} disabled={create.isPending || !version || detail.isFetching}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
     {step === 0 && <div className="space-y-4">
-      <ResourceSelect label="Playbook" hideLabel value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => setAdding(true)}>
+      <ResourceSelect label="Playbook" hideLabel size="sm" width="compact" value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => setAdding(true)}>
         <option value="">{books.isLoading ? "Loading…" : "Select playbook"}</option>
         {(books.data ?? []).filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </ResourceSelect>
