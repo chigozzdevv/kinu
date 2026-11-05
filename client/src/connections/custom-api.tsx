@@ -38,7 +38,8 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
     error={(books.error ?? detail.error ?? create.error)?.message}
     primary={step < 2 ? <Button onClick={() => setStep((value) => value + 1)} disabled={step === 0 ? !version || detail.isFetching : !token}>Continue</Button>
       : <Button onClick={() => create.mutate()} disabled={create.isPending || !version || detail.isFetching}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
-    {step === 0 && <div className="space-y-4">
+    {step === 0 && <div className="space-y-5">
+      <p className="text-[10px] leading-5 text-[var(--ink-muted)]">Rotate keys through the provider API.</p>
       <ResourceSelect label="Playbook" hideLabel size="sm" width="compact" value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => setAdding(true)}>
         <option value="">{books.isLoading ? "Loading…" : "Select playbook"}</option>
         {(books.data ?? []).filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
