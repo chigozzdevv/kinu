@@ -28,7 +28,8 @@ FROM browser-deps AS executor
 COPY packages ./packages
 COPY server ./server
 RUN uv sync --frozen --no-dev --no-editable --all-extras --package kinu-server
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+RUN install -d -m 0700 -o 65532 -g 65532 /home/kinu /home/kinu/.config /home/kinu/.cache
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers HOME=/home/kinu XDG_CONFIG_HOME=/home/kinu/.config XDG_CACHE_HOME=/home/kinu/.cache
 USER 65532:65532
 EXPOSE 8002
 CMD ["uvicorn", "executor.app:app", "--host", "0.0.0.0", "--port", "8002", "--no-access-log"]
