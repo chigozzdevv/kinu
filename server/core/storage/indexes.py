@@ -92,7 +92,19 @@ async def ensure_indexes(database: Database) -> None:
             IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
             IndexModel([("organisation_id", 1), ("run_id", 1), ("stage", 1)]),
         ],
-        "mail": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
+        "mail": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel(
+                [("state", 1), ("available_at", 1), ("lease_until", 1)],
+                partialFilterExpression={"type": "incident-report"},
+                name="incident_report_delivery",
+            ),
+            IndexModel(
+                [("organisation_id", 1), ("created_at", -1)],
+                partialFilterExpression={"type": "incident-report"},
+                name="incident_report_rate",
+            ),
+        ],
         "source_deliveries": [
             IndexModel([("state", 1), ("available_at", 1)]),
             IndexModel("expires_on", expireAfterSeconds=0),
