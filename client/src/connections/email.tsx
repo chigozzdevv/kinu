@@ -43,7 +43,13 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
       </div>
       <p className="text-[11px] leading-5 text-[var(--ink-soft)]">Add this address in your mailbox’s forwarding settings, then enable forwarding.</p>
       {box.confirmation_url && <a className="focus-ring inline-flex rounded-lg bg-[var(--ink)] px-4 py-2 text-[11px] font-semibold text-white" href={box.confirmation_url} target="_blank" rel="noreferrer">Confirm forwarding ↗</a>}
-      {(!box.confirmation_url || box.receiving) && <p className="text-[11px] leading-5 text-[var(--ink-soft)]" role="status">{box.receiving ? "Receiving email" : "Waiting for email"}</p>}
+      {(!box.confirmation_url || box.receiving) && <p className="inline-flex items-center gap-2 text-[11px] leading-5 text-[var(--ink-soft)]" role="status">
+        <span className="relative inline-flex size-2 shrink-0" aria-hidden="true">
+          {box.receiving && <span className="absolute inset-0 rounded-full bg-[var(--green)] opacity-25 motion-safe:animate-ping" />}
+          <span className={`relative inline-flex size-2 rounded-full ${box.receiving ? "bg-[var(--green)]" : "bg-[var(--ink-soft)] opacity-40"}`} />
+        </span>
+        {box.receiving ? "Monitoring" : "Waiting for email"}
+      </p>}
     </div>
   </SetupPage>
 }
