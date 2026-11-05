@@ -27,7 +27,7 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
     else onClose()
   } })
 
-  if (adding) return <PlaybookSetup execution="api" onClose={() => setAdding(false)} onCreated={async (created) => {
+  if (adding) return <PlaybookSetup execution="api" showIntroduction={false} onClose={() => setAdding(false)} onCreated={async (created) => {
     await query.invalidateQueries({ queryKey: ["api-playbooks"] })
     setBookId(created.active_version_id ? created.id : "")
     setAdding(false)
@@ -39,7 +39,6 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
     primary={step < 2 ? <Button onClick={() => setStep((value) => value + 1)} disabled={step === 0 ? !version || detail.isFetching : !token}>Continue</Button>
       : <Button onClick={() => create.mutate()} disabled={create.isPending || !version || detail.isFetching}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
     {step === 0 && <div className="space-y-4">
-      <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use the API. Add a docs link or instructions.</p>
       <ResourceSelect label="Playbook" hideLabel value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => setAdding(true)}>
         <option value="">{books.isLoading ? "Loading…" : "Select playbook"}</option>
         {(books.data ?? []).filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}

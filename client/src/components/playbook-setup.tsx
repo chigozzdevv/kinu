@@ -21,7 +21,7 @@ function slug(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64)
 }
 
-export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = "", execution = "browser" }: { onClose: () => void; onCreated: (playbook: Playbook) => Promise<void>; existing?: PlaybookDetail | ApiPlaybookDetail; initialPlatform?: string; execution?: "browser" | "api" }) {
+export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = "", execution = "browser", showIntroduction = true }: { onClose: () => void; onCreated: (playbook: Playbook) => Promise<void>; existing?: PlaybookDetail | ApiPlaybookDetail; initialPlatform?: string; execution?: "browser" | "api"; showIntroduction?: boolean }) {
   const { active } = useOrganisation()
   const canPublish = active.role === "administrator"
   const [step, setStep] = useState(0)
@@ -64,7 +64,7 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
 
   return <SetupPage eyebrow="Inventory / Playbooks" title={existing ? "New playbook version" : execution === "api" ? "Add API playbook" : "Add browser playbook"} steps={steps} current={step} onBack={() => { setStep(0); save.reset() }} onCancel={onClose} error={(prepare.error ?? save.error)?.message} primary={step === 0 ? <Button onClick={() => { save.reset(); prepare.mutate() }} disabled={!sourceReady || prepare.isPending}>{prepare.isPending ? "Generating…" : "Generate"}</Button> : <Button onClick={() => save.mutate()} disabled={!prepared || save.isPending}>{save.isPending ? "Saving…" : canPublish ? "Publish playbook" : "Save draft"}</Button>}>
     {step === 0 && <div className="space-y-5">
-      <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use {execution === "api" ? "the API" : "the provider’s website"}. Add a docs link or instructions.</p>
+      {showIntroduction && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use {execution === "api" ? "the API" : "the provider’s website"}. Add a docs link or instructions.</p>}
       <FormGrid>
         <div role="group" aria-label="Source type" className="flex gap-2 sm:col-span-2">{(["instructions", "links"] as const).map((mode) => <Button key={mode} size="sm" variant={sourceMode === mode ? "primary" : "secondary"} aria-pressed={sourceMode === mode} disabled={prepare.isPending} onClick={() => { setSourceMode(mode); setPrepared(null); prepare.reset(); save.reset() }}>{mode === "instructions" ? "Instructions" : "Links"}</Button>)}</div>
         {sourceMode === "instructions"

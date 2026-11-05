@@ -26,13 +26,13 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
   if (inbox.error) return <div className="page"><Failure error={inbox.error} /><Button className="mt-4" variant="secondary" onClick={onBack}>Back</Button></div>
   if (!inbox.data) return <ConnectPage eyebrow="Inventory / Connections" title="Email alerts" onBack={onBack} onClose={onClose} error={create.error?.message} action={<Button disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
     <IntegrationMark kind="email" />
-    <p className="max-w-64 text-center text-[11px] leading-5 text-[var(--ink-soft)]">Get an address for your workspace. Forward alerts there for Kinu to check.</p>
+    <p className="max-w-64 text-center text-[11px] leading-5 text-[var(--ink-soft)]">Forward alerts to your workspace inbox.</p>
   </ConnectPage>
   const box = inbox.data
   return <SetupPage eyebrow="Inventory / Connections" title="Email alerts" steps={["Forward alerts"]} current={0} onBack={onBack} onExit={onBack} onCancel={onClose} error={finish.error?.message || copyError} primary={<Button disabled={finish.isPending} onClick={() => finish.mutate()}>{finish.isPending ? "Saving…" : "Done"}</Button>}>
     <div className="space-y-6">
       <div>
-        <p className="mb-3 text-[11px] leading-5 text-[var(--ink-soft)]">Forward alerts to this address.</p>
+        <p className="mb-3 text-[11px] font-medium text-[var(--ink-soft)]">Forwarding address</p>
         <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3">
           <code className="min-w-0 flex-1 break-all text-[12px] select-all">{box.address}</code>
           <Button variant="ghost" size="sm" aria-label={copied ? "Address copied" : "Copy email address"} onClick={async () => {
@@ -41,14 +41,9 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
           }}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
         </div>
       </div>
-      <ol className="list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[var(--ink-soft)]">
-        <li>Add this address in your mailbox’s forwarding settings.</li>
-        <li>Confirm forwarding here if your mailbox asks.</li>
-        <li>Enable forwarding in your mailbox.</li>
-      </ol>
+      <p className="text-[11px] leading-5 text-[var(--ink-soft)]">Add this address in your mailbox’s forwarding settings, then enable forwarding.</p>
       {box.confirmation_url && <a className="focus-ring inline-flex rounded-lg bg-[var(--ink)] px-4 py-2 text-[11px] font-semibold text-white" href={box.confirmation_url} target="_blank" rel="noreferrer">Confirm forwarding ↗</a>}
-      <p className="text-[11px] leading-5 text-[var(--ink-soft)]" role="status">{box.receiving ? "Receiving email." : box.confirmation_url ? "Forwarding confirmation received." : "Waiting for your first email."}</p>
-      <p className="text-[10px] leading-5 text-[var(--ink-muted)]">You can also use this as your provider’s alert address.</p>
+      {(!box.confirmation_url || box.receiving) && <p className="text-[11px] leading-5 text-[var(--ink-soft)]" role="status">{box.receiving ? "Receiving email" : "Waiting for email"}</p>}
     </div>
   </SetupPage>
 }
