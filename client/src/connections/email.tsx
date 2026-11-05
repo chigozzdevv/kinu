@@ -10,7 +10,7 @@ import type { ProviderSetupProps } from "./provider-setup-props"
 
 export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSetupProps) {
   const cache = useQueryClient()
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<"inbox" | "sender" | null>(null)
   const [copyError, setCopyError] = useState("")
   const inbox = useQuery({ queryKey: ["email-inbox"], queryFn: api.getEmailInbox, refetchInterval: 5_000 })
   const reportOptions = useQuery({ queryKey: ["incident-report-config"], queryFn: () => api.getIncidentReportOptions() })
@@ -26,6 +26,10 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
     if (onCreated && inbox.data) await onCreated(await api.getConnection(inbox.data.id))
     else onClose()
   } })
+  const copyAddress = async (address: string, kind: "inbox" | "sender") => {
+    try { await navigator.clipboard.writeText(address); setCopied(kind); setCopyError("") }
+    catch { setCopyError("Select the address and copy it manually.") }
+  }
   if (inbox.isLoading) return <div className="page"><Loading /></div>
   if (inbox.error) return <div className="page"><Failure error={inbox.error} /><Button className="mt-4" variant="secondary" onClick={onBack}>Back</Button></div>
   if (!inbox.data) return <ConnectPage eyebrow="Inventory / Connections" title="Email alerts" onBack={onBack} onClose={onClose} error={create.error?.message} action={<Button disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
@@ -33,16 +37,14 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
     <p className="max-w-64 text-center text-[11px] leading-5 text-[var(--ink-soft)]">Forward alerts to your workspace inbox.</p>
   </ConnectPage>
   const box = inbox.data
+  const testSender = reportOptions.data?.email_sender
   return <SetupPage eyebrow="Inventory / Connections" title="Email alerts" steps={["Forward alerts"]} current={0} onBack={onBack} onExit={onBack} onCancel={onClose} error={finish.error?.message || copyError} primary={<Button disabled={finish.isPending} onClick={() => finish.mutate()}>{finish.isPending ? "Saving…" : "Done"}</Button>}>
     <div className="space-y-6">
       <div>
         <p className="mb-3 text-[11px] font-medium text-[var(--ink-soft)]">Forwarding address</p>
         <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3">
           <code className="min-w-0 flex-1 break-all text-[12px] select-all">{box.address}</code>
-          <Button variant="ghost" size="sm" aria-label={copied ? "Address copied" : "Copy email address"} onClick={async () => {
-            try { await navigator.clipboard.writeText(box.address); setCopied(true); setCopyError("") }
-            catch { setCopyError("Select the address and copy it manually.") }
-          }}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
+          <Button variant="ghost" size="sm" aria-label={copied === "inbox" ? "Address copied" : "Copy email address"} onClick={() => void copyAddress(box.address, "inbox")}>{copied === "inbox" ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
         </div>
       </div>
       <ol className="list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[var(--ink-soft)] [&_strong]:font-medium [&_strong]:text-[var(--ink)]">
@@ -52,7 +54,7 @@ export function EmailSetup({ onBack, onClose, onChanged, onCreated }: ProviderSe
         <li>Tick <strong>Forward it to</strong>, select your Kinu address, then click <strong>Create filter</strong>.</li>
         <li>Click <strong>Done</strong> here.</li>
       </ol>
-      {reportOptions.data?.email_sender && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">For Kinu test alerts, enter <span className="font-medium text-[var(--ink)]">{reportOptions.data.email_sender}</span> in <span className="font-medium text-[var(--ink)]">From</span>.</p>}
+      {testSender && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">For Kinu test alerts, enter <span className="font-medium text-[var(--ink)]">{testSender}</span>{" "}<button type="button" className="focus-ring inline-flex rounded p-1 align-middle text-[var(--ink-soft)] hover:text-[var(--ink)]" aria-label={copied === "sender" ? "Test alert email copied" : "Copy test alert email"} onClick={() => void copyAddress(testSender, "sender")}>{copied === "sender" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</button>{" "}in <span className="font-medium text-[var(--ink)]">From</span>.</p>}
       <div className="flex flex-col items-start gap-4">
         {box.confirmation_url && <a className="focus-ring inline-flex rounded-lg bg-[var(--ink)] px-4 py-2 text-[11px] font-semibold text-white" href={box.confirmation_url} target="_blank" rel="noreferrer">Confirm forwarding ↗</a>}
         {(!box.confirmation_url || box.receiving) && <p className="inline-flex items-center gap-2 text-[11px] leading-5 text-[var(--ink-soft)]" role="status">
