@@ -204,6 +204,42 @@ async def test_forwarding_confirmation_is_shown_without_a_test_message_or_incide
     assert await database.collection("inventory").count_documents({"kind": "incident"}) == 0
 
 
+async def test_dismissing_confirmation_is_scoped_and_does_not_verify_forwarding(
+    source_app: Any,
+) -> None:
+    http, service, org = source_app.client, source_app.service, source_app.one
+    path = f"/v1/organisations/{org}/connections/email"
+    inbox = ForwardInbox.model_validate((await http.post(path, headers=HEADERS, json={})).json())
+    url = "https://mail-settings.google.com/mail/vf-fixture?token=fixture"
+    await service.sources.forwarding.received(inbox, url)
+    body = {"confirmation_url": url}
+
+    assert (
+        await http.post(
+            "/v1/organisations/org_unowned/connections/email/confirmation/dismiss",
+            headers=HEADERS,
+            json=body,
+        )
+    ).status_code == 403
+    assert (
+        await http.post(
+            path + "/confirmation/dismiss",
+            headers=HEADERS,
+            json={"confirmation_url": url + "-stale"},
+        )
+    ).status_code == 409
+    assert (await http.get(path, headers=HEADERS)).json()["confirmation_url"] == url
+
+    for _ in range(2):
+        dismissed = await http.post(path + "/confirmation/dismiss", headers=HEADERS, json=body)
+        assert dismissed.status_code == 200, dismissed.text
+        assert dismissed.json()["confirmation_url"] is None
+        assert not dismissed.json()["receiving"]
+    assert (
+        await service.sources.inventory.get_connection(org, inbox.id)
+    ).status is ConnectionStatus.SETUP_REQUIRED
+
+
 class Connector:
     async def verify(
         self, code: str, verifier: str, installation_id: int | None

@@ -30,6 +30,7 @@ export interface AwsPrepared {
 export const connections = {
   getEmailInbox: () => request<EmailInbox | null>(`${workspacePath()}/connections/email`),
   createEmailInbox: () => request<EmailInbox>(`${workspacePath()}/connections/email`, { method: "POST", body: "{}" }),
+  dismissEmailConfirmation: (confirmationUrl: string) => request<EmailInbox>(`${workspacePath()}/connections/email/confirmation/dismiss`, { method: "POST", body: JSON.stringify({ confirmation_url: confirmationUrl }) }),
   async prepareProviderBrowser(connectionId: Identifier): Promise<Connection> {
     return request(`${workspacePath()}/connections/provider/${connectionId}/browser`, { method: "POST" })
   },

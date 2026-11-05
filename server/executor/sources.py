@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from contracts import Contract, Identifier
 from core.errors import ResourceConflictError, ResourceSetupRequiredError
 from fastapi import APIRouter, Depends, HTTPException
+from mail.models import ForwardInbox
 from pydantic import Field
 
 from executor.deps import authenticated
@@ -17,12 +18,14 @@ class SourceRequest(Contract):
         "status",
         "email-get",
         "email-create",
+        "email-dismiss-confirmation",
         "github-begin",
         "github-discover",
         "github-complete",
         "webhook",
     ]
     organisation_id: Identifier | None = None
+    confirmation_url: str | None = Field(default=None, min_length=1, max_length=8192)
     subject: str | None = Field(default=None, min_length=1, max_length=512)
     session_id: Identifier | None = None
     state: str | None = Field(default=None, max_length=256)
@@ -53,11 +56,17 @@ async def control(
     if body.operation.startswith("email-") and org:
         if not service.config.email_receiving_ready:
             raise ResourceSetupRequiredError("Email receiving is not configured")
-        inbox = (
-            await sources.forwarding.create(org)
-            if body.operation == "email-create"
-            else await sources.forwarding.get(org)
-        )
+        inbox: ForwardInbox | None
+        if body.operation == "email-dismiss-confirmation":
+            if not body.confirmation_url:
+                raise ResourceConflictError("Forwarding confirmation is missing")
+            inbox = await sources.forwarding.dismiss_confirmation(org, body.confirmation_url)
+        else:
+            inbox = (
+                await sources.forwarding.create(org)
+                if body.operation == "email-create"
+                else await sources.forwarding.get(org)
+            )
         if inbox:
             connection = await service.sources.inventory.get_connection(org, inbox.id)
             if connection.archived_at or connection.status.value == "disabled":

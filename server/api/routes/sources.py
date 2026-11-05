@@ -1,16 +1,21 @@
 import base64
 from typing import Literal
 
-from contracts import Identifier
+from contracts import Contract, Identifier
 from core.auth import Permission
 from core.errors import ResourceConflictError, ResourceSetupRequiredError
 from fastapi import APIRouter, HTTPException, Request, status
 from mail.models import ForwardInbox
+from pydantic import Field
 
 from api.deps import Identity, required, services
 
 router = APIRouter(tags=["incident sources"])
 prefix = "/v1/organisations/{organisation_id}/connections/email"
+
+
+class DismissConfirmation(Contract):
+    confirmation_url: str = Field(min_length=1, max_length=8192)
 
 
 @router.get(prefix, response_model=ForwardInbox | None)
@@ -28,6 +33,22 @@ async def create(organisation_id: Identifier, identity: Identity, request: Reque
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
     return await required(api.private, "email receiving").call(
         "/incident-sources", {"operation": "email-create", "organisation_id": organisation_id}
+    )
+
+
+@router.post(prefix + "/confirmation/dismiss", response_model=ForwardInbox)
+async def dismiss_confirmation(
+    organisation_id: Identifier, body: DismissConfirmation, identity: Identity, request: Request
+) -> object:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
+    return await required(api.private, "email receiving").call(
+        "/incident-sources",
+        {
+            "operation": "email-dismiss-confirmation",
+            "organisation_id": organisation_id,
+            "confirmation_url": body.confirmation_url,
+        },
     )
 
 

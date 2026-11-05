@@ -135,6 +135,21 @@ class Forwarding:
                     connection.revision,
                 )
 
+    async def dismiss_confirmation(self, org: str, url: str) -> ForwardInbox:
+        async with self.rows.write(org) as rows:
+            current = await rows.get(ForwardInbox, org, self.identity(org))
+            if current.confirmation_url is None:
+                return current
+            if current.confirmation_url != url:
+                raise ResourceConflictError(
+                    "The forwarding confirmation changed. Refresh and try again."
+                )
+            updated = current.model_copy(
+                update={"confirmation_url": None, "revision": current.revision + 1}
+            )
+            await rows.replace(updated, current.revision)
+        return updated
+
     async def mailbox(self, org: str, identity: str) -> tuple[Mailbox, dict[str, Any]]:
         inbox = await self.get(org)
         if not inbox or inbox.id != identity:
