@@ -1,4 +1,5 @@
 import fnmatch
+import secrets
 from collections.abc import Iterable
 from urllib.parse import urlparse
 
@@ -135,6 +136,178 @@ class BrowserDriver:
                 "elements => elements.forEach(element => "
                 "element.removeAttribute('data-kinu-evidence-mask'))"
             )
+
+    async def model_screenshot(
+        self, session: BrowserSession, selector: Selector
+    ) -> tuple[bytes, dict[str, str], str]:
+        """Capture page geometry and only explicitly safe labels for visual inference."""
+        if (
+            session.status is not BrowserStatus.RUNNING
+            or session.model_paused
+            or session.recording_paused
+        ):
+            raise ResourceConflictError("Browser model view is blocked during private capture")
+        self._check_authentication()
+        self.validate_url(self.url)
+        target = await self.locator(selector)
+        handle = await target.element_handle()
+        if handle is None:
+            raise ResourceConflictError("Approved browser control is unavailable")
+        cdp = await self._page.context.new_cdp_session(self._page)
+        origin = self.url
+        marker = secrets.token_hex(16)
+        try:
+            await cdp.send("Emulation.setScriptExecutionDisabled", {"value": True})
+            tree = await cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
+            pending = [tree["root"]]
+            while pending:
+                node = pending.pop()
+                if any(
+                    root.get("shadowRootType") != "user-agent"
+                    for root in node.get("shadowRoots", ())
+                ):
+                    raise ResourceConflictError("Page contains unsupported shadow content")
+                pending.extend(node.get("children", ()))
+            result = await handle.evaluate(
+                r"""(target, marker) => {
+              if (Array.from(document.querySelectorAll('*')).some(e =>
+                e.shadowRoot || e.localName.includes('-') || e.hasAttribute('is')))
+                throw new Error('Page contains unsupported shadow content');
+              const safe = new Set(['API keys', 'Create API key', 'Create key', 'Add',
+                'Name', 'Permission', 'Domain', 'Sending access', 'More actions',
+                'Delete API key', 'Delete API Key', 'Delete', 'Revoke', 'Revoke key', 'Retire key',
+                'Cancel', 'Confirm', 'Save', 'Continue', 'Close']);
+              const all = Array.from(document.querySelectorAll(
+                'button, a[href], input:not([type=hidden]), select, textarea, '
+                + '[role=button], [role=menuitem], [role=textbox], [role=combobox]'
+              )).filter(e => {
+                const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+                return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0
+                  && r.top < innerHeight && r.left < innerWidth
+                  && s.visibility === 'visible' && s.display !== 'none';
+              });
+              if (!all.includes(target)) all.push(target);
+              let candidates = all.slice(0, 12);
+              if (!candidates.includes(target)) candidates[11] = target;
+              if (candidates.some(e => e.getBoundingClientRect().width < 1))
+                throw new Error('Browser control is not visible');
+              if (document.querySelector('[data-kinu-model-safe], [data-kinu-model-pseudo]')
+                  || document.getElementById('kinu-model-view-style')
+                  || document.getElementById('kinu-model-markers')
+                  || window.__kinuModelStyles) throw new Error('Model view marker collision');
+              const saved = [];
+              window.__kinuModelStyles = {marker, saved};
+              for (const e of document.querySelectorAll('*')) {
+                saved.push([e, e.getAttribute('style')]);
+                e.style.setProperty('color', 'transparent', 'important');
+                e.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');
+                e.style.setProperty('-webkit-text-stroke', '0', 'important');
+                e.style.setProperty('text-shadow', 'none', 'important');
+                e.style.setProperty('text-decoration-color', '#fff', 'important');
+                e.style.setProperty('background-image', 'none', 'important');
+                e.style.setProperty('border-image-source', 'none', 'important');
+                e.style.setProperty('mask-image', 'none', 'important');
+                e.style.setProperty('-webkit-mask-image', 'none', 'important');
+                e.style.setProperty('clip-path', 'none', 'important');
+                e.style.setProperty('background-color', '#fff', 'important');
+                e.style.setProperty('border-color', '#c7cdd3', 'important');
+                e.style.setProperty('outline-color', '#c7cdd3', 'important');
+                e.style.setProperty('filter', 'none', 'important');
+                e.style.setProperty('mix-blend-mode', 'normal', 'important');
+                e.style.setProperty('box-shadow', 'none', 'important');
+                if (e.children.length === 0 && safe.has((e.textContent || '').trim())) {
+                  e.setAttribute('data-kinu-model-safe', '');
+                  e.style.setProperty('color', '#151515', 'important');
+                  e.style.setProperty('-webkit-text-fill-color', '#151515', 'important');
+                }
+              }
+              for (const e of document.querySelectorAll('*')) {
+                for (const pseudo of ['::before', '::after', '::marker']) {
+                  const content = getComputedStyle(e, pseudo).content;
+                  if (content && content !== 'none' && content !== 'normal')
+                    e.setAttribute('data-kinu-model-pseudo', '');
+                }
+              }
+              const style = document.createElement('style');
+              style.id = 'kinu-model-view-style';
+              style.textContent = `
+                * { color: transparent !important; -webkit-text-fill-color: transparent !important;
+                    text-shadow: none !important; background-image: none !important;
+                    text-decoration-color: #fff !important; border-image-source: none !important;
+                    mask-image: none !important; -webkit-mask-image: none !important;
+                    clip-path: none !important;
+                    background-color: #fff !important; border-color: #c7cdd3 !important;
+                    outline-color: #c7cdd3 !important; filter: none !important;
+                    mix-blend-mode: normal !important; box-shadow: none !important;
+                    caret-color: transparent !important; }
+                *::before, *::after { content: none !important; background-image: none !important; }
+                [data-kinu-model-safe] { color: #151515 !important; }
+                #kinu-model-markers, #kinu-model-markers * { visibility: visible !important;
+                  color: white !important; -webkit-text-fill-color: white !important;
+                  font: bold 12px sans-serif !important; }
+              `;
+              document.documentElement.appendChild(style);
+              const overlay = document.createElement('div');
+              overlay.id = 'kinu-model-markers';
+              overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;'
+                + 'z-index:2147483647';
+              document.documentElement.appendChild(overlay);
+              const controls = {};
+              candidates.forEach((e, index) => {
+                const id = 'control_' + (index + 1), box = e.getBoundingClientRect();
+                const clone = e.cloneNode(true);
+                clone.querySelectorAll('kbd, svg, [aria-hidden=true]').forEach(n => n.remove());
+                const labelled = (e.getAttribute('aria-labelledby') || '').split(/\s+/)
+                  .map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
+                const labels = Array.from(e.labels || [])
+                  .map(label => label.textContent || '').join(' ').trim();
+                const text = (e.getAttribute('aria-label') || labelled || labels
+                  || clone.textContent || '').trim();
+                const rawKind = e.getAttribute('role') || e.tagName.toLowerCase();
+                const kind = ['button', 'menuitem', 'textbox', 'combobox', 'input',
+                  'select', 'textarea', 'a'].includes(rawKind) ? rawKind : 'control';
+                controls[id] = kind + (safe.has(text) ? ': ' + text : '');
+                const marker = document.createElement('span');
+                marker.textContent = String(index + 1);
+                marker.style.cssText = 'position:fixed;left:' + Math.max(0, box.left)
+                  + 'px;top:' + Math.max(0, box.top - 20) + 'px;background:#111;'
+                  + 'padding:3px 5px;border-radius:3px;';
+                overlay.appendChild(marker);
+              });
+              return { controls, approved: 'control_' + (candidates.indexOf(target) + 1) };
+            }""",
+                marker,
+            )
+            masks = self._page.locator(
+                "input, textarea, select, [contenteditable], iframe, canvas, video, img, svg, "
+                "object, embed, [data-kinu-model-pseudo]"
+            )
+            image = await self._page.screenshot(
+                type="png", animations="disabled", mask=[masks], mask_color="#dce1e6"
+            )
+            if self.url != origin:
+                raise ResourceConflictError("Browser page changed during visual observation")
+            return image, result["controls"], result["approved"]
+        finally:
+            try:
+                await self._page.evaluate(
+                    """marker => {
+                  if (window.__kinuModelStyles?.marker !== marker) return;
+                  document.getElementById('kinu-model-view-style')?.remove();
+                  document.getElementById('kinu-model-markers')?.remove();
+                  for (const [element, original] of window.__kinuModelStyles.saved) {
+                    if (original === null) element.removeAttribute('style');
+                    else element.setAttribute('style', original);
+                    element.removeAttribute('data-kinu-model-safe');
+                    element.removeAttribute('data-kinu-model-pseudo');
+                  }
+                  delete window.__kinuModelStyles;
+                }""",
+                    marker,
+                )
+            finally:
+                await cdp.detach()
+                await handle.dispose()
 
     async def live_screenshot(
         self,

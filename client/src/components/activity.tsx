@@ -125,7 +125,7 @@ export function RunActivity({ runId, activities }: { runId: string; activities: 
           <Explanation text={input.prompt} streaming={false} />
           {input.target && <p className="mt-2 text-[11px] text-white/80" title={input.intent ?? undefined}><code className="break-all">{input.target.replace(/^version_/, "pbk_")}</code></p>}
         </Message>}
-        {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before click" /></Message>}
+        {before?.image_reference && <Message actor="browser" attachment><ComputerUseImage runId={runId} activity={before} caption="Before action" /></Message>}
         {(proposal || content) && <Message actor="builder">
           {content && <Explanation text={content} streaming={streaming} />}
           {proposal && <div className={`${content ? "mt-3" : ""} flex flex-wrap items-baseline gap-x-2 gap-y-1`}><strong className="font-semibold">{titleCase(proposal.action ?? "action")}</strong><span>{proposal.arguments.button ? `“${proposal.arguments.button}”` : proposal.intent}</span></div>}

@@ -106,6 +106,49 @@ async def test_evidence_masks_inputs_and_token_text_and_blocks_capture_pages() -
             await tab.driver.evidence_screenshot(blocked)
 
 
+async def test_model_view_redacts_unrecognised_values_and_blocks_private_capture() -> None:
+    executable()
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content(
+            "<style>#generated::after { content: attr(data-value) !important; }"
+            "#text { color: red !important; -webkit-text-fill-color: red !important; }</style>"
+            '<div id="text">private-value-aaaaaaaa</div>'
+            '<div id="generated" data-value="private-value-aaaaaaaa"></div>'
+            '<input id="private" value="private-value-aaaaaaaa">'
+            '<button id="submit">Create key</button>'
+        )
+        selector = Selector(kind=SelectorKind.CSS, value="#submit")
+        image, controls, selected = await tab.driver.model_screenshot(session(), selector)
+        from pathlib import Path
+
+        Path("/tmp/kinu-model-view.png").write_bytes(image)
+        assert controls[selected] == "button: Create key"
+        await tab.page.evaluate("""() => {
+          document.querySelector('#text').textContent = 'private-value-bbbbbbbb';
+          document.querySelector('#generated').dataset.value = 'private-value-bbbbbbbb';
+          document.querySelector('#private').value = 'private-value-bbbbbbbb';
+        }""")
+        other, _, _ = await tab.driver.model_screenshot(session(), selector)
+        assert image == other
+        assert await tab.page.locator("#kinu-model-markers").count() == 0
+        blocked = session().model_copy(update={"model_paused": True, "recording_paused": True})
+        with pytest.raises(ResourceConflictError, match="private capture"):
+            await tab.driver.model_screenshot(blocked, selector)
+
+
+async def test_model_view_rejects_shadow_content() -> None:
+    executable()
+    async with Launcher(Platform()).open(definition()) as tab:
+        await tab.driver.setup_navigate("https://portal.example/keys")
+        await tab.page.set_content('<div id="host"></div><button id="submit">Create key</button>')
+        await tab.page.evaluate("document.querySelector('#host').attachShadow({mode:'closed'})")
+        with pytest.raises(Exception, match="unsupported shadow content"):
+            await tab.driver.model_screenshot(
+                session(), Selector(kind=SelectorKind.CSS, value="#submit")
+            )
+
+
 async def test_private_result_image_covers_fields_text_and_generated_content() -> None:
     executable()
     secret = "custom-private-value-without-a-provider-prefix"

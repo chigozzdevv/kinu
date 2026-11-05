@@ -106,7 +106,7 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         assert result.status is RunStatus.COMPLETED, (result.model_dump_json(), launcher.failures)
         assert platform.revoked == [credential.provider_id]
         assert not mutations
-        assert len(planner.calls) == 2
+        assert len(planner.calls) == 9
         history_store = HistoryStore(database, worker.images)
         public = await history_store.get(org, run.id)
         history = public.model_dump_json()
@@ -114,19 +114,22 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         proposals = [
             activity for activity in public.computer_use if activity.phase.value == "proposal"
         ]
-        assert len(proposals) == 2 and all(activity.content for activity in proposals)
+        assert len(proposals) == 9 and all(activity.content for activity in proposals)
         inputs = [activity for activity in public.computer_use if activity.phase.value == "input"]
-        assert len(inputs) == 2
+        assert len(inputs) == 9
         for activity in inputs:
             assert activity.image_reference and activity.instruction and activity.prompt
             assert activity.target == result.browser_playbook_version
             assert (org, activity.prompt + "\n" + activity.instruction) in planner.requests
             assert "Playbook: " in activity.instruction and "Step: " in activity.instruction
-            proposal = next(item for item in proposals if item.session_id == activity.session_id)
+            proposal = next(
+                item
+                for item in proposals
+                if item.session_id == activity.session_id and item.step_id == activity.step_id
+            )
             assert activity.recorded_at <= proposal.recorded_at
             assert public.computer_use.index(activity) < public.computer_use.index(proposal)
-            assert proposal.intent in {"Add", "Delete API Key"}
-            assert proposal.arguments["button"] == proposal.intent
+            assert proposal.arguments["control_id"].startswith("control_")
             content, kind = await history_store.image(org, run.id, activity.id)
             assert content.startswith(b"\x89PNG") and kind == "image/png"
         assert all(
@@ -137,13 +140,15 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         executions = [
             activity for activity in public.computer_use if activity.phase.value == "execution"
         ]
-        assert len(executions) == 2 and all(activity.result for activity in executions)
-        created = next(activity for activity in executions if activity.stage.value == "create")
-        retired = next(activity for activity in executions if activity.stage.value == "revoke")
+        assert len(executions) == 9
+        protected = [activity for activity in executions if activity.result]
+        assert len(protected) == 2
+        created = next(activity for activity in protected if activity.stage.value == "create")
+        retired = next(activity for activity in protected if activity.stage.value == "revoke")
         assert created.image_reference and created.image_digest
         image, kind = await history_store.image(org, run.id, created.id)
         assert image.startswith(b"\x89PNG") and kind == "image/png"
-        assert sum(bool(item.image_reference) for item in public.computer_use) == 3
+        assert sum(bool(item.image_reference) for item in public.computer_use) == 10
         progress = [item for item in public.computer_use if item.phase.value == "response"]
         assert len(progress) >= 4 and all(item.status.value == "streaming" for item in progress)
         assert created.result and created.result.provider_id == platform.created[-1]

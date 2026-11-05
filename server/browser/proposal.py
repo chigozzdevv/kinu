@@ -7,7 +7,6 @@ from contracts import (
     ComputerUseActivity,
     ComputerUseActivityPhase,
     ComputerUseActivityStatus,
-    PlaybookEffect,
     PlaybookStep,
     PlaybookVersion,
 )
@@ -39,10 +38,11 @@ class Proposals:
         ):
             raise ResourceConflictError("Browser task does not match its pinned playbook")
         await driver.validate_step(step)
-        label = await driver.control_label(step.selectors[0])
+        label = step.objective
+        image, controls, approved = await driver.model_screenshot(session, step.selectors[0])
         prompt = (
             "Create a replacement key following this playbook."
-            if step.effect is PlaybookEffect.CREATE_CREDENTIAL
+            if step.stage.value == "create"
             else "Retire the verified old key following this playbook."
         )
         instruction = "\n".join(
@@ -51,12 +51,6 @@ class Proposals:
                 "Version: " + version.id,
                 "Step: " + step.id,
                 "Objective: " + step.objective,
-                *(
-                    (condition.selector.name or condition.selector.value)
-                    + ": "
-                    + condition.expected
-                    for condition in step.conditions
-                ),
             ]
         )
         if len(instruction) > 2048 or re.search(
@@ -69,7 +63,7 @@ class Proposals:
             session.organisation_id,
             session.run_id,
             identity,
-            await driver.evidence_screenshot(session),
+            image,
         )
         await self.sessions.record_activity(
             session,
@@ -98,10 +92,11 @@ class Proposals:
             selected = await self.planner.choose(
                 session.organisation_id,
                 prompt + "\n" + instruction,
-                {step.id: label},
+                controls,
+                image,
                 progress.publish,
             )
-            if selected.control != step.id:
+            if selected.control != approved:
                 raise ResourceConflictError("Browser control is not approved")
             await driver.validate_step(step)
         except Exception:
@@ -119,10 +114,13 @@ class Proposals:
                 turn=session.step_count + 1,
                 phase=ComputerUseActivityPhase.PROPOSAL,
                 status=ComputerUseActivityStatus.PROPOSED,
-                action=BrowserActionKind.CLICK,
-                intent=label,
+                action={
+                    "browser.type": BrowserActionKind.TYPE,
+                    "browser.select": BrowserActionKind.SELECT,
+                }.get(step.tool, BrowserActionKind.CLICK),
+                intent=controls[selected.control],
                 target=step.id,
-                arguments={"control_id": selected.control, "button": label},
+                arguments={"control_id": selected.control},
                 content=selected.summary,
                 recorded_at=datetime.now(UTC),
             ),

@@ -233,7 +233,7 @@ class Worker:
                         "browser.select": BrowserActionKind.SELECT,
                     }.get(step.tool, BrowserActionKind.CLICK)
                     result_image: tuple[str, str] | None = None
-                    if step.effect is not PlaybookEffect.NONE:
+                    if step.tool != "browser.navigate":
                         await self.proposals.record(session, step, version, tab.driver)
                         await validate(self.database, state, fence)
                     if step.effect is PlaybookEffect.CREATE_CREDENTIAL:
@@ -306,7 +306,7 @@ class Worker:
                         await self.sessions.finish_action(
                             org, session.id, action.id, False, "Browser action did not complete"
                         )
-                        if step.effect is not PlaybookEffect.NONE:
+                        if step.tool != "browser.navigate":
                             await self._receipt(
                                 session, step, kind, ComputerUseActivityStatus.FAILED
                             )
@@ -314,18 +314,21 @@ class Worker:
                     await self.sessions.finish_action(org, session.id, action.id, True)
                     if capture:
                         session = await self.sessions.complete_capture(capture, session.revision)
-                    if step.effect is not PlaybookEffect.NONE:
+                    if step.tool != "browser.navigate":
+                        result = None
+                        if step.effect is not PlaybookEffect.NONE:
+                            result = BrowserActionResult(
+                                provider_id=capture.provider_id
+                                if capture
+                                else str(context["old_provider_id"]),
+                                secret_reference=capture.secret_reference if capture else None,
+                            )
                         await self._receipt(
                             session,
                             step,
                             kind,
                             ComputerUseActivityStatus.SUCCEEDED,
-                            BrowserActionResult(
-                                provider_id=capture.provider_id
-                                if capture
-                                else str(context["old_provider_id"]),
-                                secret_reference=capture.secret_reference if capture else None,
-                            ),
+                            result,
                             image=result_image,
                         )
                     if capture:

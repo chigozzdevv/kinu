@@ -3,18 +3,22 @@ import test from "node:test"
 import { createBuilderEngine, type AgentEngine } from "@agent-native/core/agent/engine"
 import { infer, navigationSchema } from "../server/navigation"
 
-const input = { system: "Choose the approved control", messages: [{ role: "user" as const, text: "Create key" }], schema: { type: "object", properties: { control: { type: "string" } } } }
+const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]).toString("base64")
+const input = { image, system: "Choose the approved control", messages: [{ role: "user" as const, text: "Create key" }], schema: { type: "object", properties: { control: { type: "string" } } } }
 
 function engine(text: string, complete = true): AgentEngine {
   return { ...createBuilderEngine(), async *stream(options) {
     assert.deepEqual(options.tools, [])
     assert.equal(options.maxOutputTokens, 2048)
+    assert.deepEqual(options.messages.at(-1)?.content.at(-1), { type: "image", data: image, mediaType: "image/png" })
     yield { type: "text-delta", text }
     if (complete) yield { type: "stop", reason: "end_turn" }
   } }
 }
 
 test("navigation accepts sanitized text with a schema and bounded structured output", async () => {
+  assert.equal(navigationSchema.safeParse({ ...input, image: "invalid" }).success, false)
+  await assert.rejects(infer({ ...input, image: Buffer.from("not a png").toString("base64") }, engine("{}"), "test"), /redacted PNG/)
   assert.equal(navigationSchema.safeParse({ ...input, cookies: "private" }).success, false)
   assert.equal(navigationSchema.safeParse({ ...input, messages: [{ role: "user", image: "private" }] }).success, false)
   assert.deepEqual(await infer(input, engine('{"control":"create"}'), "test"), { control: "create" })

@@ -6,6 +6,7 @@ from contracts import (
     ComputerUseActivity,
     ComputerUseActivityPhase,
     ComputerUseActivityStatus,
+    PlaybookEffect,
     RotationHistory,
     SecureCaptureResult,
     Stage,
@@ -62,12 +63,19 @@ class HistoryStore:
             .find({"organisation_id": org, "run_id": run})
             .sort("recorded_at", 1)
         ]
+        capture_steps = {
+            (item.session_id, item.step_id)
+            for item in activities
+            if item.phase is ComputerUseActivityPhase.INPUT
+            and item.effect is PlaybookEffect.CREATE_CREDENTIAL
+        }
         sessions = {
             item.session_id
             for item in activities
             if item.phase is ComputerUseActivityPhase.EXECUTION
             and item.status is ComputerUseActivityStatus.SUCCEEDED
             and item.stage is Stage.CREATE
+            and (item.session_id, item.step_id) in capture_steps
             and item.result is None
         }
         captures = (
@@ -95,6 +103,7 @@ class HistoryStore:
             and item.phase is ComputerUseActivityPhase.EXECUTION
             and item.status is ComputerUseActivityStatus.SUCCEEDED
             and item.stage is Stage.CREATE
+            and (item.session_id, item.step_id) in capture_steps
             and item.result is None
             else item
             for item in activities

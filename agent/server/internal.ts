@@ -20,7 +20,7 @@ export async function internalResponse(request: Request): Promise<Response> {
     return Response.json({ error: "Not found" }, { status: 404 })
   }
   const text = await request.text()
-  if (Buffer.byteLength(text) > (path === "/_internal/playbooks" ? 256000 : path === "/_internal/navigation" ? 65536 : 16384)) return Response.json({ error: "Request too large" }, { status: 413 })
+  if (Buffer.byteLength(text) > (path === "/_internal/playbooks" ? 256000 : path === "/_internal/navigation" ? 800000 : 16384)) return Response.json({ error: "Request too large" }, { status: 413 })
   if (path === "/_internal/rotation-plan") {
     const body = z.strictObject({ organisation_id: z.string().regex(/^[a-z][a-z0-9_-]{2,127}$/), input: planInput }).safeParse(JSON.parse(text))
     if (!body.success) return Response.json({ error: "Invalid rotation plan request" }, { status: 422 })
