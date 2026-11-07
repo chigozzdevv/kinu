@@ -118,7 +118,7 @@ export function App({
         if (route.addCredential) return <CredentialOnboarding onFinish={(id) => navigate({ section: "credentials", resourceId: id || undefined })} />
         return <CredentialsPage key={dashboardPath(route)} onAdd={() => navigate({ section: "credentials", addCredential: true })} initialCredentialId={route.resourceId} initialControlVersionId={route.controlVersionId} initialTab={route.tab} onSelectCredential={(credentialId, tab = "overview", controlVersionId) => navigate({ section: "credentials", resourceId: credentialId || undefined, tab, controlVersionId })} onNavigate={handleNavigate} onNavigateRotation={handleNavigateRotation} />
       case "playbooks":
-        return <PlaybooksPage />
+        return <PlaybooksPage key={dashboardPath(route)} initialPlaybookId={route.resourceId} onSelectPlaybook={(playbookId) => navigate({ section: "playbooks", resourceId: playbookId || undefined })} />
       case "incidents":
         return <IncidentsPage key={dashboardPath(route)} initialIncidentId={route.resourceId} onSelectIncident={(incidentId) => navigate({ section: "incidents", resourceId: incidentId || undefined })} onNavigateRotation={handleNavigateRotation} onAddCredential={() => navigate({ section: "credentials", addCredential: true })} onConnectSource={() => navigate({ section: "connections" })} />
       case "rotations":

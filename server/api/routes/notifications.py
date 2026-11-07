@@ -3,6 +3,7 @@ from contracts import (
     EmailNotificationEndpoint,
     Identifier,
     Notification,
+    NotificationDelivery,
     NotificationEndpoint,
     NotificationTopic,
 )
@@ -56,6 +57,18 @@ async def list_notifications(
     return await required(api.notifications, "notifications").list_notifications(
         organisation_id, limit
     )
+
+
+@router.get("/deliveries", response_model=tuple[NotificationDelivery, ...])
+async def list_delivery_problems(
+    organisation_id: Identifier,
+    identity: Identity,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> tuple[NotificationDelivery, ...]:
+    api = services(request)
+    await api.access.require(identity, organisation_id, Permission.NOTIFICATION_READ)
+    return await required(api.deliveries, "delivery records").problems(organisation_id, limit)
 
 
 @router.post("/{notification_id}/read", response_model=Notification)

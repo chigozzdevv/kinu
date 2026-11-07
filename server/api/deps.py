@@ -31,6 +31,7 @@ from core.overview import OverviewService
 from core.playbook import PlaybookService, WalkthroughService
 from core.playbook.api_store import ApiPlaybookStore
 from core.private import PrivateClient
+from core.storage.deliveries import Deliveries
 from core.verification import ProbeService
 from core.workflow import RunWorkflow
 from core.workflow.dispatch import RunDispatcher
@@ -56,6 +57,7 @@ class ApiServices:
     walkthroughs: WalkthroughService | None = None
     probes: ProbeService | None = None
     notifications: NotificationService | None = None
+    deliveries: Deliveries | None = None
     audit: AuditWriter | None = None
     overview: OverviewService | None = None
     browser_setup: BrowserSetupApi | None = None

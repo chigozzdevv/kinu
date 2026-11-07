@@ -165,7 +165,7 @@ class Recovery:
             created = await journal.get(org, run_id, Stage.CREATE)
             retired = await journal.get(org, run_id, Stage.REVOKE)
             deployed = await journal.get(org, run_id, Stage.DEPLOY)
-            completed = bool(
+            revoked = bool(
                 retired
                 and retired.status is StageExecutionStatus.SUCCEEDED
                 and all(
@@ -173,7 +173,25 @@ class Recovery:
                     for check in ("old_rejected", "replacement_valid", "old_secret_retired")
                 )
             )
-            if completed:
+            if not revoked and retired is None and run.current_generation_id:
+                async with Records(self.database).read() as rows:
+                    predecessor = await rows.get(
+                        CredentialGeneration, org, run.current_generation_id
+                    )
+                matches = [
+                    item
+                    for item in await self.provider.metadata(state.provider)
+                    if item["provider_id"] == predecessor.provider_id
+                ]
+                revoked = not matches or (
+                    len(matches) == 1
+                    and (
+                        matches[0].get("disabled") is True
+                        or matches[0].get("status")
+                        in {"disabled", "revoked", "inactive", "deleted"}
+                    )
+                )
+            if revoked:
                 if (
                     not created
                     or not deployed

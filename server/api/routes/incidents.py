@@ -85,6 +85,10 @@ async def report(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INCIDENT_WRITE)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
+    if body.recipient:
+        team = await required(api.accounts, "accounts").team(organisation_id)
+        if not any(member.email == body.recipient for member in team):
+            raise ResourceConflictError("test alerts can only be sent to workspace members")
     result = await required(api.private, "incident reporting").call(
         "/incident-sources",
         {

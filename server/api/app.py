@@ -28,6 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from policy import PolicyViolationError
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from telemetry import instrument
 
 from api.deps import ApiServices
@@ -122,20 +123,67 @@ def create_app(
     app.add_exception_handler(KinuError, _kinu_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(PolicyViolationError, _controls_error)
+    app.add_middleware(BodyLimitMiddleware)
     app.middleware("http")(_private_responses)
     instrument(app, "kinu-api")
     return app
 
 
+_BODY_LIMIT = 1_048_576
+_AUTH_BODY_LIMIT = 4096
+
+
+def _body_limit(method: str, path: str) -> int | None:
+    if method == "POST" and path.startswith("/auth/"):
+        return _AUTH_BODY_LIMIT
+    if method in {"POST", "PUT", "PATCH"} and path.startswith("/v1/"):
+        return _BODY_LIMIT
+    return None
+
+
+class BodyLimitMiddleware:
+    """Caps request bodies by streaming the receive channel instead of buffering blindly."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        limit = _body_limit(scope["method"], scope["path"]) if scope["type"] == "http" else None
+        if limit is None:
+            await self.app(scope, receive, send)
+            return
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > limit:
+                await _error(413, "invalid-input", "The request body is too large.")(
+                    scope, receive, send
+                )
+                return
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+        sent = False
+
+        async def replay() -> Message:
+            nonlocal sent
+            if sent:
+                return {"type": "http.disconnect"}
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+
 async def _private_responses(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    if (
-        request.url.path.startswith("/auth/")
-        and request.method == "POST"
-        and len(await request.body()) > 4096
-    ):
-        return _error(413, "invalid-input", "The sign-in form is too large.")
     response = await call_next(request)
     if request.url.path.startswith(("/auth/", "/v1/")):
         response.headers["Cache-Control"] = "no-store"

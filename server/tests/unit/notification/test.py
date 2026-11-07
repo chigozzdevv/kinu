@@ -5,7 +5,13 @@ import httpx
 import pytest
 from api.app import create_app
 from api.deps import ApiServices
-from contracts import Notification, NotificationEndpoint, NotificationKind, Severity
+from contracts import (
+    Notification,
+    NotificationDelivery,
+    NotificationEndpoint,
+    NotificationKind,
+    Severity,
+)
 from core.auth import AccessControl, AuthenticatedIdentity, Permission
 from core.errors import (
     AuthorizationError,
@@ -242,3 +248,29 @@ async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
     assert created.json()["email_address"] == "updated@acme.example"
     assert "auth_reference" not in created.json()
     assert "sender" not in created.json()
+
+
+def test_stored_delivery_rows_with_receipt_status_fields_validate() -> None:
+    occurred = datetime(2026, 8, 14, 12, tzinfo=UTC)
+    row = {
+        "id": "delivery_one",
+        "organisation_id": "org_one",
+        "notification_id": "notification_one",
+        "endpoint_id": "endpoint_one",
+        "endpoint_revision": 3,
+        "provider": "resend",
+        "state": "sent",
+        "available_at": occurred,
+        "attempts": 2,
+        "sent_at": occurred,
+        "provider_receipt": "email_receipt_one",
+        "last_error": None,
+        "status_due": occurred,
+        "provider_status": "accepted",
+        "status_checked_at": occurred,
+        "status_error": "Provider receipt lookup is unavailable",
+    }
+    delivery = NotificationDelivery.model_validate(row)
+    assert delivery.status_error == "Provider receipt lookup is unavailable"
+    assert delivery.provider_status == "accepted"
+    assert delivery.state is not None

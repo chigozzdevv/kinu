@@ -169,13 +169,14 @@ async def check() -> None:
             clean = await browser.new_context(accept_downloads=False, service_workers="block")
             page = await clean.new_page()
             assert secret not in await page.content()
+            planner_image = await page.screenshot()
             await clean.close()
             sink.value = b""
         finally:
             await browser.close()
     agent = Agent(secret)
     choice = await Planner(agent).choose(
-        "org_check", "Create a replacement key", {"create_key": "Create key"}
+        "org_check", "Create a replacement key", {"create_key": "Create key"}, planner_image
     )
     assert choice.control == "create_key" and choice.summary and 0 < agent.calls <= 4
     print("Browser checks passed: private capture, context disposal and Stagehand inference.")

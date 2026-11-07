@@ -100,7 +100,13 @@ class PasswordClient:
             await self.database.collection("users").insert_one(user)
         except DuplicateKeyError:
             return False
-        await self._send(email, "verify")
+        try:
+            await self._send(email, "verify")
+        except Exception:
+            await self.database.collection("users").delete_one(
+                {"_id": user["_id"], "verified": False}
+            )
+            raise
         return False
 
     async def verify(self, email: str, code: SecretStr) -> None:

@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+from typing import Any
 
 from contracts import Notification, NotificationDelivery, NotificationEndpoint
 from pymongo import ReturnDocument
+from pymongo.asynchronous.collection import AsyncCollection
 
 from core.errors import LeaseConflictError
 from core.storage.database import Database
@@ -11,7 +13,11 @@ from core.storage.records import Records
 
 class Deliveries:
     def __init__(self, database: Database) -> None:
-        self.database, self.collection = database, database.collection("notification_deliveries")
+        self.database = database
+
+    @property
+    def collection(self) -> AsyncCollection[dict[str, Any]]:
+        return self.database.collection("notification_deliveries")
 
     async def claim(
         self, owner_id: str, now: datetime, lease_duration: timedelta, limit: int
@@ -53,6 +59,22 @@ class Deliveries:
                 )
             results.append(NotificationClaim(delivery.id, delivery, notification, endpoint))
         return tuple(results)
+
+    async def problems(self, organisation_id: str, limit: int) -> tuple[NotificationDelivery, ...]:
+        rows = (
+            await self.collection.find(
+                {
+                    "organisation_id": organisation_id,
+                    "$or": [{"state": "failed"}, {"status_error": {"$exists": True}}],
+                }
+            )
+            .sort("available_at", -1)
+            .to_list(limit)
+        )
+        return tuple(
+            NotificationDelivery.model_validate({k: v for k, v in row.items() if k != "_id"})
+            for row in rows
+        )
 
     async def mark_sent(
         self, claim: NotificationClaim, owner_id: str, receipt: str, sent_at: datetime

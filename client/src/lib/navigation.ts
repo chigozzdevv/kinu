@@ -51,8 +51,12 @@ const detailSections = new Set<NavItem>([
   "incidents",
   "rotations",
   "approvals",
+  "playbooks",
   "connections",
 ])
+
+export const settingsTabs = ["profile", "team", "notifications", "ai"] as const
+export type SettingsTab = (typeof settingsTabs)[number]
 
 function decoded(value: string | undefined) {
   if (!value) return undefined
@@ -69,7 +73,10 @@ export function dashboardRoute(pathname = window.location.pathname, search = win
 
   const section = parts[1] as NavItem
   const resourceId = detailSections.has(section) ? decoded(parts[2]) : undefined
-  if (section === "settings" && new URLSearchParams(search).get("tab") === "ai") return { section, tab: "ai" }
+  if (section === "settings") {
+    const tab = new URLSearchParams(search).get("tab")
+    if (tab && settingsTabs.includes(tab as SettingsTab)) return { section, tab: tab as SettingsTab }
+  }
   if (section === "credentials" && !resourceId && new URLSearchParams(search).get("add") === "1") {
     return { section, addCredential: true }
   }
@@ -87,7 +94,7 @@ export function dashboardRoute(pathname = window.location.pathname, search = win
 export function dashboardPath(route: DashboardRoute): string {
   let path = route.section === "overview" ? "/dashboard" : `/dashboard/${route.section}`
   if (route.section === "credentials" && route.addCredential) return path + "?add=1"
-  if (route.section === "settings" && route.tab === "ai") return path + "?tab=ai"
+  if (route.section === "settings" && route.tab && settingsTabs.includes(route.tab as SettingsTab)) return path + `?tab=${route.tab}`
   if (route.resourceId && detailSections.has(route.section)) path += `/${encodeURIComponent(route.resourceId)}`
   if (route.section !== "credentials" || !route.resourceId) return path
 

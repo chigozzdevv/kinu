@@ -135,6 +135,18 @@ def test_cancel_can_abandon_a_failed_run() -> None:
     assert cancelled.lease is None
 
 
+def test_cancel_can_abandon_a_stuck_cleanup_run() -> None:
+    machine, run = start()
+    failure = Failure(
+        code="provider-response-lost", message="creation result is ambiguous", retryable=False
+    )
+    cleanup = machine.cleanup(run, failure, 1, run.revision, NOW)
+    cancelled = machine.cancel(cleanup, cleanup.revision, NOW)
+    assert cancelled.status is RunStatus.CANCELLED
+    assert cancelled.failure is None
+    assert cancelled.lease is None
+
+
 def test_cleanup_can_recover_under_a_new_fence() -> None:
     machine, run = start()
     failure = Failure(

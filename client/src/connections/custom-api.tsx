@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Detail, DetailList } from "../components/detail"
+import { Notice } from "../components/state"
 import { Button } from "../components/ui/button"
 import { Field, ResourceSelect, SetupPage, formControl } from "../components/workspace"
 import { PlaybookSetup } from "../components/playbook-setup"
@@ -12,6 +13,7 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
   const [step, setStep] = useState(0)
   const [bookId, setBookId] = useState("")
   const [adding, setAdding] = useState(false)
+  const [draftNotice, setDraftNotice] = useState(false)
   const [token, setToken] = useState("")
   const books = useQuery({ queryKey: ["api-playbooks"], queryFn: api.getApiPlaybooks })
   const detail = useQuery({ queryKey: ["api-playbooks", bookId], queryFn: () => api.getApiPlaybook(bookId), enabled: Boolean(bookId) })
@@ -30,6 +32,7 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
   if (adding) return <PlaybookSetup execution="api" showIntroduction={false} onClose={() => setAdding(false)} onCreated={async (created) => {
     await query.invalidateQueries({ queryKey: ["api-playbooks"] })
     setBookId(created.active_version_id ? created.id : "")
+    setDraftNotice(!created.active_version_id)
     setAdding(false)
   }} />
 
@@ -40,9 +43,12 @@ export function CustomApiSetup({ onClose, onBack, onChanged, onCreated }: Provid
       : <Button onClick={() => create.mutate()} disabled={create.isPending || !version || detail.isFetching}>{create.isPending ? "Connecting…" : "Connect"}</Button>}>
     {step === 0 && <div className="space-y-5">
       <p className="text-[10px] leading-5 text-[var(--ink-muted)]">Rotate keys through the provider API.</p>
-      <ResourceSelect label="Playbook" hideLabel size="sm" width="compact" value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => setAdding(true)}>
+      {draftNotice && <Notice>Saved as draft — an administrator can publish it from Playbooks.</Notice>}
+      <ResourceSelect label="Playbook" hideLabel size="sm" width="compact" value={bookId} onChange={(id) => { setBookId(id); setToken(""); create.reset() }} addLabel="Add playbook" onAdd={() => { setDraftNotice(false); setAdding(true) }}>
         <option value="">{books.isLoading ? "Loading…" : "Select playbook"}</option>
-        {(books.data ?? []).filter((item) => item.active_version_id).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        {(books.data ?? []).map((item) => item.active_version_id
+          ? <option key={item.id} value={item.id}>{item.name}</option>
+          : <option key={item.id} value="" disabled>{item.name} (draft)</option>)}
       </ResourceSelect>
     </div>}
     {step === 1 && <Field label="Management token" hint="Stored in Kinu vault. Used only by the executor."><input className={formControl} type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} /></Field>}

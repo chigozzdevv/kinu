@@ -189,9 +189,9 @@ async def cancel_run(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.RUN_WRITE)
     run = await required(api.workflow, "workflow").get(organisation_id, run_id)
-    if run.status is not RunStatus.PENDING:
+    if run.status not in {RunStatus.PENDING, RunStatus.FAILED, RunStatus.CLEANUP}:
         raise ResourceConflictError(
-            "only a queued rotation can be cancelled through the application"
+            "only a queued or stuck rotation can be cancelled through the application"
         )
     result = await required(api.workflow, "workflow").cancel(
         CancelRunCommand(

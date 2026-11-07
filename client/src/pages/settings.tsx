@@ -4,7 +4,7 @@ import { Plus } from "lucide-react"
 import { AiSettings } from "../components/ai"
 import { DetailTabs } from "../components/detail"
 import { PageHeader } from "../components/header"
-import { Failure, Loading } from "../components/state"
+import { Failure, Loading, Notice } from "../components/state"
 import { SettingsFooter, SettingsRow } from "../components/settings"
 import { Badge } from "../components/ui/badge"
 import { Button } from "../components/ui/button"
@@ -12,9 +12,10 @@ import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Field, Fieldset, SelectControl, formControl } from "../components/workspace"
 import { api } from "../lib/api"
-import { titleCase } from "../lib/format"
+import { formatDate, titleCase } from "../lib/format"
+import { settingsTabs, type SettingsTab } from "../lib/navigation"
 import { cn } from "../lib/utils"
-import type { EmailNotificationEndpoint, MemberRole, NotificationTopic, TeamMember } from "../types"
+import type { EmailNotificationEndpoint, MemberRole, NotificationDelivery, NotificationTopic, TeamMember } from "../types"
 
 type Tab = "profile" | "team" | "notifications" | "ai"
 
@@ -37,7 +38,10 @@ function topicLabels(endpoint: EmailNotificationEndpoint, topics: NotificationTo
 }
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>(() => new URLSearchParams(window.location.search).get("tab") === "ai" ? "ai" : "profile")
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab")
+    return requested && settingsTabs.includes(requested as SettingsTab) ? requested as Tab : "profile"
+  })
   const [inviting, setInviting] = useState(false)
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null)
   const [addingEmail, setAddingEmail] = useState(false)
@@ -47,6 +51,7 @@ export function SettingsPage() {
   const delivery = useQuery({ queryKey: ["notification-settings"], queryFn: () => api.getNotificationSettings(), enabled: tab === "notifications" })
   const endpoints = useQuery({ queryKey: ["notification-endpoints"], queryFn: () => api.getNotificationEndpoints(), enabled: tab === "notifications" })
   const topics = useQuery({ queryKey: ["notification-topics"], queryFn: () => api.getNotificationTopics(), enabled: tab === "notifications" })
+  const deliveries = useQuery({ queryKey: ["notification-deliveries"], queryFn: () => api.getNotificationDeliveries(), enabled: tab === "notifications" })
   useEffect(() => {
     if (profile.data && !administrator && tab === "team") setTab("profile")
   }, [administrator, profile.data, tab])
@@ -67,15 +72,17 @@ export function SettingsPage() {
   return <div className="page">
     <div className="max-w-[640px]">
       <PageHeader eyebrow="System" title="Settings" />
-      <DetailTabs items={tabs} value={tab} onChange={setTab} className="mb-0" />
+      <DetailTabs items={tabs} value={tab} onChange={(next) => { setTab(next); window.history.replaceState({}, "", `/dashboard/settings${next === "profile" ? "" : `?tab=${next}`}`) }} className="mb-0" />
       <div className="px-4 pb-4 pt-2">
         {actions && <div className="flex justify-end py-4">{actions}</div>}
         {tab === "profile" && <ProfileSettings profile={profile.data!} />}
         {tab === "ai" && <AiSettings administrator={administrator} />}
         {tab === "team" && <TeamSettings members={team.data!} currentId={profile.data!.id} onEdit={setEditingMember} />}
         {tab === "notifications" && <>
-          {!delivery.data?.email_enabled && <p role="status" className="mb-6 text-[11px] text-[var(--ink-muted)]">Email notifications are not enabled yet.</p>}
+          {!delivery.data?.email_enabled && <Notice>Email notifications are not configured — alerts appear in Kinu only.</Notice>}
           <EmailSettings endpoints={endpoints.data!} topics={topics.data!} />
+          {deliveries.data && deliveries.data.length > 0 && <DeliveryProblems problems={deliveries.data} endpoints={endpoints.data!} />}
+          {!deliveries.data && deliveries.error && <div role="alert" className="mt-8 text-[10px] text-[var(--red)]">Delivery status is unavailable right now.</div>}
         </>}
       </div>
     </div>
@@ -180,6 +187,20 @@ function EmailSettings({ endpoints, topics }: { endpoints: EmailNotificationEndp
       </TableRow>)}</TableBody>
     </Table>
   </>
+}
+
+function DeliveryProblems({ problems, endpoints }: { problems: NotificationDelivery[]; endpoints: EmailNotificationEndpoint[] }) {
+  return <div className="mt-8">
+    <p className="mb-3 text-[11px] font-semibold text-[var(--ink)]">Delivery problems</p>
+    <Table responsive="compact" className="min-w-[520px]">
+      <TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Problem</TableHead><TableHead className="pr-0 text-right">When</TableHead></TableRow></TableHeader>
+      <TableBody columns={3}>{problems.map((problem) => <TableRow key={problem.id}>
+        <TableCell primary><div className="font-medium">{endpoints.find((endpoint) => endpoint.id === problem.endpoint_id)?.email_address ?? "Removed endpoint"}</div></TableCell>
+        <TableCell label="Problem" wide className="text-[var(--ink-soft)]">{problem.status_error ?? problem.last_error ?? titleCase(problem.state)}</TableCell>
+        <TableCell label="When" action className="pr-0 text-right text-[10px] text-[var(--ink-soft)]">{formatDate(problem.sent_at ?? problem.available_at, true)}</TableCell>
+      </TableRow>)}</TableBody>
+    </Table>
+  </div>
 }
 
 function EmailModal({ onClose, defaultEmail, topics }: { onClose: () => void; defaultEmail: string; topics: NotificationTopic[] }) {

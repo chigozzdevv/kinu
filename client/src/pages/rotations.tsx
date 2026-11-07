@@ -178,6 +178,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
   const [selectedStage, setSelectedStage] = useState<StageName | null>("trigger")
   const [creating, setCreating] = useState(false)
   const [confirmingRecovery, setConfirmingRecovery] = useState(false)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [credentialId, setCredentialId] = useState("")
   const [reason, setReason] = useState("Routine credential rotation")
   const [urgency, setUrgency] = useState<"routine" | "urgent" | "emergency">("routine")
@@ -207,7 +208,8 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
   ] })
   const create = useMutation({ mutationFn: () => {
-    const selectedCredential = graph.data!.credentials.find((item) => item.id === credentialId)!
+    const selectedCredential = availableCredentials.find((item) => item.id === credentialId)
+    if (!selectedCredential) throw new Error("Select a credential to rotate")
     return api.startRotation({ credential_id: selectedCredential.id, control_version: selectedCredential.control_version, reason: reason.trim(), urgency })
   }, onSuccess: async (run) => {
     queryClient.setQueryData(["rotation", run.id], run)
@@ -221,6 +223,15 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     onSuccess: async (run) => {
       queryClient.setQueryData(["rotation", run.id], run)
       setConfirmingRecovery(false)
+      await queryClient.invalidateQueries({ queryKey: ["rotations"] })
+      await queryClient.invalidateQueries({ queryKey: ["rotations", run.id, "history"] })
+    },
+  })
+  const cancel = useMutation({
+    mutationFn: () => api.cancelRotation(selectedId, selectedRun.data!.revision),
+    onSuccess: async (run) => {
+      queryClient.setQueryData(["rotation", run.id], run)
+      setConfirmingCancel(false)
       await queryClient.invalidateQueries({ queryKey: ["rotations"] })
       await queryClient.invalidateQueries({ queryKey: ["rotations", run.id, "history"] })
     },
@@ -280,6 +291,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <PageHeader titleInBreadcrumb eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={<>
         {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
         {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
+        {["failed", "cleanup-required"].includes(selected.status) && <Button variant="secondary" onClick={() => { cancel.reset(); setConfirmingCancel(true) }}>Cancel run</Button>}
       </>} />
       <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-[var(--ink-soft)]">
         <span className="font-semibold text-[var(--ink)]">{selected.status === "compensated" ? selected.recovery_mode === "rollback" ? "Rolled back" : "Recovered" : titleCase(selected.status)}</span>
@@ -354,6 +366,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <Modal isOpen={confirmingRecovery} onClose={() => setConfirmingRecovery(false)} title="Recover rotation" actions={<Button disabled={recover.isPending} onClick={() => recover.mutate()}>{recover.isPending ? "Starting…" : "Check and recover"}</Button>}>
         <p className="text-[12px] leading-6 text-[var(--ink-soft)]">Kinu will check the recorded provider and deployment state, then restore the previous key or finish a verified rotation. Unresolved actions stay held for review.</p>
         {recover.error && <p role="alert" className="mt-4 text-[11px] text-[var(--red)]">{recover.error.message}</p>}
+      </Modal>
+      <Modal isOpen={confirmingCancel} onClose={() => setConfirmingCancel(false)} title="Cancel rotation" actions={<Button disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? "Cancelling…" : "Cancel run"}</Button>}>
+        <p className="text-[12px] leading-6 text-[var(--ink-soft)]">Cancelling ends this run and releases the credential for a new rotation. Provider state may be unresolved — inspect the saved evidence before rotating again.</p>
+        {cancel.error && <p role="alert" className="mt-4 text-[11px] text-[var(--red)]">{cancel.error.message}</p>}
       </Modal>
     </div>
   }

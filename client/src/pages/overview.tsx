@@ -109,11 +109,11 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at))
     .slice(0, 5)
 
-  const metrics: Array<{ label: string; value: number | null; target: NavItem }> = [
+  const metrics: Array<{ label: string; value: number | string | null; target: NavItem }> = [
     { label: "Credentials", value: credentials.length, target: "credentials" },
     { label: "Connections", value: activeConnections.length, target: "connections" },
     { label: "Playbooks", value: playbooks.data ? activePlaybooks.length : null, target: "playbooks" },
-    { label: "Rotations", value: runs.data!.length, target: "rotations" },
+    { label: "Rotations", value: runs.data!.length >= 100 ? "100+" : runs.data!.length, target: "rotations" },
   ]
 
   const actionRows = [
@@ -163,7 +163,7 @@ export function OverviewPage({ onNavigate, onNavigateRotation, onNavigateInciden
     { label: "Add a connection", done: activeConnections.length > 0, target: "connections" as NavItem },
     { label: "Add a credential", done: credentials.length > 0, target: "credentials" as NavItem },
     ...(browserConnectionExists ? [{ label: "Add a Computer Use playbook", done: activePlaybooks.length > 0, target: "playbooks" as NavItem }] : []),
-    { label: "Start a rotation", done: runs.data!.length > 0, target: "credentials" as NavItem },
+    { label: "Start a rotation", done: runs.data!.length > 0, target: "rotations" as NavItem },
   ]
   const visibleActionRows = showAllAttention ? actionRows : actionRows.slice(0, 2)
   const visibleRecentRuns = showAllActivities ? recentRuns : recentRuns.slice(0, 3)

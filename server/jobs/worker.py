@@ -5,7 +5,6 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from functools import partial
-from uuid import uuid4
 
 from bullmq import Job, Worker
 from core.errors import ResourceConflictError
@@ -14,6 +13,10 @@ from executor.runtime import Runtime, runtime
 from rotation.queue import RotationTask
 
 log = logging.getLogger("kinu.jobs")
+
+
+def job_owner(job_id: str) -> str:
+    return "worker_" + job_id
 
 
 async def recover(service: Runtime) -> None:
@@ -61,7 +64,7 @@ async def main() -> None:
                 await service.recovery.execute(task.organisation_id, task.run_id)
                 return
             await service.rotation.execute(
-                task.organisation_id, task.run_id, "worker_" + uuid4().hex
+                task.organisation_id, task.run_id, job_owner(str(job.id))
             )
 
         worker = Worker(

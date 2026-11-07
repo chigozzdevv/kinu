@@ -56,6 +56,7 @@ export type NotificationKind =
   | "revocation-succeeded"
   | "rotation-completed"
   | "cleanup-required"
+  | "team-invitation"
 
 export interface EmailNotificationEndpoint {
   id: Identifier
@@ -72,6 +73,19 @@ export interface NotificationTopic {
   id: Identifier
   label: string
   event_kinds: NotificationKind[]
+}
+
+export interface NotificationDelivery {
+  id: Identifier
+  organisation_id: Identifier
+  notification_id: Identifier
+  endpoint_id: Identifier
+  state: "pending" | "sending" | "sent" | "failed"
+  attempts: number
+  available_at: string
+  sent_at: string | null
+  last_error: string | null
+  status_error: string | null
 }
 
 export type ConnectionRole = "provider" | "secret-store" | "runtime" | "telemetry" | "incident"

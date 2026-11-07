@@ -1,9 +1,10 @@
 import itertools
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from api.app import create_app
+from api.app import BodyLimitMiddleware, create_app
 from api.deps import ApiServices
 from contracts import (
     Application,
@@ -41,6 +42,7 @@ from core.inventory import InventoryService
 from core.overview import OverviewService
 from core.playbook import PlaybookService
 from core.workflow import RunWorkflow
+from starlette.types import Message, Receive, Scope, Send
 from testkit import MemoryRunRepository, make_control_version, make_http_provider_api
 from tests.browser import HEADERS, make_browser
 
@@ -882,3 +884,71 @@ async def test_key_setup_and_recovery_require_administrators_and_forward_bound_i
         expected = 202 if role is Role.ADMINISTRATOR else 403
         assert recovery.status_code == setup.status_code == expected
         assert len(forwarded) == (2 if role is Role.ADMINISTRATOR else 0)
+
+
+@pytest.mark.anyio
+async def test_oversized_request_bodies_are_rejected_before_the_application() -> None:
+    reached = False
+
+    async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
+        nonlocal reached
+        reached = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    sent: list[Message] = []
+    await BodyLimitMiddleware(downstream)(
+        {"type": "http", "method": "POST", "path": "/v1/organisations/org_one/runs"},
+        _single_receive({"type": "http.request", "body": b"x" * 1_048_577}),
+        send,
+    )
+    assert not reached
+    assert sent[0]["status"] == 413
+    assert b"too large" in sent[1]["body"]
+
+
+@pytest.mark.anyio
+async def test_body_limits_only_apply_to_the_shaped_routes() -> None:
+    chunks: Iterator[Message] = iter(
+        (
+            {"type": "http.request", "body": b"x" * 5000, "more_body": True},
+            {"type": "http.request", "body": b"x" * 5000, "more_body": False},
+        )
+    )
+    received: list[bytes] = []
+
+    async def downstream(scope: Scope, receive: Receive, send: Send) -> None:
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return
+            received.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def chunked_receive() -> Message:
+        return next(chunks, {"type": "http.disconnect"})
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    sent: list[Message] = []
+    await BodyLimitMiddleware(downstream)(
+        {"type": "http", "method": "GET", "path": "/v1/organisations/org_one/runs"},
+        chunked_receive,
+        send,
+    )
+    assert received == [b"x" * 5000, b"x" * 5000]
+    assert sent[0]["status"] == 200
+
+
+def _single_receive(message: Message) -> Receive:
+    async def receive() -> Message:
+        return message
+
+    return receive

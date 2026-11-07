@@ -43,20 +43,23 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [setupIntegration, setSetupIntegration] = useState<IntegrationKind | null>(null)
   const [editing, setEditing] = useState(false)
   const [creatingPlaybook, setCreatingPlaybook] = useState(false)
+  const [draftNotice, setDraftNotice] = useState(false)
   const [initialSelectionHandled, setInitialSelectionHandled] = useState(false)
   const [editName, setEditName] = useState("")
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
   const [gmailSetupId, setGmailSetupId] = useState<string | null>(null)
   const [hostSetup, setHostSetup] = useState<{ id: string; platform: HostingPlatform } | null>(null)
   const [awsSetupId, setAwsSetupId] = useState<string | null>(null)
-  const [connections, playbooks, graph] = useQueries({ queries: [
+  const [connections, playbooks, graph, apiPlaybooks] = useQueries({ queries: [
     { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
     { queryKey: ["playbooks"], queryFn: () => api.getPlaybooks(), retry: false },
     { queryKey: ["graph"], queryFn: () => api.getGraph() },
+    { queryKey: ["api-playbooks"], queryFn: api.getApiPlaybooks, retry: false, enabled: selected?.interface === "api" },
   ] })
   const connectionDetail = useQuery({ queryKey: ["connections", selected?.id], queryFn: () => api.getConnection(selected!.id), enabled: Boolean(selected), refetchInterval: 10_000 })
   const currentSelected = connectionDetail.data ?? selected
-  const browserPlaybooks = (playbooks.data ?? []).filter((item) => item.platform === currentSelected?.platform && item.active_version_id)
+  const platformPlaybooks = useMemo(() => (playbooks.data ?? []).filter((item) => item.platform === currentSelected?.platform), [playbooks.data, currentSelected?.platform])
+  const browserPlaybooks = useMemo(() => platformPlaybooks.filter((item) => item.active_version_id), [platformPlaybooks])
   const attach = useMutation({
     mutationFn: ({ connection, playbook }: { connection: Connection; playbook: Playbook }) => api.attachPlaybook(connection, playbook.id, playbook.active_version_id!),
     onSuccess: async (connection) => {
@@ -107,9 +110,13 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   }, [connections.data, initialConnectionId, initialSelectionHandled])
 
   useEffect(() => {
-    if (currentSelected?.interface !== "browser") return
+    setSelectedPlaybookVersion("")
+  }, [currentSelected?.id])
+
+  useEffect(() => {
+    if (currentSelected?.interface !== "browser" || selectedPlaybookVersion) return
     setSelectedPlaybookVersion(browserPlaybooks[0]?.active_version_id ?? "")
-  }, [currentSelected?.id, currentSelected?.interface]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentSelected?.interface, selectedPlaybookVersion, browserPlaybooks])
 
   useEffect(() => {
 
@@ -146,6 +153,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   if (creatingPlaybook && currentSelected) return <PlaybookSetup execution="browser" showIntroduction={false} initialPlatform={currentSelected.platform} onClose={() => setCreatingPlaybook(false)} onCreated={async (playbook) => {
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     setSelectedPlaybookVersion(playbook.active_version_id ?? "")
+    setDraftNotice(!playbook.active_version_id)
     setCreatingPlaybook(false)
   }} />
 
@@ -155,7 +163,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{currentSelected.platform === "email" ? "Signed webhook" : titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
-      {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook version">{currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3"><ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => setCreatingPlaybook(true)}><option value="">Select playbook</option>{browserPlaybooks.map((item) => <option key={item.id} value={item.active_version_id!}>{item.name}</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList>{currentSelected.api_playbook_id && <Detail label="Playbook">{currentSelected.api_playbook_id}</Detail>}{currentSelected.api_playbook_version_id && <Detail label="Pinned version">{currentSelected.api_playbook_version_id}</Detail>}<Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
+      {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook">{(playbooks.data ?? []).find((item) => item.active_version_id === currentSelected.playbook_version_id)?.name ?? currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3">{draftNotice && <Notice>Saved as draft — an administrator can publish it from Playbooks.</Notice>}<ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => { setDraftNotice(false); setCreatingPlaybook(true) }}><option value="">Select playbook</option>{platformPlaybooks.map((item) => item.active_version_id ? <option key={item.id} value={item.active_version_id}>{item.name}</option> : <option key={item.id} value="" disabled>{item.name} (draft)</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList>{currentSelected.api_playbook_id && <Detail label="Playbook">{(apiPlaybooks.data ?? []).find((item) => item.id === currentSelected.api_playbook_id)?.name ?? currentSelected.api_playbook_id}</Detail>}{currentSelected.api_playbook_version_id && <Detail label="Pinned version">{currentSelected.api_playbook_version_id}</Detail>}<Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
     </DetailCard>
     {(attach.error || open.error || useBrowser.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error ?? useBrowser.error)?.message}</div>}
     <ManageResourceModal isOpen={editing} onClose={() => setEditing(false)} title="Edit connection" resourceLabel="connection" onSave={() => updateConnection.mutate()} onDelete={() => archiveConnection.mutate()} deleteTitle="Disconnect connection?" deleteDescription={disconnectImpact(currentSelected)} deleteTriggerLabel="Disconnect" deleteActionLabel="Disconnect" deletingActionLabel="Disconnecting…" dependencies={[

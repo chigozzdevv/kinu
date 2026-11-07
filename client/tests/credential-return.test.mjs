@@ -46,3 +46,17 @@ test("a standalone sign-in and an expired credential flow cannot reopen an old d
   assert.equal(credentialReturn("org_one", connectionCallbackIntegration()), null)
   assert.deepEqual(dashboardRoute(), { section: "connections", resourceId: undefined })
 })
+
+test("playbook details and settings tabs round-trip through the URL", (t) => {
+  const location = browser(t)
+  location.href = "https://kinu.test/dashboard/playbooks/playbook_one"
+  assert.deepEqual(dashboardRoute(), { section: "playbooks", resourceId: "playbook_one" })
+  assert.equal(dashboardPath({ section: "playbooks", resourceId: "playbook_one" }), "/dashboard/playbooks/playbook_one")
+  location.href = "https://kinu.test/dashboard/settings?tab=team"
+  assert.deepEqual(dashboardRoute(), { section: "settings", tab: "team" })
+  assert.equal(dashboardPath({ section: "settings", tab: "team" }), "/dashboard/settings?tab=team")
+  assert.equal(dashboardPath({ section: "settings", tab: "ai" }), "/dashboard/settings?tab=ai")
+  assert.equal(dashboardPath({ section: "settings" }), "/dashboard/settings")
+  location.href = "https://kinu.test/dashboard/settings?tab=nope"
+  assert.deepEqual(dashboardRoute(), { section: "settings", resourceId: undefined })
+})

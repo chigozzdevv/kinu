@@ -138,6 +138,14 @@ export const workflow = {
     })
   },
 
+  async cancelRotation(runId: string, expectedRevision: number): Promise<RotationRun> {
+    const result = await request<{ run: RotationRun }>(`${workspacePath()}/runs/${runId}/cancel`, {
+      method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    })
+    return result.run
+  },
+
   async getRotationHistory(runId: string): Promise<RotationHistory> {
     return request(`${workspacePath()}/runs/${runId}/history`)
   },

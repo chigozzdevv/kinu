@@ -35,6 +35,7 @@ from core.playbook.api_store import ApiPlaybookStore
 from core.playbook.sources import Sources
 from core.playbook.store import PlaybookStore
 from core.private import PrivateClient
+from core.storage.deliveries import Deliveries
 from core.storage.factory import application_database
 from core.storage.history import HistoryStore
 from core.storage.notification import NotificationStore
@@ -126,6 +127,7 @@ async def runtime(
                         else None,
                     ),
                     notifications=notifications,
+                    deliveries=Deliveries(database),
                     dispatcher=Dispatcher(database, queue),
                     gmail=GmailBridge(private) if private else None,
                     github=GitHubBridge(private) if private else None,

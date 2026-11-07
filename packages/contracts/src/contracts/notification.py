@@ -145,6 +145,10 @@ class NotificationDelivery(Contract):
     sent_at: AwareDatetime | None = None
     provider_receipt: str | None = Field(default=None, min_length=1, max_length=512)
     last_error: str | None = Field(default=None, max_length=1024)
+    status_due: AwareDatetime | None = None
+    provider_status: str | None = Field(default=None, max_length=64)
+    status_checked_at: AwareDatetime | None = None
+    status_error: str | None = Field(default=None, max_length=1024)
 
     @model_validator(mode="after")
     def validate_delivery(self) -> "NotificationDelivery":

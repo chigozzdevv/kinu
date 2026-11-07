@@ -1,4 +1,5 @@
 from collections.abc import Collection
+from datetime import timedelta
 from typing import Any
 
 from contracts import (
@@ -354,6 +355,7 @@ class RunStore:
                 "id": step.id,
                 "data": event.model_dump(mode="json"),
                 "delivered": False,
+                "expires_on": step.recorded_at + timedelta(days=30),
             },
             session=session,
         )

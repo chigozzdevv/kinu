@@ -25,13 +25,13 @@ function playbookStatus(playbook: Playbook) {
   return playbook.active_version_id && playbook.active_version_id === playbook.latest_version_id ? "published" : "draft"
 }
 
-export function PlaybooksPage() {
+export function PlaybooksPage({ initialPlaybookId = "", onSelectPlaybook }: { initialPlaybookId?: string; onSelectPlaybook: (playbookId: string) => void }) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [platform, setPlatform] = useState("all")
   const [status, setStatus] = useState("all")
   const [type, setType] = useState("all")
-  const [selected, setSelected] = useState<PlaybookRow | null>(null)
+  const [selectedId, setSelectedId] = useState(initialPlaybookId)
   const [tab, setTab] = useState<"overview" | "procedure" | "connections">("overview")
   const [creating, setCreating] = useState(false)
   const [versioning, setVersioning] = useState(false)
@@ -42,7 +42,10 @@ export function PlaybooksPage() {
     { queryKey: ["api-playbooks"], queryFn: api.getApiPlaybooks },
     { queryKey: ["connections"], queryFn: () => api.getConnections() },
   ] })
-  const browserSelected = selected?.type === "computer-use" ? selected.playbook : null
+  const close = () => { setSelectedId(""); onSelectPlaybook("") }
+  const apiBook = selectedId ? apiBooks.data?.find((playbook) => playbook.id === selectedId) : undefined
+  const browserBook = selectedId && !apiBook ? browserBooks.data?.find((playbook) => playbook.id === selectedId) : undefined
+  const browserSelected = browserBook ?? null
   const detail = useQuery({ queryKey: ["playbooks", browserSelected?.id], queryFn: () => api.getPlaybook(browserSelected!.id), enabled: Boolean(browserSelected) })
   const currentSelected = detail.data?.playbook ?? browserSelected
   const latestVersion = detail.data?.latest_version ?? detail.data?.active_version
@@ -50,7 +53,6 @@ export function PlaybooksPage() {
     mutationFn: () => api.renamePlaybook(currentSelected!.id, currentSelected!.revision, editName.trim()),
     onSuccess: async (playbook) => {
       queryClient.setQueryData(["playbooks", playbook.id], (current: PlaybookDetail | undefined) => current ? { ...current, playbook } : { playbook, active_version: null, latest_version: null })
-      setSelected({ type: "computer-use", playbook })
       setEditing(false)
       await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     },
@@ -60,7 +62,7 @@ export function PlaybooksPage() {
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ["playbooks", currentSelected!.id] })
       setEditing(false)
-      setSelected(null)
+      close()
       await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     },
   })
@@ -69,7 +71,6 @@ export function PlaybooksPage() {
     onSuccess: async () => {
       const refreshed = await api.getPlaybook(currentSelected!.id)
       queryClient.setQueryData(["playbooks", currentSelected!.id], refreshed)
-      setSelected({ type: "computer-use", playbook: refreshed.playbook })
       await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     },
   })
@@ -87,27 +88,29 @@ export function PlaybooksPage() {
     )
   }, [apiBooks.data, browserBooks.data, platform, search, status, type])
 
-  if (selected?.type === "api") return <ApiPlaybookDetailPage playbookId={selected.playbook.id} onBack={() => setSelected(null)} />
+  if (apiBook) return <ApiPlaybookDetailPage playbookId={apiBook.id} onBack={close} />
   if ([browserBooks, apiBooks, connections].some((query) => query.isLoading)) return <div className="page"><Loading /></div>
   const error = [browserBooks, apiBooks, connections].find((query) => query.error)?.error
   if (error) return <div className="page"><Failure error={error} /></div>
 
   const attached = (playbook: Playbook) => connections.data!.filter((connection) => connection.playbook_id === playbook.id && connection.playbook_version_id === playbook.active_version_id)
   if (creating) return <PlaybookSetup onClose={() => setCreating(false)} onCreated={async (playbook, execution) => {
-    const createdType: PlaybookType = execution === "api" ? "api" : "computer-use"
-    await queryClient.invalidateQueries({ queryKey: [createdType === "api" ? "api-playbooks" : "playbooks"] })
-    setSelected({ type: createdType, playbook })
+    const listKey = execution === "api" ? "api-playbooks" : "playbooks"
+    queryClient.setQueryData<Playbook[]>([listKey], (current) => current ? [...current.filter((item) => item.id !== playbook.id), playbook] : [playbook])
+    await queryClient.invalidateQueries({ queryKey: [listKey] })
+    setSelectedId(playbook.id)
+    onSelectPlaybook(playbook.id)
     setCreating(false)
   }} />
   if (versioning && detail.data) return <PlaybookSetup execution="browser" existing={detail.data} onClose={() => setVersioning(false)} onCreated={async (playbook) => {
     await Promise.all([queryClient.invalidateQueries({ queryKey: ["playbooks"] }), queryClient.invalidateQueries({ queryKey: ["playbooks", playbook.id] })])
-    setSelected({ type: "computer-use", playbook })
+    setSelectedId(playbook.id)
     setTab("procedure")
     setVersioning(false)
   }} />
 
   if (currentSelected) return <DetailPage>
-    <PageHeader eyebrow="Inventory / Playbooks" title={currentSelected.name} onBack={() => setSelected(null)} actions={<>{latestVersion?.state === "draft" ? <Button onClick={() => publishPlaybook.mutate()} disabled={publishPlaybook.isPending}>{publishPlaybook.isPending ? "Publishing…" : "Publish"}</Button> : <Button onClick={() => setVersioning(true)}>New version</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.name); renamePlaybook.reset(); archivePlaybook.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Playbooks" title={currentSelected.name} onBack={close} actions={<>{latestVersion?.state === "draft" ? <Button onClick={() => publishPlaybook.mutate()} disabled={publishPlaybook.isPending}>{publishPlaybook.isPending ? "Publishing…" : "Publish"}</Button> : <Button onClick={() => setVersioning(true)}>New version</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.name); renamePlaybook.reset(); archivePlaybook.reset(); setEditing(true) }}>Edit</Button></>} />
     {publishPlaybook.error && <div role="alert" className="mb-4 text-[10px] text-[var(--red)]">{publishPlaybook.error.message}</div>}
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "procedure", label: "Procedure" }, { id: "connections", label: "Connections" }]} value={tab} onChange={setTab} />
     <DetailCard>
@@ -124,7 +127,7 @@ export function PlaybooksPage() {
     <PageHeader eyebrow="Inventory" title="Playbooks" actions={<Button onClick={() => setCreating(true)}><Plus className="size-3.5" /> Add playbook</Button>} />
     <Toolbar value={search} onChange={setSearch} placeholder="Search playbooks or platforms" onClear={() => { setSearch(""); setPlatform("all"); setStatus("all"); setType("all") }} filters={[{ label: "Type", value: type, defaultValue: "all", onChange: (event) => setType(event.target.value), children: <><option value="all">All types</option><option value="computer-use">Computer use</option><option value="api">API</option></> }, { label: "Platform", value: platform, defaultValue: "all", onChange: (event) => setPlatform(event.target.value), children: <><option value="all">All platforms</option>{[...new Set([...browserBooks.data!, ...apiBooks.data!].map((item) => item.platform))].map((item) => <option key={item} value={item}>{providerName(item)}</option>)}</> }, { label: "Status", value: status, defaultValue: "all", onChange: (event) => setStatus(event.target.value), children: <><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></> }]} />
     <Table responsive><TableHeader><TableRow><TableHead>Playbook</TableHead><TableHead>Type</TableHead><TableHead>Platform</TableHead><TableHead>Connections</TableHead><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead className="pr-0 text-right">Action</TableHead></TableRow></TableHeader><TableBody columns={7} emptyMessage={search.trim() || platform !== "all" || status !== "all" || type !== "all" ? "No matching playbooks." : "No playbooks yet."}>{rows.map(({ type: rowType, playbook }) => {
-      const open = () => { setSelected({ type: rowType, playbook }); setTab("overview") }
+      const open = () => { setSelectedId(playbook.id); onSelectPlaybook(playbook.id); setTab("overview") }
       const published = playbookStatus(playbook) === "published"
       const count = rowType === "api" ? connections.data!.filter((connection) => connection.api_playbook_id === playbook.id).length : attached(playbook).length
       return <TableRow key={`${rowType}:${playbook.id}`}><TableCell primary><button className="flex items-center gap-3 text-left font-medium hover:underline" onClick={open}><Marker icon={BookOpenText} />{playbook.name}</button></TableCell><TableCell label="Type">{rowType === "api" ? "API" : "Computer use"}</TableCell><TableCell label="Platform"><Provider value={playbook.platform} /></TableCell><TableCell label="Connections">{count}</TableCell><TableCell label="Version">{playbook.latest_version}</TableCell><TableCell label="Status"><Badge variant={published ? "healthy" : "warning"}>{published ? "Published" : "Draft"}</Badge></TableCell><TableCell action className="pr-0"><Button className="pr-1" variant="ghost" size="sm" onClick={open}>View details <ChevronRight className="content-chevron size-3.5" /></Button></TableCell></TableRow>

@@ -1,5 +1,5 @@
 import type { Features } from "./types"
-import type { AccountProfile, AccountSession, Identifier, EmailNotificationEndpoint, NotificationTopic, OrganisationMembership, TeamMember, MemberRole } from "../../types"
+import type { AccountProfile, AccountSession, Identifier, EmailNotificationEndpoint, NotificationDelivery, NotificationTopic, OrganisationMembership, TeamMember, MemberRole } from "../../types"
 import type { CreateNotificationEndpointInput } from "./types"
 import { request, workspacePath } from "./http"
 
@@ -65,6 +65,10 @@ export const settings = {
 
   async getNotificationEndpoints(): Promise<EmailNotificationEndpoint[]> {
     return request(`${workspacePath()}/notifications/endpoints`)
+  },
+
+  async getNotificationDeliveries(): Promise<NotificationDelivery[]> {
+    return request(`${workspacePath()}/notifications/deliveries`)
   },
 
   async createNotificationEndpoint(input: CreateNotificationEndpointInput): Promise<EmailNotificationEndpoint> {

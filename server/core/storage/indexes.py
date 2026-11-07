@@ -69,13 +69,18 @@ async def ensure_indexes(database: Database) -> None:
         "runs": [
             IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
             IndexModel([("organisation_id", 1), ("data.created_at", -1), ("id", -1)]),
+            IndexModel([("data.status", 1), ("data.created_at", 1)]),
         ],
         "run_locks": [IndexModel([("organisation_id", 1), ("credential_id", 1)], unique=True)],
         "commands": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
         "triggers": [
             IndexModel([("organisation_id", 1), ("source", 1), ("event_id", 1)], unique=True)
         ],
-        "outbox": [IndexModel([("organisation_id", 1), ("id", 1)], unique=True)],
+        "outbox": [
+            IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
+            IndexModel([("data.event.occurred_at", 1)]),
+            IndexModel("expires_on", expireAfterSeconds=0),
+        ],
         "notification_deliveries": [
             IndexModel([("organisation_id", 1), ("id", 1)], unique=True),
             IndexModel([("state", 1), ("available_at", 1), ("lease_expires_at", 1)]),
