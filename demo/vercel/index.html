@@ -37,13 +37,17 @@
         flex-direction: column;
       }
 
+      .content {
+        width: min(100%, 600px);
+        margin: auto;
+      }
+
       header {
         display: flex;
         align-items: center;
         justify-content: flex-start;
         gap: 12px;
-        width: min(100%, 600px);
-        margin: 0 auto;
+        width: 100%;
         min-height: 76px;
       }
 
@@ -64,8 +68,8 @@
       }
 
       main {
-        width: min(100%, 600px);
-        margin: auto;
+        width: 100%;
+        margin-top: 44px;
       }
 
       dl {
@@ -138,27 +142,29 @@
   </head>
   <body>
     <div class="window">
-      <header aria-label="Kinu demo">
-        <img class="brand-logo" src="/kinu-logo.svg" alt="Kinu" />
-        <span class="path">demo <strong>/ vercel</strong></span>
-      </header>
+      <div class="content">
+        <header aria-label="Kinu demo">
+          <img class="brand-logo" src="/kinu-logo.svg" alt="Kinu" />
+          <span class="path">demo <strong>/ vercel</strong></span>
+        </header>
 
-      <main>
-        <dl aria-label="Live deployment details">
-          <div class="row">
-            <dt>Deployment</dt>
-            <dd><code id="deployment-id">—</code></dd>
-          </div>
-          <div class="row">
-            <dt>Key</dt>
-            <dd class="key-value">
-              <code class="key-name">RESEND_API_KEY</code>
-              <code class="fingerprint" id="key-fingerprint">Fingerprint · —</code>
-            </dd>
-          </div>
-        </dl>
-        <p class="message" id="status-message" role="status" hidden></p>
-      </main>
+        <main>
+          <dl aria-label="Live deployment details">
+            <div class="row">
+              <dt>Deployment</dt>
+              <dd><code id="deployment-id">—</code></dd>
+            </div>
+            <div class="row">
+              <dt>Key</dt>
+              <dd class="key-value">
+                <code class="key-name">RESEND_API_KEY</code>
+                <code class="fingerprint" id="key-fingerprint">Fingerprint · —</code>
+              </dd>
+            </div>
+          </dl>
+          <p class="message" id="status-message" role="status" hidden></p>
+        </main>
+      </div>
     </div>
 
     <script>
