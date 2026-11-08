@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <meta name="description" content="A live view of the key running in the Kinu Vercel demo." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Kinu demo / Vercel</title>
     <style>
       :root {
@@ -44,10 +45,10 @@
         min-height: 76px;
       }
 
-      .brand {
-        font-size: 21px;
-        font-weight: 600;
-        letter-spacing: -1.2px;
+      .brand-logo {
+        display: block;
+        width: 68px;
+        height: auto;
       }
 
       .path {
@@ -61,7 +62,7 @@
       }
 
       main {
-        width: min(100%, 560px);
+        width: min(100%, 600px);
         margin: auto;
       }
 
@@ -72,14 +73,14 @@
       }
 
       .row {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: center;
-        text-align: center;
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
       }
 
       dt {
+        padding-top: 2px;
         color: #5f646b;
         font-size: 13px;
       }
@@ -99,7 +100,6 @@
       .key-value {
         display: flex;
         align-items: center;
-        justify-content: center;
         flex-wrap: wrap;
         gap: 10px;
       }
@@ -116,10 +116,9 @@
       }
 
       .message {
-        margin: 26px 0 0;
+        margin: 26px 0 0 130px;
         color: #5f646b;
         font-size: 13px;
-        text-align: center;
       }
 
       .message[hidden] { display: none; }
@@ -128,14 +127,17 @@
         body { padding: 14px 10px; }
         .window { min-height: calc(100vh - 28px); padding: 0 18px; }
         header { min-height: 60px; }
-        .brand { font-size: 19px; }
+        .brand-logo { width: 60px; }
+        main { width: 100%; }
+        .row { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+        .message { margin-left: 86px; }
       }
     </style>
   </head>
   <body>
     <div class="window">
       <header aria-label="Kinu demo">
-        <span class="brand">kinu</span>
+        <img class="brand-logo" src="/kinu-logo.svg" alt="Kinu" />
         <span class="path">demo <strong>/ vercel</strong></span>
       </header>
 
