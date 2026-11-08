@@ -13,7 +13,13 @@ import { Button } from "../components/ui/button"
 import { Modal } from "../components/ui/modal"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table"
 import { Field, SelectControl, formControl } from "../components/workspace"
-import type { RotationHistory, RotationRun, RunStageActivity, StageName } from "../types"
+import type {
+  RotationHistory,
+  RotationRun,
+  RunStageActivity,
+  RuntimeDeploymentProgress,
+  StageName,
+} from "../types"
 import { api } from "../lib/api"
 import { formatDate, rotationTrigger, titleCase } from "../lib/format"
 import { useOrganisation } from "../lib/useorganisation"
@@ -78,10 +84,73 @@ function PlanProgress({ history, run, actual }: { history: RotationHistory | und
           : state === "stopped" ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-[var(--red)] text-white" aria-label="Stopped"><X className="size-3" strokeWidth={3} /></span>
           : current ? <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-[var(--ink-soft)]" aria-label="Current step"><span className="size-1.5 rounded-full bg-[var(--ink-soft)]" /></span>
             : <span className="mt-0.5 size-4 shrink-0 rounded-full border border-[var(--border)]" aria-label="Not completed" />}
-        <span className={done ? "text-[var(--ink-soft)]" : "text-[var(--ink)]"}>{step.label}</span>
+        <span className={done ? "text-[var(--ink-soft)] line-through decoration-[var(--ink-muted)]" : "text-[var(--ink)]"}>{step.label}</span>
       </li>
     })}
   </ol>
+}
+
+function deploymentTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(value))
+}
+
+function secureDeploymentUrl(value: string | null) {
+  if (!value) return null
+  try {
+    const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`
+    const url = new URL(candidate)
+    return url.protocol === "https:" ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+function DeploymentProgress({ deployments, active }: {
+  deployments: RuntimeDeploymentProgress[]
+  active: boolean
+}) {
+  if (!deployments.length) return null
+  return <div className="mt-5 space-y-5" aria-label="Deployment status">
+    {deployments.map((deployment) => {
+      const events = deployment.events.length > 0
+        ? deployment.events
+        : deployment.status
+          ? [{ status: deployment.status, label: deployment.status, observed_at: null }]
+          : []
+      const lastIndex = events.length - 1
+      const last = events.at(-1)
+      const url = last?.status === "ready" ? secureDeploymentUrl(deployment.url) : null
+      return <div key={deployment.binding_id}>
+        <div className="text-[10px] font-semibold text-[var(--ink-muted)]">
+          {titleCase(deployment.provider)} · {deployment.service}
+          {deployment.environment ? ` · ${titleCase(deployment.environment)}` : ""}
+        </div>
+        {events.length > 0 ? <ol className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
+          {events.map((event, index) => {
+            const current = active && index === lastIndex && ["queued", "building"].includes(event.status)
+            const failed = event.status === "failed"
+            const completed = !current && !failed && (event.status === "ready" || index < lastIndex)
+            return <li key={`${event.status}-${event.observed_at ?? "current"}`} className="flex items-center gap-1.5">
+              {index > 0 && <span aria-hidden="true" className="mr-0.5 text-[11px] text-[var(--ink-muted)]">→</span>}
+              <span className={`grid size-4 shrink-0 place-items-center rounded-full ${failed ? "bg-[var(--red)] text-white" : completed ? "bg-[#198754] text-white" : "border border-[#198754] text-[#198754]"}`} aria-label={failed ? "Deployment failed" : completed ? "Status reached" : "Current deployment status"}>
+                {failed ? <X className="size-2.5" strokeWidth={3} /> : completed ? <Check className="size-2.5" strokeWidth={3} /> : <span className={`size-1.5 rounded-full bg-[#198754] ${current ? "motion-safe:animate-pulse" : ""}`} />}
+              </span>
+              <span className={`text-[11px] ${failed ? "text-[var(--red)]" : "text-[var(--ink)]"}`}>{titleCase(event.label.toLowerCase())}</span>
+              {event.observed_at && <time dateTime={event.observed_at} title="Time Kinu observed this status" className="whitespace-nowrap text-[10px] tabular-nums text-[var(--ink-muted)]">{deploymentTime(event.observed_at)}</time>}
+            </li>
+          })}
+        </ol> : <p className="mt-3 text-[11px] text-[var(--ink-muted)]">Waiting for deployment status…</p>}
+        {url && <a href={url} target="_blank" rel="noreferrer" className="focus-ring mt-2 inline-flex max-w-full items-center gap-1.5 break-all rounded text-[11px] text-[var(--ink-soft)] underline decoration-[var(--border)] underline-offset-4 hover:text-[var(--ink)]">
+          {url}<ArrowUpRight className="size-3 shrink-0" aria-hidden="true" />
+        </a>}
+      </div>
+    })}
+  </div>
 }
 
 function latestActivity(history: RotationHistory | undefined, stage: StageName): RunStageActivity | undefined {
@@ -202,7 +271,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     { queryKey: ["graph"], queryFn: () => api.getGraph(), refetchInterval: 10_000 },
     { queryKey: ["rotations", selectedId, "history"], queryFn: () => api.getRotationHistory(selectedId), enabled: Boolean(selectedId), refetchInterval: (): number | false => {
       const run = queryClient.getQueryData<RotationRun>(["rotation", selectedId])
-      return finished(run?.status) ? false : run?.stage === "preflight" || run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
+      return finished(run?.status) ? false : run?.stage === "deploy" || run?.stage === "preflight" || run?.browser_playbook_version && ["create", "revoke"].includes(run.stage) ? 1_000 : 5_000
     } },
     { queryKey: ["connections"], queryFn: () => api.getConnections(), refetchInterval: 10_000 },
     { queryKey: ["rotations", "current"], queryFn: () => api.getCurrentRotations(), refetchInterval: 5_000 },
@@ -319,7 +388,8 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
             const current = index === stageIndex && !["completed", "cancelled", "compensated"].includes(selected.status)
             const failed = !recovered && (activity?.status === "failed" || (current && ["failed", "cleanup-required"].includes(selected.status)))
             const paused = activity?.status === "paused" || (current && selected.status === "paused")
-            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason || (stage.id === "preflight" && activity.checks.length) || stage.id === "plan")) || computerUse.length || checks.length)
+            const deploymentProgress = stage.id === "deploy" ? history.data?.deployment_progress ?? [] : []
+            const hasActivityDetails = Boolean((activity && (details.length || activity.agent_decisions.length || activity.browser_actions.length || activity.reason || (stage.id === "preflight" && activity.checks.length) || stage.id === "plan")) || computerUse.length || checks.length || deploymentProgress.length)
             const liveExecutor = current && !activity && !computerUse.length ? currentStageExecutor(selected) : null
             const expandable = hasActivityDetails || Boolean(liveExecutor)
             const expanded = expandable && selectedStage === stage.id
@@ -346,6 +416,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
                   const controlsAction = stage.id === "trigger" && detail.label === "Configured trigger" && rotationTrigger(selected.trigger) !== "Manual rotation"
                   return <div key={`${detail.label}-${detail.value}`}><div className="text-[10px] font-semibold text-[var(--ink-muted)]">{detail.label}</div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-5 text-[var(--ink)]"><span>{detail.value}</span>{controlsAction && <button type="button" className="focus-ring inline-flex items-center gap-1 rounded-md font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]" onClick={() => onNavigateControls(selected.credential_id, selected.control_version)}>View controls <ArrowUpRight className="size-3" /></button>}</div></div>
                 })}</div>}
+                {stage.id === "deploy" && <DeploymentProgress deployments={deploymentProgress} active={current && ["running", "recovering"].includes(selected.status)} />}
                 {activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).length > 0 && <div className={`${details.length > 0 ? "mt-5" : ""} space-y-4`}>{activity.agent_decisions.filter((decision) => !(computerUse.length && decision.agent === "operator")).map((decision, decisionIndex) => <div key={`${decision.agent}-${decisionIndex}`}><div className="text-[10px] font-semibold text-[var(--ink-muted)]">{agentName(decision.agent)}</div>{decision.agent !== "planner" && <div className="mt-1 text-[12px] font-semibold text-[var(--ink)]">{decision.decision}</div>}<div className="mt-1 whitespace-pre-line text-[12px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</div></div>)}</div>}
                 {stage.id === "plan" && (activity.agent_input?.length ?? 0) > 0 && <details className="mt-4 text-[11px] text-[var(--ink-soft)]"><summary className="focus-ring w-fit cursor-pointer rounded font-medium">Input to Builder AI</summary><dl className="mt-3 grid gap-x-8 gap-y-3 sm:grid-cols-2">{activity.agent_input!.map((item) => <div key={item.label}><dt className="text-[9px] text-[var(--ink-muted)]">{item.label}</dt><dd className="mt-1 text-[10px] text-[var(--ink)]">{item.value}</dd></div>)}</dl></details>}
                 {stage.id === "plan" && (activity.agent_input?.length ?? 0) > 0 && activity.status === "succeeded" && <p className="mt-4 text-[11px] font-medium text-[var(--ink-soft)]">Plan validated against this key’s controls.</p>}

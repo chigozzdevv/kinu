@@ -1,4 +1,5 @@
 from asyncio import sleep
+from datetime import UTC, datetime
 from typing import Any
 
 from connectors.base.errors import ConnectorError
@@ -32,11 +33,13 @@ class Rollout:
         adapter: Hosting,
         target: Target,
         deployment: Deployment,
+        query: dict[str, str],
     ) -> Deployment:
         assert target.variable is not None
         for _ in range(60):
             await validate(self.hosts.database, state, created)
             current = await adapter.status(target.variable, deployment.id)
+            await self._record_status(query, current)
             if current.state == "ready":
                 return current
             if current.state == "failed":
@@ -62,7 +65,15 @@ class Rollout:
             }
             await validate(self.hosts.database, state, created)
             await self.rows.insert_one(
-                {**query, "old": current.model_dump(mode="json"), "phase": "prepared"}
+                {
+                    **query,
+                    "platform": target.runtime.platform,
+                    "service_name": target.service.display_name,
+                    "environment": target.variable.environment_label,
+                    "old": current.model_dump(mode="json"),
+                    "phase": "prepared",
+                    "status_events": [],
+                }
             )
             await self.rows.update_one(query, {"$set": {"phase": "writing"}})
             with await self.versions.access_for(state.store, created["secret_reference"]) as value:
@@ -74,7 +85,8 @@ class Rollout:
                 query,
                 {"$set": {"phase": "deploying", "candidate": candidate.model_dump(mode="json")}},
             )
-            candidate = await self.wait(state, created, adapter, target, candidate)
+            await self._record_status(query, candidate)
+            candidate = await self.wait(state, created, adapter, target, candidate, query)
             outputs[target.binding.id] = {
                 "candidate_revision": candidate.id,
                 "rollback_revision": current.id,
@@ -82,9 +94,41 @@ class Rollout:
                 "rollback_url": current.url,
             }
             await self.rows.update_one(
-                query, {"$set": {"phase": "ready", "output": outputs[target.binding.id]}}
+                query,
+                {
+                    "$set": {
+                        "phase": "ready",
+                        "candidate": candidate.model_dump(mode="json"),
+                        "output": outputs[target.binding.id],
+                    }
+                },
             )
         return {"deployments": outputs}
+
+    async def _record_status(self, query: dict[str, str], deployment: Deployment) -> None:
+        if deployment.progress is None:
+            return
+        row = await self.rows.find_one(query, {"status_events": 1})
+        events = row.get("status_events", []) if row else []
+        if (
+            events
+            and isinstance(events[-1], dict)
+            and events[-1].get("status") == deployment.progress
+            and events[-1].get("label") == (deployment.progress_label or deployment.progress)
+        ):
+            return
+        await self.rows.update_one(
+            query,
+            {
+                "$push": {
+                    "status_events": {
+                        "status": deployment.progress,
+                        "label": deployment.progress_label or deployment.progress,
+                        "observed_at": datetime.now(UTC),
+                    }
+                }
+            },
+        )
 
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
@@ -202,4 +246,15 @@ class Rollout:
         await self.rows.update_one(
             query, {"$set": {"restoration": restored.model_dump(mode="json")}}
         )
-        return await self.wait(state, created, adapter, target, restored)
+        return await self.wait(
+            state,
+            created,
+            adapter,
+            target,
+            restored,
+            {
+                "organisation_id": str(row["organisation_id"]),
+                "run_id": str(row["run_id"]),
+                "binding_id": str(row["binding_id"]),
+            },
+        )

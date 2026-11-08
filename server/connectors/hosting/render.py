@@ -3,7 +3,7 @@ from urllib.parse import quote
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
 from connectors.hosting.client import Client
-from connectors.hosting.models import Deployment, Project, Variable
+from connectors.hosting.models import Deployment, DeploymentProgress, Project, Variable
 
 # Existing bindings and rotation locks use this namespace for service-scoped Render variables.
 SERVICE_SCOPE = "production"
@@ -122,6 +122,18 @@ class Render:
 
 def _deployment(data: dict[str, object]) -> Deployment:
     state = data["status"]
+    progress: DeploymentProgress | None = (
+        "ready"
+        if state == "live"
+        else "failed"
+        if state
+        in {"build_failed", "update_failed", "canceled", "pre_deploy_failed", "deactivated"}
+        else "building"
+        if state in {"build_in_progress", "update_in_progress", "pre_deploy_in_progress"}
+        else "queued"
+        if state == "created"
+        else None
+    )
     return Deployment(
         id=str(data["id"]),
         state="ready"
@@ -130,4 +142,7 @@ def _deployment(data: dict[str, object]) -> Deployment:
         if state
         in {"build_failed", "update_failed", "canceled", "pre_deploy_failed", "deactivated"}
         else "pending",
+        url=str(data["url"]) if data.get("url") else None,
+        progress=progress,
+        progress_label=str(state) if progress else None,
     )

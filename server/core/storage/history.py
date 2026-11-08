@@ -1,3 +1,5 @@
+from typing import Literal, cast
+
 from contracts import (
     Approval,
     ApprovalEvidenceKind,
@@ -6,8 +8,11 @@ from contracts import (
     ComputerUseActivity,
     ComputerUseActivityPhase,
     ComputerUseActivityStatus,
+    DeploymentStatusEvent,
     PlaybookEffect,
     RotationHistory,
+    RuntimeDeployment,
+    RuntimeDeploymentProgress,
     SecureCaptureResult,
     Stage,
     StageExecutionResult,
@@ -44,10 +49,22 @@ class HistoryStore:
         progress = await self._database.collection("run_progress").find_one(
             {"_id": f"{organisation_id}:{run_id}:{run.fencing_token}"}
         )
+        deployments = (
+            await self._database.collection("host_rollouts")
+            .find({"organisation_id": organisation_id, "run_id": run_id})
+            .sort("binding_id", 1)
+            .to_list()
+        )
+        deployment_references = {item.binding_id: item for item in run.deployments}
         return RotationHistory(
             run_id=run_id,
             preflight_checks=tuple(progress.get("checks", ())) if progress else (),
             computer_use=await self._browser_activity(organisation_id, run_id),
+            deployment_progress=tuple(
+                _deployment_progress(row, deployment_references.get(str(row.get("binding_id"))))
+                for row in deployments
+                if row.get("candidate")
+            ),
             stages=tuple(
                 _activity(StageExecutionResult.model_validate(row["data"]), run, approvals)
                 for row in results
@@ -158,3 +175,53 @@ class HistoryStore:
         return await self._images.read_image(
             organisation_id, run_id, activity_id, activity.image_digest
         )
+
+
+def _deployment_progress(
+    row: dict[str, object], reference: RuntimeDeployment | None = None
+) -> RuntimeDeploymentProgress:
+    service_reference = reference.service if reference else ""
+    resource_parts = service_reference.partition("://")[2].split("/")
+    service_name = str(
+        row.get("service_name")
+        or row.get("service")
+        or (resource_parts[0] if resource_parts else "")
+    )
+    candidate = row.get("candidate")
+    candidate = candidate if isinstance(candidate, dict) else {}
+    output = row.get("output")
+    output = output if isinstance(output, dict) else {}
+    raw_events = row.get("status_events")
+    events = (
+        tuple(
+            DeploymentStatusEvent.model_validate(item)
+            for item in raw_events
+            if isinstance(item, dict)
+        )
+        if isinstance(raw_events, list)
+        else ()
+    )
+    raw_status = events[-1].status if events else candidate.get("progress")
+    if not isinstance(raw_status, str):
+        raw_status = candidate.get("state")
+    if raw_status == "pending" and row.get("phase") == "ready":
+        raw_status = "ready"
+    status: Literal["queued", "building", "ready", "failed"] | None = (
+        cast(Literal["queued", "building", "ready", "failed"], raw_status)
+        if raw_status in {"queued", "building", "ready", "failed"}
+        else None
+    )
+    url = candidate.get("url") or output.get("url")
+    if not isinstance(url, str):
+        url = None
+    return RuntimeDeploymentProgress(
+        binding_id=str(row.get("binding_id", "unknown")),
+        provider=str(row.get("platform") or service_reference.partition("://")[0] or "runtime")[
+            :64
+        ],
+        service=service_name[:160] or "Runtime",
+        environment=str(row["environment"])[:160] if row.get("environment") else None,
+        status=status,
+        url=url[:2048] if url else None,
+        events=events,
+    )

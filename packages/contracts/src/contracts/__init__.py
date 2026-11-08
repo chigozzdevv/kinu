@@ -88,8 +88,10 @@ from contracts.github import (
 from contracts.history import (
     AgentDecisionSummary,
     BrowserActionSummary,
+    DeploymentStatusEvent,
     RotationHistory,
     RunStageActivity,
+    RuntimeDeploymentProgress,
     StageDetail,
 )
 from contracts.http import HttpAuth, HttpAuthScheme, HttpOperation, HttpProviderApi
@@ -239,6 +241,7 @@ __all__ = [
     "CorrelationCandidate",
     "CreateRunCommand",
     "CredentialGeneration",
+    "DeploymentStatusEvent",
     "DownstreamConfirmation",
     "EmailNotificationEndpoint",
     "Environment",
@@ -321,6 +324,7 @@ __all__ = [
     "RunStep",
     "RuntimeConsumerSetup",
     "RuntimeDeployment",
+    "RuntimeDeploymentProgress",
     "RuntimeResourceMetadata",
     "RuntimeSecretBindingMetadata",
     "SecretResourceMetadata",

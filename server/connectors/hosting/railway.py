@@ -4,7 +4,7 @@ from urllib.parse import quote
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
 from connectors.hosting.client import Client
-from connectors.hosting.models import Deployment, Project, Variable
+from connectors.hosting.models import Deployment, DeploymentProgress, Project, Variable
 
 
 class Railway:
@@ -176,6 +176,17 @@ class Railway:
 
 def _deployment(data: dict[str, Any]) -> Deployment:
     status = data["status"]
+    progress: DeploymentProgress | None = (
+        "ready"
+        if status == "SUCCESS"
+        else "failed"
+        if status in {"FAILED", "CRASHED", "REMOVED", "SKIPPED"}
+        else "building"
+        if status in {"BUILDING", "DEPLOYING"}
+        else "queued"
+        if status in {"INITIALIZING", "WAITING", "QUEUED"}
+        else None
+    )
     return Deployment(
         id=data["id"],
         state="ready"
@@ -184,4 +195,6 @@ def _deployment(data: dict[str, Any]) -> Deployment:
         if status in {"FAILED", "CRASHED", "REMOVED", "SKIPPED"}
         else "pending",
         url=data.get("url"),
+        progress=progress,
+        progress_label=str(status) if progress else None,
     )

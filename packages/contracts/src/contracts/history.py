@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import AwareDatetime, Field
 
 from contracts.agent import AgentKind
@@ -43,8 +45,25 @@ class RunStageActivity(Contract):
     completed_at: AwareDatetime
 
 
+class DeploymentStatusEvent(Contract):
+    status: Literal["queued", "building", "ready", "failed"]
+    label: str = Field(min_length=1, max_length=64)
+    observed_at: AwareDatetime
+
+
+class RuntimeDeploymentProgress(Contract):
+    binding_id: Identifier
+    provider: str = Field(min_length=1, max_length=64)
+    service: str = Field(min_length=1, max_length=160)
+    environment: str | None = Field(default=None, max_length=160)
+    status: Literal["queued", "building", "ready", "failed"] | None = None
+    url: str | None = Field(default=None, max_length=2048)
+    events: tuple[DeploymentStatusEvent, ...] = ()
+
+
 class RotationHistory(Contract):
     run_id: Identifier
     stages: tuple[RunStageActivity, ...] = ()
     computer_use: tuple[ComputerUseActivity, ...] = ()
+    deployment_progress: tuple[RuntimeDeploymentProgress, ...] = ()
     preflight_checks: tuple[str, ...] = ()

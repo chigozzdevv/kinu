@@ -3,6 +3,8 @@ from typing import Literal
 from contracts import Contract
 from pydantic import Field
 
+DeploymentProgress = Literal["queued", "building", "ready", "failed"]
+
 
 class Project(Contract):
     id: str = Field(min_length=1, max_length=256)
@@ -31,3 +33,5 @@ class Deployment(Contract):
     id: str
     state: Literal["pending", "ready", "failed"]
     url: str | None = None
+    progress: DeploymentProgress | None = None
+    progress_label: str | None = None

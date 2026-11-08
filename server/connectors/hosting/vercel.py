@@ -3,7 +3,7 @@ from urllib.parse import quote
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
 from connectors.hosting.client import Client
-from connectors.hosting.models import Deployment, Project, Variable
+from connectors.hosting.models import Deployment, DeploymentProgress, Project, Variable
 
 
 class Vercel:
@@ -132,6 +132,17 @@ class Vercel:
 def _deployment(data: dict[str, object]) -> Deployment:
     state = data.get("readyState", data.get("state", "QUEUED"))
     url = str(data["url"]) if data.get("url") else None
+    progress: DeploymentProgress | None = (
+        "ready"
+        if state == "READY"
+        else "failed"
+        if state in {"ERROR", "CANCELED"}
+        else "building"
+        if state in {"BUILDING", "DEPLOYING"}
+        else "queued"
+        if state in {"QUEUED", "INITIALIZING"}
+        else None
+    )
     return Deployment(
         id=str(data["id"]),
         state="ready"
@@ -140,4 +151,6 @@ def _deployment(data: dict[str, object]) -> Deployment:
         if state in {"ERROR", "CANCELED"}
         else "pending",
         url="https://" + url if url else None,
+        progress=progress,
+        progress_label=str(state) if progress else None,
     )

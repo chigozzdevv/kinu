@@ -417,6 +417,22 @@ export interface RunStageActivity {
   completed_at: string
 }
 
+export interface DeploymentStatusEvent {
+  status: "queued" | "building" | "ready" | "failed"
+  label: string
+  observed_at: string
+}
+
+export interface RuntimeDeploymentProgress {
+  binding_id: Identifier
+  provider: string
+  service: string
+  environment: string | null
+  status: DeploymentStatusEvent["status"] | null
+  url: string | null
+  events: DeploymentStatusEvent[]
+}
+
 export interface ComputerUseActivity {
   id: Identifier
   organisation_id: Identifier
@@ -446,6 +462,7 @@ export interface RotationHistory {
   run_id: Identifier
   stages: RunStageActivity[]
   computer_use: ComputerUseActivity[]
+  deployment_progress?: RuntimeDeploymentProgress[]
   preflight_checks?: string[]
 }
 
