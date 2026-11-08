@@ -29,20 +29,19 @@
 
       .window {
         width: min(100%, 760px);
-        min-height: 300px;
+        min-height: calc(100vh - 56px);
         margin: 0 auto;
-        padding: 0 32px 40px;
-        border: 1px solid #dfe2e4;
-        border-radius: 18px;
-        background: #fff;
-        box-shadow: 0 8px 24px rgb(25 27 30 / 3.5%);
+        padding: 0 32px;
+        display: flex;
+        flex-direction: column;
       }
 
       header {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 12px;
-        min-height: 62px;
+        min-height: 76px;
       }
 
       .brand {
@@ -62,8 +61,8 @@
       }
 
       main {
-        width: min(100%, 600px);
-        margin-top: 44px;
+        width: min(100%, 560px);
+        margin: auto;
       }
 
       dl {
@@ -73,14 +72,14 @@
       }
 
       .row {
-        display: grid;
-        grid-template-columns: 112px minmax(0, 1fr);
-        gap: 18px;
-        align-items: start;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+        text-align: center;
       }
 
       dt {
-        padding-top: 2px;
         color: #5f646b;
         font-size: 13px;
       }
@@ -100,6 +99,7 @@
       .key-value {
         display: flex;
         align-items: center;
+        justify-content: center;
         flex-wrap: wrap;
         gap: 10px;
       }
@@ -116,21 +116,19 @@
       }
 
       .message {
-        margin: 26px 0 0 130px;
+        margin: 26px 0 0;
         color: #5f646b;
         font-size: 13px;
+        text-align: center;
       }
 
       .message[hidden] { display: none; }
 
       @media (max-width: 520px) {
         body { padding: 14px 10px; }
-        .window { min-height: 260px; padding: 0 18px 30px; border-radius: 14px; }
-        header { min-height: 54px; }
+        .window { min-height: calc(100vh - 28px); padding: 0 18px; }
+        header { min-height: 60px; }
         .brand { font-size: 19px; }
-        main { margin-top: 36px; }
-        .row { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
-        .message { margin-left: 86px; }
       }
     </style>
   </head>
