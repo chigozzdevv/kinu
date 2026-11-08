@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="A live view of the key running in the Kinu Vercel demo." />
+    <title>Kinu demo / Vercel</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "Segoe UI", sans-serif;
+        color: #191b1e;
+        background: #f5f6f7;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        padding: 28px 20px;
+      }
+
+      .window {
+        width: min(100%, 760px);
+        min-height: 300px;
+        margin: 0 auto;
+        padding: 0 32px 40px;
+        border: 1px solid #dfe2e4;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgb(25 27 30 / 3.5%);
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 62px;
+      }
+
+      .brand {
+        font-size: 21px;
+        font-weight: 600;
+        letter-spacing: -1.2px;
+      }
+
+      .path {
+        color: #5f646b;
+        font-size: 13px;
+      }
+
+      .path strong {
+        color: #191b1e;
+        font-weight: 500;
+      }
+
+      main {
+        width: min(100%, 600px);
+        margin-top: 44px;
+      }
+
+      dl {
+        display: grid;
+        gap: 30px;
+        margin: 0;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      dt {
+        padding-top: 2px;
+        color: #5f646b;
+        font-size: 13px;
+      }
+
+      dd {
+        min-width: 0;
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-size: 13px;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+      }
+
+      .key-value {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .key-name {
+        padding: 3px 6px;
+        border-radius: 4px;
+        background: ghostwhite;
+        color: #191b1e;
+      }
+
+      .fingerprint {
+        color: #191b1e;
+      }
+
+      .message {
+        margin: 26px 0 0 130px;
+        color: #5f646b;
+        font-size: 13px;
+      }
+
+      .message[hidden] { display: none; }
+
+      @media (max-width: 520px) {
+        body { padding: 14px 10px; }
+        .window { min-height: 260px; padding: 0 18px 30px; border-radius: 14px; }
+        header { min-height: 54px; }
+        .brand { font-size: 19px; }
+        main { margin-top: 36px; }
+        .row { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+        .message { margin-left: 86px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      <header aria-label="Kinu demo">
+        <span class="brand">kinu</span>
+        <span class="path">demo <strong>/ vercel</strong></span>
+      </header>
+
+      <main>
+        <dl aria-label="Live deployment details">
+          <div class="row">
+            <dt>Deployment</dt>
+            <dd><code id="deployment-id">—</code></dd>
+          </div>
+          <div class="row">
+            <dt>Key</dt>
+            <dd class="key-value">
+              <code class="key-name">RESEND_API_KEY</code>
+              <code class="fingerprint" id="key-fingerprint">Fingerprint · —</code>
+            </dd>
+          </div>
+        </dl>
+        <p class="message" id="status-message" role="status" hidden></p>
+      </main>
+    </div>
+
+    <script>
+      (() => {
+        const deployment = document.getElementById("deployment-id");
+        const fingerprint = document.getElementById("key-fingerprint");
+        const message = document.getElementById("status-message");
+
+        async function refresh() {
+          try {
+            const response = await fetch("/api/status", { cache: "no-store" });
+            if (!response.ok) throw new Error("status unavailable");
+            const status = await response.json();
+            deployment.textContent = status.deployment_id || "Unavailable";
+            fingerprint.textContent = status.fingerprint
+              ? `Fingerprint · ${status.fingerprint}`
+              : "Fingerprint · unavailable";
+            message.hidden = true;
+          } catch {
+            message.textContent = "Status unavailable";
+            message.hidden = false;
+          }
+        }
+
+        refresh();
+        window.setInterval(refresh, 15000);
+      })();
+    </script>
+  </body>
+</html>
