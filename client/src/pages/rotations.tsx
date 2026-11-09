@@ -353,6 +353,14 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     setCreating(true)
   }
 
+  function retryRotation(credentialId: string) {
+    setCredentialId(availableCredentials.some((item) => item.id === credentialId) ? credentialId : availableCredentials[0]?.id ?? "")
+    setReason("Retry after failed rotation")
+    setUrgency("urgent")
+    create.reset()
+    setCreating(true)
+  }
+
   if (selected) {
     const credential = graph.data!.credentials.find((item) => item.id === selected.credential_id)
     const stageIndex = stages.findIndex((stage) => stage.id === selected.stage)
@@ -360,7 +368,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <PageHeader titleInBreadcrumb eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={<>
         {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
         {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
-        {["failed", "cleanup-required"].includes(selected.status) && <Button variant="secondary" onClick={() => { cancel.reset(); setConfirmingCancel(true) }}>Cancel run</Button>}
+        {selected.status === "failed" && <Button onClick={() => retryRotation(selected.credential_id)}>Retry run</Button>}
       </>} />
       <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-[var(--ink-soft)]">
         <span className="font-semibold text-[var(--ink)]">{selected.status === "compensated" ? selected.recovery_mode === "rollback" ? "Rolled back" : "Recovered" : titleCase(selected.status)}</span>
