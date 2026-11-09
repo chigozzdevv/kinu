@@ -295,7 +295,10 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
         credential_id: run.credential_id,
         control_version: run.control_version,
         reason: "Retry after failed rotation",
-        urgency: run.trigger?.urgency ?? "urgent",
+        urgency:
+          run.trigger?.urgency === "routine" || run.trigger?.urgency === "emergency"
+            ? run.trigger.urgency
+            : "urgent",
       })
     },
     onSuccess: async (run) => {
@@ -371,13 +374,6 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     setCreating(true)
   }
 
-  function retryRotation(credentialId: string) {
-    setCredentialId(availableCredentials.some((item) => item.id === credentialId) ? credentialId : availableCredentials[0]?.id ?? "")
-    setReason("Retry after failed rotation")
-    setUrgency("urgent")
-    create.reset()
-    setCreating(true)
-  }
 
   if (selected) {
     const credential = graph.data!.credentials.find((item) => item.id === selected.credential_id)
