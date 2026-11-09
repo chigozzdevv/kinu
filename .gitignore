@@ -34,3 +34,6 @@ htmlcov/
 firebase-debug.log*
 
 .deploy/
+
+# Local agent scratch
+.zcode/
