@@ -46,6 +46,7 @@ class BrowserFactory(Protocol):
         definition: PlaybookDraft,
         state: dict[str, Any] | None = None,
         extra_domains: tuple[str, ...] = (),
+        pin: bool = True,
     ) -> AbstractAsyncContextManager[Tab]: ...
 
 
@@ -56,6 +57,7 @@ class Launcher:
         definition: PlaybookDraft,
         state: dict[str, Any] | None = None,
         extra_domains: tuple[str, ...] = (),
+        pin: bool = True,
     ) -> AsyncIterator[Tab]:
         domains = tuple(dict.fromkeys((*definition.allowed_domains, *extra_domains)))
         policy = BrowserPolicy(
@@ -63,17 +65,19 @@ class Launcher:
             allowed_actions=frozenset(BrowserActionKind),
             login_url_pattern=definition.login_url_pattern,
         )
-        rules = await pins(domains)
+        rules = await pins(domains) if pin else ""
+        arguments = [
+            "--no-sandbox",
+            "--no-proxy-server",
+            "--disable-blink-features=AutomationControlled",
+            "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        ]
+        if rules:
+            arguments.insert(3, "--host-resolver-rules=" + rules)
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 executable_path=playwright.chromium.executable_path,
-                args=[
-                    "--no-sandbox",
-                    "--no-proxy-server",
-                    "--disable-blink-features=AutomationControlled",
-                    "--host-resolver-rules=" + rules,
-                    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-                ],
+                args=arguments,
                 env={
                     key: value
                     for key, value in os.environ.items()

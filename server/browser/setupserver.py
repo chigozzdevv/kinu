@@ -71,7 +71,7 @@ class Setups:
         try:
             extras = tuple(dict.fromkeys((*extra, *_LOGIN_DOMAINS)))
             tab = await stack.enter_async_context(
-                self.launcher.open(version.definition, extra_domains=extras)
+                self.launcher.open(version.definition, extra_domains=extras, pin=False)
             )
             now, token, setup_id = datetime.now(UTC), secrets.token_urlsafe(32), new_id("setup")
             session = SetupSession(

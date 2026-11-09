@@ -88,6 +88,7 @@ class Launcher:
         definition: PlaybookDraft,
         state: dict[str, Any] | None = None,
         extra_domains: tuple[str, ...] = (),
+        pin: bool = True,
     ) -> AsyncIterator[Tab]:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
