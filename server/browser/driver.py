@@ -1,3 +1,4 @@
+import asyncio
 import fnmatch
 import secrets
 from collections.abc import Iterable
@@ -48,6 +49,19 @@ class BrowserDriver:
     async def enforce_egress(self) -> None:
         await self._page.context.route("**/*", self._route)
 
+    async def _settle(self) -> None:
+        for _ in range(50):
+            try:
+                text = (await self._page.locator("body").inner_text())[:500]
+            except Exception:
+                text = ""
+            if (
+                "Vercel Security Checkpoint" not in text
+                and "verifying your browser" not in text.lower()
+            ):
+                return
+            await asyncio.sleep(0.5)
+
     async def execute(self, action: BrowserAction) -> None:
         self._blocked_egress = False
         if action.kind not in self._policy.allowed_actions:
@@ -56,6 +70,7 @@ class BrowserDriver:
             assert action.url is not None
             self.validate_url(action.url)
             await self._page.goto(action.url, wait_until="load")
+            await self._settle()
         elif action.kind is BrowserActionKind.CLICK:
             await (await self.locator(_selector(action))).click()
         elif action.kind is BrowserActionKind.TYPE:
@@ -333,6 +348,7 @@ class BrowserDriver:
     async def setup_navigate(self, url: str) -> None:
         self.validate_url(url)
         await self._page.goto(url, wait_until="load")
+        await self._settle()
 
     async def setup_enter(self, url: str) -> None:
         self._check_authentication()
