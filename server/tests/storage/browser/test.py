@@ -205,6 +205,7 @@ def definition() -> PlaybookDraft:
     )
 
 
+@pytest.mark.parametrize("verified", [True, False])
 @pytest.mark.parametrize(
     "failure,linked",
     [(None, False), (None, True), ("proof", False), ("journal", False), ("agent", False)],
@@ -215,7 +216,10 @@ async def test_browser_rotation_captures_privately_and_retires_only_the_verified
     monkeypatch: pytest.MonkeyPatch,
     failure: str | None,
     linked: bool,
+    verified: bool,
 ) -> None:
+    if not verified and (failure is not None or linked):
+        pytest.skip("the verifier-less path covers the ordinary rotation")
     executable()
     platform = Platform(failure)
     async with httpx.AsyncClient(
@@ -225,6 +229,9 @@ async def test_browser_rotation_captures_privately_and_retires_only_the_verified
         org, inventory = credential.organisation_id, hosts.inventory
         books = PlaybookService(PlaybookStore(database), lambda: datetime.now(UTC), inventory)
         draft = definition().model_dump(mode="json")
+        if not verified:
+            draft["verifier"] = None
+            draft["credential_ids"] = {"kind": "css", "value": ".key-id"}
         if linked:
             draft["verifier"].update(credential_ids_attribute="href", credential_id_path="/keys/")
             draft["steps"][1]["secure_field"].update(

@@ -254,7 +254,10 @@ class Providers(HttpProviderConnector):
                         "name": capture.provider_display_name,
                     },
                 )
-            if await self.identify(connection, value) != capture.provider_id:
+            if (
+                await self.probe_available(connection)
+                and await self.identify(connection, value) != capture.provider_id
+            ):
                 raise ResourceConflictError("Captured key identity does not match the issuer")
         except BaseException:
             value.clear()
