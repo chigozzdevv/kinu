@@ -22,6 +22,7 @@ from contracts import (
     Stage,
 )
 from core.errors import ResourceConflictError, ResourceNotFoundError
+from core.inventory.store import InventoryStore
 from core.storage.records import Records
 from core.storage.runs import RunStore
 
@@ -96,7 +97,35 @@ class Providers(HttpProviderConnector):
         if config is None and version.definition.credential_ids is None:
             return ()
         result = []
-        for identity in await self.browser.ids(connection):
+        seen: set[str] = set()
+        for credential in await InventoryStore(self.catalog.database).credentials(
+            connection.organisation_id
+        ):
+            provider_id = credential.provider_id
+            if (
+                credential.connection_id != connection.id
+                or credential.archived_at
+                or not provider_id
+            ):
+                continue
+            seen.add(provider_id)
+            result.append(
+                {
+                    "provider_id": provider_id,
+                    "name": credential.display_name,
+                    "kind": credential.kind,
+                    "scopes": sorted(credential.scopes),
+                    "status": "active",
+                    "disabled": False,
+                }
+            )
+        try:
+            identities = await self.browser.ids(connection)
+        except Exception:
+            identities = ()
+        for identity in identities:
+            if identity in seen:
+                continue
             receipt = await self.receipts.metadata(connection, identity)
             row = await self.proofs.find_one(
                 {
