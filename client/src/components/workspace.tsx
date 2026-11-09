@@ -1,5 +1,5 @@
 import { ChevronDown, X } from "lucide-react"
-import { useEffect, useState, type ReactNode, type SelectHTMLAttributes } from "react"
+import { useEffect, useRef, useState, type ReactNode, type SelectHTMLAttributes } from "react"
 import { PageHeader } from "./header"
 import { Button } from "./ui/button"
 import { cn } from "../lib/utils"
@@ -142,6 +142,45 @@ export function SelectControl({ children, className, size = "md", width = "full"
   return <div className={cn("relative", width === "compact" && "w-52 max-w-full")}>
     <select className={cn(controlClass, className)} {...props}>{children}</select>
     <ChevronDown className={`pointer-events-none absolute top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)] ${variant === "filter" ? "right-3" : "right-3.5"}`} />
+  </div>
+}
+
+export function MenuSelect({ value, onChange, options, placeholder, disabled }: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+  placeholder: string
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false) }
+    document.addEventListener("mousedown", close)
+    document.addEventListener("keydown", escape)
+    return () => {
+      document.removeEventListener("mousedown", close)
+      document.removeEventListener("keydown", escape)
+    }
+  }, [open])
+  const selected = options.find((item) => item.value === value)
+  return <div ref={root} className="relative">
+    <button type="button" disabled={disabled} aria-haspopup="listbox" aria-expanded={open}
+      className={cn(formControl, "flex items-center justify-between gap-3 text-left disabled:opacity-60")}
+      onClick={() => setOpen((current) => !current)}>
+      <span className={cn("truncate", !selected && "text-[var(--ink-muted)]")}>{selected?.label ?? placeholder}</span>
+      <ChevronDown className="size-3.5 shrink-0 text-[var(--ink-muted)]" />
+    </button>
+    {open && <div role="listbox" className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-white p-1 shadow-xl">
+      {options.length ? options.map((item) => <button key={item.value} type="button" role="option" aria-selected={item.value === value}
+        className={cn("block w-full truncate rounded-lg px-3 py-2 text-left text-[11px]", item.value === value ? "bg-[var(--surface-soft)] font-semibold" : "hover:bg-[var(--surface-soft)]")}
+        onClick={() => { onChange(item.value); setOpen(false) }}>{item.label}</button>)
+        : <p className="px-3 py-2 text-[11px] text-[var(--ink-muted)]">{placeholder}</p>}
+    </div>}
   </div>
 }
 

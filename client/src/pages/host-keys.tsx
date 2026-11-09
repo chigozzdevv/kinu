@@ -4,7 +4,7 @@ import { ControlsFields, ControlsSummary } from "../components/controls"
 import { Detail, DetailList, Section } from "../components/detail"
 import { Notice, RetryNotice } from "../components/state"
 import { Button } from "../components/ui/button"
-import { Field, FormGrid, ResourceSelect, SelectControl, SetupPage, formControl } from "../components/workspace"
+import { Field, FormGrid, MenuSelect, ResourceSelect, SelectControl, SetupPage, formControl } from "../components/workspace"
 import { activeOrganisationId, api } from "../lib/api"
 import { buildControlPreferences, controlsAreValid, defaultControls } from "../lib/controls"
 import { finishCredentialConnection, saveCredentialReturn, type HostKeyForm } from "../lib/credential-return"
@@ -168,14 +168,8 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
     {step === 0 && <div className="space-y-5">
       <FormGrid>
         {runtimeField}
-        <Field label="Project"><SelectControl value={project} disabled={!eligibleProjects.length} onChange={(event) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: event.target.value }) }}>
-          <option value="">Select project</option>{eligibleProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </SelectControl></Field>
-        <Field label="Key"><SelectControl value={form.variable} disabled={!project || !availableVariables.size} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
-          <option value="">Select variable</option>{[...availableVariables.values()].map((item) => <option key={item.reference} value={item.reference}>
-            {variableLabel(item)}
-          </option>)}
-        </SelectControl></Field>
+        <Field label="Project"><MenuSelect value={project} disabled={!eligibleProjects.length} placeholder="Select project" options={eligibleProjects.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: value }) }} /></Field>
+        <Field label="Key"><MenuSelect value={form.variable} disabled={!project || !availableVariables.size} placeholder="Select variable" options={[...availableVariables.values()].map((item) => ({ value: item.reference, label: variableLabel(item) }))} onChange={(value) => update({ variable: value, createReference: "", scopes: "" })} /></Field>
       </FormGrid>
       {projects.isError && missingProjectNames && !project && <RetryNotice onRetry={() => projects.refetch()}>Couldn’t load project names from {connection.display_name}.</RetryNotice>}
       {variables.isError && !mapping && <RetryNotice onRetry={() => variables.refetch()}>Couldn’t load variables from {connection.display_name}.</RetryNotice>}
