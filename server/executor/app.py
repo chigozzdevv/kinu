@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -83,6 +84,9 @@ async def rejected(request: Request, error: KinuError) -> Any:
 
 @app.exception_handler(ConnectorError)
 async def connection_failed(request: Request, error: ConnectorError) -> JSONResponse:
+    logging.getLogger("kinu.executor").warning(
+        "connector failure code=%s message=%s", error.code, error
+    )
     return JSONResponse({"message": "Connection check failed"}, status_code=502)
 
 
