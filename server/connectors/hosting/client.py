@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 import httpx
@@ -44,6 +45,13 @@ class Client:
                     if len(data) > 2_097_152:
                         raise ConnectorError("host-limit", "Hosting response exceeded its limit")
                 if not response.is_success:
+                    logging.getLogger("kinu.connectors").warning(
+                        "hosting API %s %s rejected with %s: %s",
+                        method,
+                        path,
+                        response.status_code,
+                        bytes(data[:400]).decode("utf-8", "replace"),
+                    )
                     raise ConnectorError(
                         "host-request", f"Hosting API rejected the request ({response.status_code})"
                     )
