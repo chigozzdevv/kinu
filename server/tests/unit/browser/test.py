@@ -680,7 +680,7 @@ async def test_driver_waits_for_client_rendered_checkpoint_text() -> None:
 
         async def wait_for(self, *, state: str, timeout: int) -> None:
             assert state == "visible"
-            assert timeout == 10000
+            assert timeout == 30000
             self.waited = True
 
     class Page:
@@ -711,7 +711,7 @@ async def test_driver_detects_a_client_rendered_login_redirect_while_waiting() -
 
         async def wait_for(self, *, state: str, timeout: int) -> None:
             assert state == "visible"
-            assert timeout == 10000
+            assert timeout == 30000
             self.page.url = "https://app.vendor.example.com/login?redirect=/keys"
             raise PlaywrightTimeoutError("checkpoint timed out")
 
