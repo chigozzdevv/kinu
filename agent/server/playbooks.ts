@@ -36,7 +36,7 @@ const resendSelectors =
   'For Resend also use these exact controls: the one-time secret is css input[value^="re_"]; ' +
   'the key identifier and display name are css table a[href^="/api-keys/"]:has-text("${replacement_provider_display_name}") with provider_id_attribute "href" and provider_id_path "/api-keys/"; ' +
   'the dialog submit is css [role="dialog"] button[type="submit"]; the retirement confirmation input is css input[placeholder="Enter API Key name"]; ' +
-  'the create button is role button name "Create API key", the name field is role textbox name "Name", the permission field is label "Permission" value "Sending access", and the domain field is label "Domain". '
+  'the create button is role button name "Create API key", the name field is role textbox name "Name", the permission field is label "Permission" value "Sending access", and the domain field is label "Domain"; the key list selector is css table a[href^="/api-keys/"]:has(:text-matches(".+")) with credential_ids_attribute "href" and credential_id_path "/api-keys/". '
 
 export function apiSystemPrompt(schema: string): string {
   return "Build a Kinu API credential-rotation playbook from the supplied API documentation. " +
@@ -70,6 +70,7 @@ export function browserSystemPrompt(schema: string, resend: boolean): string {
     (resend ? resendSelectors : "") +
     "If a required control or detail is missing, return error listing exactly what to add. " +
     "A verifier is optional: include one only when the sources describe a read-only identity endpoint, and omit the field otherwise. Never invent a verifier. " +
+    "When the sources describe the provider key list, include a generic credential_ids selector (and attribute/path for linked IDs) so drift detection works without a verifier. " +
     "Schema: " + schema
 }
 

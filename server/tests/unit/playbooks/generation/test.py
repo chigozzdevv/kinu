@@ -55,3 +55,19 @@ def test_api_playbooks_require_private_identity_checks_and_write_operations(chan
         api["revoke_credential"]["method"] = "GET"
     with pytest.raises(ValidationError):
         ApiPlaybookDraft.model_validate({"name": "Example", "platform": "example", "http": api})
+
+
+def test_browser_playbooks_may_declare_a_key_list_without_a_verifier() -> None:
+    draft = PlaybookDraft.model_validate(
+        procedure("0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c", "mail.example").model_dump(mode="json")
+        | {
+            "verifier": None,
+            "credential_ids": {
+                "kind": "css",
+                "value": 'table a[href^="/api-keys/"]:has(:text-matches(".+"))',
+            },
+            "credential_ids_attribute": "href",
+            "credential_id_path": "/api-keys/",
+        }
+    )
+    validate_generated(draft)

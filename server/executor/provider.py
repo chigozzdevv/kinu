@@ -93,7 +93,7 @@ class Providers(HttpProviderConnector):
             return await self.resend_browser.metadata(connection)
         version = await self.catalog.definition(connection)
         config = version.definition.verifier
-        if config is None:
+        if config is None and version.definition.credential_ids is None:
             return ()
         result = []
         for identity in await self.browser.ids(connection):
@@ -108,13 +108,15 @@ class Providers(HttpProviderConnector):
             saved = row["metadata"] if row else {}
             metadata = {"provider_id": identity, **(receipt or {}), **saved}
             status = metadata.get("status") or ("active" if row else "unverified")
-            if config.mode == "creation-receipt":
+            if config is not None and config.mode == "creation-receipt":
                 status = (metadata.get("status") or "active") if receipt else "unverified"
             result.append(
                 metadata
                 | {
                     "name": (receipt or {}).get("name") or metadata.get("name") or identity,
-                    "kind": (receipt or {}).get("kind", metadata.get("kind", config.kind)),
+                    "kind": (receipt or {}).get(
+                        "kind", metadata.get("kind", config.kind if config else "api-key")
+                    ),
                     "scopes": (receipt or {}).get("scopes", metadata.get("scopes", [])),
                     "status": status,
                     "disabled": metadata.get("disabled", False),

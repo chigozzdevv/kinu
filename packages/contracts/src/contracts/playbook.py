@@ -195,6 +195,11 @@ class PlaybookDraft(Contract):
     steps: tuple[PlaybookStep, ...] = Field(min_length=1)
     login_url_pattern: str | None = Field(default=None, max_length=1024)
     verifier: BrowserProbe | None = None
+    credential_ids: Selector | None = None
+    credential_ids_attribute: Literal["text", "value", "href"] = "text"
+    credential_id_path: str | None = Field(
+        default=None, pattern=r"^/(?:[A-Za-z0-9._-]+/)*$", max_length=256
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -211,6 +216,8 @@ class PlaybookDraft(Contract):
 
     @model_validator(mode="after")
     def validate_browser_procedure(self) -> "PlaybookDraft":
+        if (self.credential_ids_attribute == "href") != bool(self.credential_id_path):
+            raise ValueError("linked key identifiers require an explicit path prefix")
         if not self.allowed_domains or not self.login_url_pattern:
             raise ValueError("browser playbooks require domains and a login URL pattern")
         if any(not step.tool.startswith("browser.") for step in self.steps):

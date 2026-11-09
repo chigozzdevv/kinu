@@ -103,7 +103,20 @@ class Worker:
     async def ids(self, connection: Connection) -> tuple[str, ...]:
         version = await self.catalog.definition(connection)
         config = version.definition.verifier
-        if config is None:
+        selector = (
+            config.credential_ids if config is not None else version.definition.credential_ids
+        )
+        attribute = (
+            config.credential_ids_attribute
+            if config is not None
+            else version.definition.credential_ids_attribute
+        )
+        path = (
+            config.credential_id_path
+            if config is not None
+            else version.definition.credential_id_path
+        )
+        if selector is None:
             return ()
         first = next(
             (
@@ -121,19 +134,17 @@ class Worker:
         ):
             await tab.driver.setup_navigate(str(first.parameters["url"]))
             await tab.driver.validate_step(first)
-            locator = await tab.driver.locator(config.credential_ids, require_unique=False)
+            locator = await tab.driver.locator(selector, require_unique=False)
             if await locator.count() > 1000:
                 raise ResourceConflictError("Provider key list exceeds the inspection limit")
             values = await locator.evaluate_all(
                 "(elements, attribute) => elements.map(element => "
                 "attribute === 'text' ? element.textContent : "
                 "attribute === 'value' ? element.value : element.getAttribute(attribute))",
-                config.credential_ids_attribute,
+                attribute,
             )
             try:
-                identities = tuple(
-                    normalize(value, config.credential_id_path, tab.driver.url) for value in values
-                )
+                identities = tuple(normalize(value, path, tab.driver.url) for value in values)
             except (ValueError, TypeError, AttributeError):
                 raise ResourceConflictError("Provider key identifiers are invalid") from None
             if len(set(identities)) != len(identities):
