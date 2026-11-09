@@ -245,6 +245,8 @@ class Worker:
                     }.get(step.tool, BrowserActionKind.CLICK)
                     result_image: tuple[str, str] | None = None
                     if step.tool != "browser.navigate":
+                        if step.selectors:
+                            await tab.driver.locator(step.selectors[0])
                         await self.proposals.record(session, step, version, tab.driver)
                         await validate(self.database, state, fence)
                     if step.effect is PlaybookEffect.CREATE_CREDENTIAL:
