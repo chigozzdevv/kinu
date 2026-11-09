@@ -22,7 +22,8 @@ class Selection(Contract):
 class Mapping(Contract):
     variable_reference: str = Field(min_length=1, max_length=1024)
     provider_connection_id: Identifier
-    provider_id: str = Field(min_length=1, max_length=256)
+    # Omit for browser providers: Kinu imports the variable's value as the key.
+    provider_id: str | None = Field(default=None, max_length=256)
     health_url: str | None = Field(default=None, max_length=2048)
 
 

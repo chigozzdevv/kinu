@@ -52,6 +52,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
   const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider")
     && ((item.interface === "api" && item.http) || item.interface === "browser"))
   const selectedProvider = providers.find((item) => item.id === provider)
+  const browserKey = selectedProvider?.interface === "browser"
   const fixedScopes = selectedProvider?.interface === "api" ? selectedProvider.http?.credential_scopes ?? null : null
   const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(selectedProvider) })
   const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")) ?? []
@@ -64,13 +65,17 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
   const settingUp = setup && setup.phase !== "cancelled" && setup.phase !== "completed"
   const mappings = Object.entries(choices).filter(([, key]) => key)
   const newKey = createReference !== ""
-  const newVariables = variables.data?.filter((item) => newKey ? item.reference === createReference : choices[item.reference]) ?? []
-  const hasNewCredentials = newKey || !mappings.length || mappings.some(([, key]) =>
+  const newVariables = browserKey
+    ? (variable ? [variable] : [])
+    : variables.data?.filter((item) => newKey ? item.reference === createReference : choices[item.reference]) ?? []
+  const hasNewCredentials = browserKey || newKey || !mappings.length || mappings.some(([, key]) =>
     !credentials.some((item) => item.connection_id === provider && item.provider_id === key && !item.archived_at))
   const steps = hasNewCredentials ? ["Credential", "Controls", "Review"] : ["Credential", "Review"]
   const otherChoices = mappings.some(([reference]) => reference !== form.variable)
   const canCreate = variable?.readable && selectedProvider?.interface === "api" && selectedProvider.http?.supports_overlap && (!setup || setup.phase === "cancelled")
-  const selectionsValid = newKey
+  const selectionsValid = browserKey
+    ? Boolean(variable?.readable && (!health[variable.reference]?.trim() || validHealthUrl(health[variable.reference])))
+    : newKey
     ? canCreate && newVariables.length === 1 && validHealthUrl(health[createReference] ?? "")
     : mappings.length > 0 && newVariables.length === mappings.length && mappings.every(([ref, key]) =>
         availableKeys.some((item) => item.provider_id === key) && (!health[ref]?.trim() || validHealthUrl(health[ref])))
@@ -108,8 +113,11 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         await query.invalidateQueries({ queryKey: ["key-setups", connection.id] })
         return
       }
-      const saved = await api.importHostKeys(connection.id, project, mappings.map(([reference, key]) => ({
-        variable_reference: reference, provider_connection_id: provider, provider_id: key, health_url: health[reference]?.trim() || null,
+      const chosen = browserKey && variable
+        ? [{ reference: variable.reference, key: null as string | null }]
+        : mappings.map(([reference, key]) => ({ reference, key })) as { reference: string; key: string | null }[]
+      const saved = await api.importHostKeys(connection.id, project, chosen.map((item) => ({
+        variable_reference: item.reference, provider_connection_id: provider, provider_id: item.key, health_url: health[item.reference]?.trim() || null,
       })), preferences)
       await Promise.all(["graph", "overview", "host-mapped"].map((key) => query.invalidateQueries({ queryKey: [key] })))
       onFinish(saved.length === 1 ? saved[0].id : "")
@@ -181,10 +189,10 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         <ResourceSelect label="Provider" value={provider} onChange={chooseProvider} addLabel="Connect provider" onAdd={() => setDependency("provider")}>
           <option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
         </ResourceSelect>
-        <Field label="Provider key"><SelectControl value={newKey ? "create" : choices[variable.reference] ? "key:" + choices[variable.reference] : ""} disabled={!selectedProvider || keys.isLoading} onChange={(event) => chooseKey(event.target.value)}>
+        {!browserKey && <Field label="Provider key"><SelectControl value={newKey ? "create" : choices[variable.reference] ? "key:" + choices[variable.reference] : ""} disabled={!selectedProvider || keys.isLoading} onChange={(event) => chooseKey(event.target.value)}>
           <option value="">Select key</option>{availableKeys.map((item) => <option key={item.provider_id} value={"key:" + item.provider_id}>{item.name ?? item.provider_id}</option>)}
           {canCreate && !otherChoices && <option value="create">Create managed key…</option>}
-        </SelectControl></Field>
+        </SelectControl></Field>}
         <Field label={newKey ? "Health URL (required)" : "Health URL"} wide><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
         {newKey && selectedProvider?.interface === "api" && fixedScopes === null && !(selectedProvider.platform === "resend" && !selectedProvider.api_playbook_id) && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
       </FormGrid>}

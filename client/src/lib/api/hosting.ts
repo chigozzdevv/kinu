@@ -46,7 +46,7 @@ export const hosting = {
   async getProviderKeys(connectionId: string): Promise<ProviderCredentialMetadata[]> {
     return request(`${workspacePath()}/inventory/connections/${connectionId}/credential-metadata`)
   },
-  async importHostKeys(connectionId: string, projectId: string, mappings: { variable_reference: string; provider_connection_id: string; provider_id: string; health_url: string | null }[], initialControls?: ControlPreferences): Promise<ManagedCredential[]> {
+  async importHostKeys(connectionId: string, projectId: string, mappings: { variable_reference: string; provider_connection_id: string; provider_id: string | null; health_url: string | null }[], initialControls?: ControlPreferences): Promise<ManagedCredential[]> {
     return request(`${path()}/${connectionId}/credentials`, { method: "POST", body: JSON.stringify({ project_id: projectId, mappings, initial_controls: initialControls }) })
   },
   async beginHosting(platform: HostingPlatform, displayName: string, token?: string, connection?: Connection): Promise<{ authorization_url?: string; connection_id?: string }> {

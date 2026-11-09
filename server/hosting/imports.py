@@ -58,18 +58,38 @@ async def prepare(
             or (provider.http is None and provider.interface is not ConnectionInterface.BROWSER)
         ):
             raise ResourceConflictError("Choose a connected API credential provider")
-        metadata = [
-            ProviderCredentialMetadata.model_validate(item)
-            for item in await provider_api.metadata(provider)
-            if item["provider_id"] == choice.provider_id
-        ]
-        if (
-            len(metadata) != 1
-            or metadata[0].status not in {"active", "enabled"}
-            or metadata[0].disabled
-            or not metadata[0].kind
-        ):
-            raise ResourceConflictError("Choose an active provider credential")
+        value = await adapter.read(variable)
+        automatic = choice.provider_id is None and provider.interface is ConnectionInterface.BROWSER
+        if automatic:
+            if value is None:
+                raise ResourceConflictError(
+                    "Browser providers require a readable workload variable"
+                )
+            provider_id = fingerprint(value.bytes())[:32]
+            metadata = [
+                ProviderCredentialMetadata(
+                    provider_id=provider_id,
+                    name=variable.name,
+                    kind="api-key",
+                    status="unverified",
+                )
+            ]
+        else:
+            if not choice.provider_id:
+                raise ResourceConflictError("Choose an active provider credential")
+            provider_id = choice.provider_id
+            metadata = [
+                ProviderCredentialMetadata.model_validate(item)
+                for item in await provider_api.metadata(provider)
+                if item["provider_id"] == provider_id
+            ]
+            if (
+                len(metadata) != 1
+                or metadata[0].status not in {"active", "enabled"}
+                or metadata[0].disabled
+                or not metadata[0].kind
+            ):
+                raise ResourceConflictError("Choose an active provider credential")
         if choice.health_url:
             endpoint = urlsplit(choice.health_url)
             if (
@@ -85,7 +105,7 @@ async def prepare(
             for item in credentials
             if not item.archived_at
             and item.connection_id == provider.id
-            and item.provider_id == choice.provider_id
+            and item.provider_id == provider_id
         ]
         if len(existing) > 1:
             raise ResourceConflictError("Provider key is represented by multiple credentials")
@@ -95,7 +115,6 @@ async def prepare(
             current.secret_store_connection_id != store.id or not current.active_generation_id
         ):
             raise ResourceConflictError("Link this key through its existing credential")
-        value = await adapter.read(variable)
         try:
             if provider.interface is ConnectionInterface.BROWSER and value is None:
                 raise ResourceConflictError(
@@ -107,11 +126,15 @@ async def prepare(
                 raise ResourceConflictError(
                     "Use a separate management credential for the provider connection"
                 )
-            if value and await provider_api.identify(provider, value) != choice.provider_id:
+            if (
+                not automatic
+                and value
+                and await provider_api.identify(provider, value) != provider_id
+            ):
                 raise ResourceConflictError(
                     "Selected variable belongs to another provider credential"
                 )
-            if provider.interface is ConnectionInterface.BROWSER:
+            if provider.interface is ConnectionInterface.BROWSER and not automatic:
                 metadata = [
                     ProviderCredentialMetadata.model_validate(item)
                     for item in await provider_api.metadata(provider)
