@@ -24,6 +24,14 @@ export async function applicationRequest(
     },
     ...(options ? { body: JSON.stringify(options.body) } : {}),
   })
-  if (!response.ok) throw new HTTPError({ status: response.status, message: "Application capability was rejected" })
+  if (!response.ok) {
+    let message = "Application capability was rejected"
+    try {
+      const body = await response.json() as { message?: unknown }
+      if (typeof body.message === "string" && body.message) message = body.message
+    } catch {}
+    console.error("kinu capability rejected", response.status, path, message)
+    throw new HTTPError({ status: response.status, message })
+  }
   return response.json()
 }

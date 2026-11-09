@@ -41,6 +41,10 @@ _CHECK_FAILURES = {
     "browser-probe": "The current key cannot be verified for browser rotation.",
     "provider-identity": "The provider key could not be identified.",
     "host-variable": "An app's key mapping changed. Review its connection.",
+    "host-challenge": (
+        "The hosting provider blocked this server's IP. "
+        "Try again later or connect a different runtime."
+    ),
     "host-proof": (
         "The app's health check did not verify the key. "
         "Check its Health URL and the key value."

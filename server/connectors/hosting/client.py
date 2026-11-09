@@ -55,6 +55,15 @@ class Client:
                     if challenged and attempt < 3:
                         await asyncio.sleep(0.5 * (2**attempt))
                         continue
+                    if (
+                        response.status_code == 403
+                        and b"Vercel Security Checkpoint" in data
+                    ):
+                        raise ConnectorError(
+                            "host-challenge",
+                            "Vercel is challenging this server's IP; "
+                            "retry later or use another runtime",
+                        )
                     if not response.is_success:
                         logging.getLogger("kinu.connectors").warning(
                             "hosting API %s %s rejected with %s: %s",
