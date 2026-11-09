@@ -11,18 +11,19 @@ def test_generated_procedures_use_the_supported_capture_and_revocation_contract(
     validate_generated(procedure("0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c", "mail.example"))
 
 
-@pytest.mark.parametrize(
-    "invalid", ["verifier", "overlap", "variable", "redacted", "static-revoke", "tool"]
-)
+def test_generated_procedures_do_not_require_a_verifier() -> None:
+    draft = procedure("0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c", "mail.example").model_copy(
+        update={"verifier": None}
+    )
+    validate_generated(draft)
+
+
+@pytest.mark.parametrize("invalid", ["variable", "redacted", "static-revoke", "tool"])
 def test_unusable_model_output_cannot_be_saved_as_a_generated_procedure(invalid: str) -> None:
     value = procedure("0b0ca8e1-fd3f-4edf-b762-88b01a1a6a9c", "mail.example").model_dump(
         mode="json"
     )
-    if invalid == "verifier":
-        value["verifier"] = None
-    elif invalid == "overlap":
-        value["verifier"]["supports_overlap"] = False
-    elif invalid in {"variable", "redacted"}:
+    if invalid in {"variable", "redacted"}:
         value["steps"][2]["parameters"]["value"] = (
             "${target_scopes}" if invalid == "variable" else "[REDACTED]"
         )

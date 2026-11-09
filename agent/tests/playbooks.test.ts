@@ -46,7 +46,7 @@ test("API playbooks use provider operations without browser instructions", async
   assert.equal(playbookSchema.safeParse({ ...input, execution: "shell" }).success, false)
 })
 
-test("browser playbooks ground selectors in sources and add the Resend receipt verifier", async () => {
+test("browser playbooks ground selectors in sources and leave the verifier optional", async () => {
   let browserPrompt = ""
   const capture: AgentEngine = { ...createBuilderEngine(), async *stream(options) {
     browserPrompt = options.systemPrompt
@@ -57,8 +57,8 @@ test("browser playbooks ground selectors in sources and add the Resend receipt v
   assert.match(browserPrompt, /only when that exact label appears/)
   assert.match(browserPrompt, /\[role="dialog"\] button\[type="submit"\]/)
   assert.match(browserPrompt, /\$\{old_provider_id\}/)
-  assert.match(browserPrompt, /resend-receipt/)
-  assert.match(browserPrompt, /https:\/\/api\.resend\.com/)
+  assert.match(browserPrompt, /verifier is optional/)
+  assert.doesNotMatch(browserPrompt, /resend-receipt/)
 
   let genericPrompt = ""
   const generic: AgentEngine = { ...createBuilderEngine(), async *stream(options) {
@@ -68,7 +68,7 @@ test("browser playbooks ground selectors in sources and add the Resend receipt v
   } }
   await draft({ ...input, objective: "Build a browser procedure" }, generic, "test")
   assert.doesNotMatch(genericPrompt, /resend-receipt/)
-  assert.match(genericPrompt, /read-only issuer identity endpoint/)
+  assert.match(genericPrompt, /verifier is optional/)
 })
 
 test("a bare draft is wrapped and an empty reasoning budget is retryable", async () => {

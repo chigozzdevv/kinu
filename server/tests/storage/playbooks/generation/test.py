@@ -53,7 +53,7 @@ async def test_text_and_links_generate_a_reviewable_draft_through_the_native_bui
         assert body["input"]["schema"]["properties"]["steps"]
         generated = definition.model_dump(mode="json")
         if invalid:
-            generated["verifier"] = None
+            generated["steps"][-1]["effect"] = None
         return httpx.Response(
             200,
             json={
@@ -137,7 +137,7 @@ async def test_text_and_links_generate_a_reviewable_draft_through_the_native_bui
             )
             assert len(calls) == 1
             if invalid:
-                assert response.status_code == 422 and "verification" in response.json()["message"]
+                assert response.status_code == 422 and "revocation" in response.json()["message"]
                 assert not await PlaybookStore(database).list_playbooks(org, 100)
             else:
                 assert response.status_code == 200, response.text

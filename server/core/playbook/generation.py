@@ -9,10 +9,6 @@ from core.playbook.service import validate_definition
 
 def validate_generated(definition: PlaybookDraft) -> None:
     validate_definition(definition)
-    if definition.verifier is None or not definition.verifier.supports_overlap:
-        raise PlaybookError(
-            "Add the issuer's read-only credential verification details to the instructions"
-        )
     allowed = {
         "browser.navigate",
         "browser.type",

@@ -32,17 +32,6 @@ export class EmptyCompletionError extends Error {
 }
 
 
-const resendVerifier = JSON.stringify({
-  mode: "resend-receipt",
-  base_url: "https://api.resend.com",
-  auth: { scheme: "bearer" },
-  supports_overlap: true,
-  operation: { method: "GET", path: "/inboxes", query: { limit: "1" }, success_statuses: [200] },
-  credential_ids: { kind: "css", value: 'table a[href^="/api-keys/"]:has(:text-matches(".+"))' },
-  credential_ids_attribute: "href",
-  credential_id_path: "/api-keys/",
-})
-
 const resendSelectors =
   'For Resend also use these exact controls: the one-time secret is css input[value^="re_"]; ' +
   'the key identifier and display name are css table a[href^="/api-keys/"]:has-text("${replacement_provider_display_name}") with provider_id_attribute "href" and provider_id_path "/api-keys/"; ' +
@@ -80,9 +69,7 @@ export function browserSystemPrompt(schema: string, resend: boolean): string {
     "Never invent CSS classes, ids, URLs, endpoints, domains, permissions or labels that are not present in the sources. " +
     (resend ? resendSelectors : "") +
     "If a required control or detail is missing, return error listing exactly what to add. " +
-    (resend
-      ? "For Resend, use exactly this verifier: " + resendVerifier + ". "
-      : "Use a read-only issuer identity endpoint from the sources; if none is supplied, return error asking for it. ") +
+    "A verifier is optional: include one only when the sources describe a read-only identity endpoint, and omit the field otherwise. Never invent a verifier. " +
     "Schema: " + schema
 }
 
