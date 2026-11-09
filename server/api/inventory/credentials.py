@@ -1,8 +1,5 @@
-import hashlib
-
 from contracts import (
     ApprovalDecision,
-    CancelRunCommand,
     ControlVersion,
     Identifier,
     IncidentStatus,
@@ -196,16 +193,10 @@ async def archive_credential(
         return changed
     all_runs = await required(api.workflow, "workflow").list_runs(organisation_id, None, 500)
     related_runs = tuple(run for run in all_runs if run.credential_id == credential_id)
-    active_runs = tuple(run for run in related_runs if run.status in _ACTIVE_RUN_STATUSES)
-    for run in active_runs:
-        await required(api.workflow, "workflow").cancel(
-            CancelRunCommand(
-                id=_delete_command_id(credential_id, run.id),
-                organisation_id=organisation_id,
-                run_id=run.id,
-                actor_id=identity.actor_id,
-                expected_revision=run.revision,
-            )
+    open_runs = tuple(run for run in related_runs if run.status in _ACTIVE_RUN_STATUSES)
+    if open_runs:
+        raise ResourceConflictError(
+            "Cancel or recover the credential's open rotation before removing it."
         )
     related_run_ids = {run.id for run in related_runs}
     pending_approvals = await required(api.approvals, "approvals").list_approvals(
@@ -244,11 +235,6 @@ async def archive_credential(
         changed.revision,
     )
     return changed
-
-
-def _delete_command_id(credential_id: str, run_id: str) -> str:
-    value = hashlib.sha256(f"{credential_id}\0{run_id}\0delete".encode()).hexdigest()
-    return f"cmd_{value[:40]}"
 
 
 @router.get("/graph", response_model=InventoryGraph)

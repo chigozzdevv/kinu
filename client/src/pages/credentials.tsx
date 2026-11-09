@@ -264,6 +264,7 @@ export function CredentialsPage({ onAdd, initialCredentialId, initialControlVers
         isOpen={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         resourceLabel="credential"
+        description="Open rotations must be cancelled or recovered before a credential can be removed."
         retainedResourceNote="Stored secret remains in its secret store."
         dependencies={[{ label: "Services", items: selectedServices.map((item) => item.display_name) }]}
         onDelete={() => deleteCredential.mutate()}

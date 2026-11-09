@@ -29,6 +29,8 @@ from contracts import (
     PlaybookDraft,
     PlaybookVersion,
     ProbeVersion,
+    RotationRun,
+    RunStatus,
     Severity,
     SourceResource,
 )
@@ -43,7 +45,7 @@ from core.overview import OverviewService
 from core.playbook import PlaybookService
 from core.workflow import RunWorkflow
 from starlette.types import Message, Receive, Scope, Send
-from testkit import MemoryRunRepository, make_control_version, make_http_provider_api
+from testkit import MemoryRunRepository, make_control_version, make_http_provider_api, make_run
 from tests.browser import HEADERS, make_browser
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
@@ -952,3 +954,74 @@ def _single_receive(message: Message) -> Receive:
         return message
 
     return receive
+
+
+class WorkflowRuns:
+    def __init__(self, runs: tuple[RotationRun, ...]) -> None:
+        self.runs = runs
+
+    async def list_runs(
+        self,
+        organisation_id: str,
+        statuses: frozenset[RunStatus] | None = None,
+        limit: int = 100,
+        before: str | None = None,
+        current: bool = False,
+    ) -> tuple[RotationRun, ...]:
+        return self.runs[:limit]
+
+
+@pytest.mark.anyio
+async def test_cascading_credential_removal_requires_open_rotations_to_be_resolved() -> None:
+    inventory = InventoryRepository()
+    credential = inventory.stored_credentials[0]
+    open_run = make_run(NOW).model_copy(
+        update={"credential_id": credential.id, "status": RunStatus.PENDING}
+    )
+    configured = ApiServices(
+        access=AccessControl(AccessRepository(Role.ADMINISTRATOR)),
+        inventory=InventoryService(inventory),
+        workflow=WorkflowRuns((open_run,)),  # type: ignore[arg-type]
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(configured, browser=make_browser(IDENTITY))),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            f"/v1/organisations/org_one/inventory/credentials/{credential.id}/archive",
+            headers=headers(),
+            json={"expected_revision": credential.revision, "cascade": True},
+        )
+    assert response.status_code == 409, response.text
+    assert "open rotation" in response.json()["message"]
+    assert inventory.stored_credentials[0].archived_at is None
+
+
+@pytest.mark.anyio
+async def test_cascading_credential_removal_lets_an_administrator_cancel_stale_approvals() -> None:
+    inventory = InventoryRepository()
+    credential = inventory.stored_credentials[0]
+    closed_run = make_run(NOW).model_copy(
+        update={"credential_id": credential.id, "status": RunStatus.CANCELLED}
+    )
+    approvals = ApprovalRepository()
+    incidents = IncidentRepository(credential.id)
+    configured = ApiServices(
+        access=AccessControl(AccessRepository(Role.ADMINISTRATOR)),
+        inventory=InventoryService(inventory),
+        workflow=WorkflowRuns((closed_run,)),  # type: ignore[arg-type]
+        approvals=ApprovalService(approvals, clock=lambda: NOW),
+        incidents=IncidentService(incidents, clock=lambda: NOW),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(configured, browser=make_browser(IDENTITY))),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            f"/v1/organisations/org_one/inventory/credentials/{credential.id}/archive",
+            headers=headers(),
+            json={"expected_revision": credential.revision, "cascade": True},
+        )
+    assert response.status_code == 200, response.text
+    assert approvals.approvals[0].decision is ApprovalDecision.CANCELLED
+    assert inventory.stored_credentials[0].archived_at is not None
