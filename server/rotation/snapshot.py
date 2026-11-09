@@ -158,6 +158,15 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
                 or provider.http.list_credentials.method != "GET"
                 or provider.http.test_credential.method != "GET"
                 or provider.http.credential_auth is None
+                or (
+                    provider.http.credential_identity_mode == "response"
+                    and provider.http.test_credential.provider_id_field is None
+                    and not (provider.platform == "resend" and provider.api_playbook_id is None)
+                )
+                or (
+                    provider.http.credential_identity_mode == "creation-receipt"
+                    and not provider.http.test_credential.response_matches
+                )
             )
         )
         or (provider.authorization_reference or "").partition("/versions/")[0]

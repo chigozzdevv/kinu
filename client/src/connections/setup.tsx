@@ -12,7 +12,6 @@ import { AwsSetup } from "./aws"
 import { HostingSetup } from "./hosting"
 import { GmailSetup } from "./gmail"
 import { EmailSetup } from "./email"
-import { ResendSetup } from "./resend"
 import { GitHubSetup } from "./github"
 import { ComputerUseSetup } from "./computer-use"
 import { CustomApiSetup } from "./custom-api"
@@ -40,7 +39,6 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
     vercel: features.data?.hosting === true && configured("vercel"),
     railway: features.data?.hosting === true && configured("railway"),
     render: features.data?.hosting === true,
-    resend: features.data?.provider_api === true,
     github: features.data?.github === true,
     gmail: features.data?.gmail === true,
     aws: features.data?.aws_connections === true,
@@ -53,14 +51,13 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
   const visible: IntegrationKind[] = integrations ?? (requestedIncident
     ? ["email", "github"]
     : requestedProvider
-    ? ["resend", "custom-api", "computer-use"]
+    ? ["custom-api", "computer-use"]
     : requestedCloud
       ? category === "runtime" ? ["vercel", "railway", "render", "aws"] : ["aws"]
       : [])
   const unconfigured = { email: !available.email, github: !available.github, vercel: features.data?.hosting === true && !configured("vercel"), railway: features.data?.hosting === true && !configured("railway") }
   const connected = {
     email: connections.some((item) => item.platform === "email" && !item.archived_at && item.status !== "disabled"),
-    resend: connections.some((item) => item.platform === "resend" && item.status === "ready"),
     gmail: connections.some((item) => item.platform === "gmail" && item.status === "ready"),
     github: connections.some((item) => item.platform === "github" && item.roles.includes("incident")),
     aws: connections.some((item) => item.platform === "aws" && item.status === "ready"),
@@ -78,8 +75,7 @@ export function ConnectionSetup({ onClose, playbooks, connections, onChanged, on
 
   if (integration === "vercel" || integration === "railway" || integration === "render") return <HostingSetup platform={integration} {...{ onClose, onChanged, onCreated }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "custom-api") return <CustomApiSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
-  if (integration === "resend") return <ResendSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
-  if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, connections, playbooks }} onBack={() => setIntegration(null)} />
+  if (integration === "computer-use") return <ComputerUseSetup {...{ onClose, onChanged, onCreated, playbooks }} onBack={() => setIntegration(null)} />
   if (integration === "gmail") return <GmailSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />
   if (integration === "email") return <EmailSetup {...{ onClose, onChanged, onCreated }} onBack={() => setIntegration(null)} />
   if (integration === "github") return <GitHubSetup {...{ onClose, onChanged, onCreated, connections }} beforeAuthorization={beforeAuthorization} onBack={() => connectionCallbackIntegration() && beforeAuthorization ? onClose() : setIntegration(null)} />

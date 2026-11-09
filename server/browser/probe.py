@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import httpx
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
-from connectors.http.client import _dig, _metadata_value, _value_headers
+from connectors.http.client import _dig, _metadata_value, _value_headers, accepted_response
 from connectors.http.transport import PublicTransport
 from contracts.playbook import BrowserProbe
 
@@ -15,7 +15,7 @@ class Probe:
         self.http = http
 
     async def check(self, config: BrowserProbe, value: SecretValue) -> tuple[int, dict[str, Any]]:
-        if config.mode != "identity":
+        if config.mode == "resend-receipt":
             raise ConnectorError("browser-probe", "Receipt verification needs its provider adapter")
         client = self.http or httpx.AsyncClient(transport=PublicTransport(), trust_env=False)
         try:
@@ -27,6 +27,7 @@ class Probe:
                 timeout=10,
                 follow_redirects=False,
             ) as response:
+                status = response.status_code
                 body = bytearray()
                 async for part in response.aiter_bytes():
                     body.extend(part)
@@ -34,10 +35,18 @@ class Probe:
                         raise ConnectorError(
                             "browser-probe", "Credential proof response is too large"
                         )
-                if response.status_code in {401, 403}:
-                    return response.status_code, {}
-                if response.status_code not in config.operation.success_statuses:
+                checked_response = httpx.Response(response.status_code, content=bytes(body))
+                if not accepted_response(config.operation, checked_response):
+                    if status in {401, 403}:
+                        return status, {"status": "rejected"}
                     raise ConnectorError("browser-probe", "Credential proof failed")
+            if config.mode == "creation-receipt":
+                return status, {
+                    "kind": config.kind,
+                    "scopes": [],
+                    "status": "active",
+                    "disabled": False,
+                }
             import json
 
             data = json.loads(body)
@@ -46,7 +55,7 @@ class Probe:
                 r"[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,255}", identity
             ):
                 raise ValueError
-            result: dict[str, Any] = {
+            identity_result: dict[str, Any] = {
                 "provider_id": identity,
                 "kind": config.kind,
                 "scopes": [],
@@ -56,8 +65,8 @@ class Probe:
             for name, path in config.operation.metadata_fields.items():
                 found = _dig(data, path)
                 if found is not None:
-                    result[name] = _metadata_value(name, found)
-            return response.status_code, result
+                    identity_result[name] = _metadata_value(name, found)
+            return status, identity_result
         except (ValueError, TypeError, AttributeError, httpx.HTTPError):
             raise ConnectorError(
                 "browser-probe", "Credential identity could not be verified"

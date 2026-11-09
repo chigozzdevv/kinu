@@ -1,11 +1,9 @@
-from contracts import (
-    Identifier,
-    SetupSession,
-)
+from contracts import Identifier, SetupSession, Stage
 from core.auth import Permission
+from core.errors import ResourceConflictError
 from fastapi import APIRouter, Request, status
 
-from api.deps import Identity, services
+from api.deps import Identity, required, services
 from api.inventory.schemas import (
     AbortSetupRequest,
     BeginSetupRequest,
@@ -33,6 +31,27 @@ async def begin_setup(
     api = services(request)
     await api.access.require(identity, organisation_id, Permission.INVENTORY_WRITE)
     setup = _setup(api)
+    connection = await required(api.inventory, "inventory").get_connection(
+        organisation_id, connection_id
+    )
+    if not connection.playbook_id or not connection.playbook_version_id:
+        raise ResourceConflictError("Browser connection requires its approved Playbook")
+    version = await required(api.playbooks, "playbooks").get_version(
+        organisation_id, connection.playbook_id, connection.playbook_version_id
+    )
+    first = next(
+        (
+            step
+            for step in version.definition.steps
+            if step.tool == "browser.navigate" and step.stage is Stage.CREATE
+        ),
+        None,
+    )
+    initial_url = first.parameters.get("url") if first else None
+    if not isinstance(initial_url, str) or not initial_url:
+        raise ResourceConflictError(
+            "Computer-use Playbook needs a provider URL in its first create step"
+        )
     session, token = await setup.begin(
         organisation_id,
         connection_id,
@@ -44,6 +63,7 @@ async def begin_setup(
         token=token,
         setup_url=setup.setup_url,
         gateway_url=setup.gateway_url,
+        initial_url=initial_url,
         expires_at=session.expires_at,
     )
 

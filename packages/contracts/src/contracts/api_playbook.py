@@ -13,8 +13,6 @@ class ApiPlaybookDraft(Contract):
     @model_validator(mode="after")
     def validate_operations(self) -> "ApiPlaybookDraft":
         api = self.http
-        if self.platform == "resend":
-            raise ValueError("Use the built-in Resend API connection")
         if api.create_credential.method not in {"POST", "PUT", "PATCH"}:
             raise ValueError("Creation requires a write operation")
         if api.revoke_credential.method == "GET":
@@ -23,9 +21,34 @@ class ApiPlaybookDraft(Contract):
             raise ValueError("Credential listing must be read-only")
         if not api.test_credential or not api.credential_auth:
             raise ValueError("Include a replacement-key identity check")
-        if api.test_credential.method != "GET" or not api.test_credential.provider_id_field:
-            raise ValueError("The identity check must be read-only and return the credential ID")
+        if api.test_credential.method != "GET":
+            raise ValueError("The credential check must be read-only")
+        if api.credential_identity_mode == "response" and not api.test_credential.provider_id_field:
+            raise ValueError("The identity check must return the credential ID")
+        if api.credential_identity_mode == "creation-receipt" and (
+            api.test_credential.provider_id_field is not None
+            or not api.test_credential.response_matches
+        ):
+            raise ValueError("The credential check must declare an exact accepted response")
         return self
+
+
+def validate_creation_scopes(definition: ApiPlaybookDraft) -> None:
+    """Ensure the playbook's declared permissions match what Kinu records."""
+    if definition.http.credential_scopes is not None:
+        return
+    if not _contains_scopes(definition.http.create_credential.body):
+        raise ValueError("Bind ${scopes} in the create request or declare fixed permissions")
+
+
+def _contains_scopes(value: object) -> bool:
+    if value == "${scopes}":
+        return True
+    if isinstance(value, dict):
+        return any(_contains_scopes(item) for item in value.values())
+    if isinstance(value, list | tuple):
+        return any(_contains_scopes(item) for item in value)
+    return False
 
 
 class ApiPlaybook(Playbook):

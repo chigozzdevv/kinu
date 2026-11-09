@@ -48,7 +48,14 @@ class HttpProviderConnector:
         return None
 
     def creation_scopes(self, connection: Connection, requested: frozenset[str]) -> frozenset[str]:
-        _api(connection)
+        api = _api(connection)
+        if api.credential_scopes is not None:
+            configured = frozenset(api.credential_scopes)
+            if requested and requested != configured:
+                raise ConnectorError(
+                    "provider-scopes", "Use the permissions declared by this API playbook"
+                )
+            return configured
         return requested
 
     async def create_credential(
@@ -93,7 +100,13 @@ class HttpProviderConnector:
                 }
             )
         if tool == "provider.createCredential":
-            return await self._create(api, payload, headers)
+            requested = payload.get("scopes", [])
+            if not isinstance(requested, list) or any(
+                not isinstance(scope, str) or not scope for scope in requested
+            ):
+                raise ConnectorError("provider-scopes", "credential permissions are invalid")
+            scopes = self.creation_scopes(context.connection, frozenset(requested))
+            return await self._create(api, payload | {"scopes": sorted(scopes)}, headers)
         if tool == "provider.revokeCredential":
             key_id = _string(payload, "provider_id")
             await self.revoke_credential(context.connection, key_id)
@@ -113,6 +126,20 @@ class HttpProviderConnector:
         connection: Connection,
         value: SecretValue,
     ) -> int:
+        response = await self.credential_response(connection, value)
+        api = _api(connection)
+        operation = api.test_credential
+        if (
+            api.credential_identity_mode == "creation-receipt"
+            and operation is not None
+            and accepted_response(operation, response)
+        ):
+            return 200
+        return response.status_code
+
+    async def credential_response(
+        self, connection: Connection, value: SecretValue
+    ) -> httpx.Response:
         api = _api(connection)
         operation = api.test_credential
         auth = api.credential_auth
@@ -122,8 +149,7 @@ class HttpProviderConnector:
                 "provider connection has no credential authentication test",
             )
         headers = _value_headers(value, auth)
-        response = await self._call(api, operation, headers, {})
-        return response.status_code
+        return await self._call(api, operation, headers, {})
 
     async def credential_identity(
         self,
@@ -138,13 +164,22 @@ class HttpProviderConnector:
         api = _api(connection)
         operation = api.test_credential
         auth = api.credential_auth
-        if operation is None or auth is None or operation.provider_id_field is None:
+        if (
+            api.credential_identity_mode != "response"
+            or operation is None
+            or auth is None
+            or operation.provider_id_field is None
+        ):
             raise ConnectorError(
                 "credential-identity-unavailable",
                 "provider connection has no credential identity test",
             )
-        response = await self._call(api, operation, _value_headers(value, auth), {})
-        _expected(response, set(operation.success_statuses))
+        response = await self.credential_response(connection, value)
+        if not accepted_response(operation, response):
+            _expected(response, set(operation.success_statuses))
+            raise ConnectorError(
+                "invalid-provider-response", "provider credential check did not match its playbook"
+            )
         payload = _object(response.json(), "credential identity")
         identity = _dig(payload, operation.provider_id_field)
         if not isinstance(identity, str) or not identity:
@@ -394,6 +429,18 @@ def _api(connection: Connection) -> HttpProviderApi:
             "OAuth provider connections require bearer transport",
         )
     return connection.http
+
+
+def accepted_response(operation: HttpOperation, response: httpx.Response) -> bool:
+    if response.status_code not in operation.success_statuses:
+        return False
+    if not operation.response_matches:
+        return True
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return all(_dig(payload, match.path) == match.expected for match in operation.response_matches)
 
 
 def _value_headers(value: SecretValue, auth: HttpAuth) -> dict[str, str]:

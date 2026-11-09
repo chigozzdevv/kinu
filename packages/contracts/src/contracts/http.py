@@ -1,6 +1,6 @@
 import re
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
@@ -30,6 +30,11 @@ class HttpAuth(Contract):
         return self
 
 
+class HttpJsonMatch(Contract):
+    path: str = Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9_.-]+$")
+    expected: str = Field(min_length=1, max_length=512)
+
+
 class HttpOperation(Contract):
     method: str = Field(pattern=r"^(GET|POST|PUT|PATCH|DELETE)$")
     path: str = Field(min_length=1, max_length=1024, pattern=r"^/")
@@ -41,6 +46,7 @@ class HttpOperation(Contract):
     secret_field: str | None = Field(default=None, max_length=128)
     name_field: str | None = Field(default=None, max_length=128)
     metadata_fields: dict[str, str] = Field(default_factory=dict, max_length=16)
+    response_matches: tuple[HttpJsonMatch, ...] = Field(default=(), max_length=8)
 
     @model_validator(mode="after")
     def validate_statuses(self) -> "HttpOperation":
@@ -77,6 +83,8 @@ class HttpProviderApi(Contract):
     revoke_credential: HttpOperation
     test_credential: HttpOperation | None = None
     credential_auth: HttpAuth | None = None
+    credential_identity_mode: Literal["response", "creation-receipt"] = "response"
+    credential_scopes: tuple[str, ...] | None = Field(default=None, max_length=256)
     supports_overlap: bool = False
 
     @model_validator(mode="after")
@@ -111,6 +119,11 @@ class HttpProviderApi(Contract):
             raise ValueError(
                 "credential authentication requires both a test operation and auth scheme"
             )
+        if self.credential_scopes is not None and (
+            any(not scope or len(scope) > 128 for scope in self.credential_scopes)
+            or len(set(self.credential_scopes)) != len(self.credential_scopes)
+        ):
+            raise ValueError("fixed provider permissions must be unique, non-empty values")
         return self
 
 

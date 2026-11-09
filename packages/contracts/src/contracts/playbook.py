@@ -69,7 +69,7 @@ class StepOutput(Contract):
 
 
 class BrowserProbe(Contract):
-    mode: Literal["identity", "resend-receipt"] = "identity"
+    mode: Literal["identity", "creation-receipt", "resend-receipt"] = "identity"
     base_url: str = Field(min_length=12, max_length=1024)
     auth: HttpAuth
     operation: HttpOperation
@@ -99,10 +99,13 @@ class BrowserProbe(Contract):
         if (
             self.operation.method != "GET"
             or (self.mode == "identity" and not self.operation.provider_id_field)
+            or (self.mode == "creation-receipt" and self.operation.provider_id_field is not None)
             or "{" in self.operation.path
             or self.operation.body
         ):
             raise ValueError("browser verification requires a fixed GET identity endpoint")
+        if self.mode == "creation-receipt" and not self.operation.response_matches:
+            raise ValueError("creation-receipt verification requires a checked response")
         if self.mode == "resend-receipt" and (
             self.base_url != "https://api.resend.com"
             or self.operation.path != "/inboxes"

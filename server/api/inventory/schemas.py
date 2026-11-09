@@ -66,6 +66,7 @@ class BeginSetupResponse(Contract):
     token: str = Field(min_length=32)
     setup_url: str = Field(min_length=12)
     gateway_url: str = Field(min_length=12)
+    initial_url: str = Field(min_length=12, max_length=2048)
     expires_at: AwareDatetime
 
 

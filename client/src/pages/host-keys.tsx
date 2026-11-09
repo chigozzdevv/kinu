@@ -52,6 +52,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
   const providers = connections.filter((item) => item.status === "ready" && item.roles.includes("provider")
     && ((item.interface === "api" && item.http) || item.interface === "browser"))
   const selectedProvider = providers.find((item) => item.id === provider)
+  const fixedScopes = selectedProvider?.interface === "api" ? selectedProvider.http?.credential_scopes ?? null : null
   const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(selectedProvider) })
   const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")) ?? []
   const projectName = eligibleProjects.find((item) => item.id === project)?.name
@@ -192,7 +193,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
           {canCreate && !otherChoices && <option value="create">Create managed key…</option>}
         </SelectControl></Field>
         <Field label={newKey ? "Health URL (required)" : "Health URL"} wide><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
-        {newKey && selectedProvider?.platform !== "resend" && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
+        {newKey && selectedProvider?.interface === "api" && fixedScopes === null && !(selectedProvider.platform === "resend" && !selectedProvider.api_playbook_id) && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
       </FormGrid>}
       {setup && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
         <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
@@ -209,7 +210,8 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
           {newKey ? "Create and install a new key" : availableKeys.find((key) => key.provider_id === choices[item.reference])?.name ?? choices[item.reference]}
           {health[item.reference]?.trim() && <div className="mt-1">{health[item.reference].trim()}</div>}
         </Detail>)}
-        {newKey && (selectedProvider?.platform === "resend" || form.scopes.trim()) && <Detail label="Permissions">{selectedProvider?.platform === "resend" ? "Sending only" : form.scopes.trim()}</Detail>}
+        {newKey && selectedProvider?.platform === "resend" && selectedProvider.interface === "api" && !selectedProvider.api_playbook_id && <Detail label="Permissions">Sending only</Detail>}
+        {newKey && selectedProvider?.interface === "api" && !(selectedProvider.platform === "resend" && !selectedProvider.api_playbook_id) && (fixedScopes !== null || form.scopes.trim()) && <Detail label="Permissions">{fixedScopes !== null ? (fixedScopes.join(", ") || "None") : form.scopes.trim()}</Detail>}
         {!hasNewCredentials && <Detail label="Rotation controls">Use the credential’s existing rules</Detail>}
       </DetailList></Section>
       {newKey && <p className="mb-4 text-[11px] leading-5 text-[var(--ink-soft)]">Kinu will deploy and verify the new key. The previous provider key stays active for you to review.</p>}

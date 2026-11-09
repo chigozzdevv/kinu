@@ -1,7 +1,12 @@
 from datetime import UTC, datetime
 
 from contracts import AgentKind, AgentTask, Contract, Identifier
-from contracts.api_playbook import ApiPlaybook, ApiPlaybookDraft, ApiPlaybookVersion
+from contracts.api_playbook import (
+    ApiPlaybook,
+    ApiPlaybookDraft,
+    ApiPlaybookVersion,
+    validate_creation_scopes,
+)
 from core.auth import Permission
 from core.errors import PlaybookError, ResourceNotFoundError
 from core.playbook.walkthrough import sanitise_source_text
@@ -123,6 +128,15 @@ async def generate(
             context={
                 "playbook_id": playbook_id,
                 "execution": "api",
+                "credential_scopes": (
+                    "Bind ${scopes} in the create request body when permissions vary by key. "
+                    "For fixed permissions, set http.credential_scopes to the exact values."
+                ),
+                "credential_identity": (
+                    "Use response mode and a provider_id_field when the key-check response returns "
+                    "the key ID. Otherwise use creation-receipt mode with exact response_matches; "
+                    "that mode verifies only keys created through Kinu."
+                ),
                 "walkthroughs": tuple(
                     source.analysis.model_dump(mode="json")
                     for source in sources
@@ -137,9 +151,10 @@ async def generate(
         definition = ApiPlaybookDraft.model_validate(
             result.output.get("playbook_draft", result.output)
         )
+        validate_creation_scopes(definition)
     except ValueError as error:
         raise PlaybookError(
-            "Add the list, create, identity-check and revoke API details."
+            "Bind key permissions in create, then add list, credential check and revoke details."
         ) from error
     if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
         raise PlaybookError("Keep the playbook's name and provider")
@@ -162,6 +177,10 @@ async def create_version(
         await required(api.walkthroughs, "walkthroughs").ready(
             organisation_id, playbook_id, body.source_ids
         )
+    try:
+        validate_creation_scopes(body.definition)
+    except ValueError as error:
+        raise PlaybookError(str(error)) from error
     book, version = await required(api.api_playbooks, "API playbooks").add_version(
         playbook_id,
         body.version_id,

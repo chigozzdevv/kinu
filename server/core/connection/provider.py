@@ -23,11 +23,7 @@ class ProviderInput(Contract):
         if (book is None) != (version is None):
             raise ValueError("Choose an API playbook and its published version")
         if book is not None:
-            if (
-                value.get("http") is not None
-                or value.get("domain_id")
-                or value.get("platform") == "resend"
-            ):
+            if value.get("http") is not None or value.get("domain_id"):
                 raise ValueError("Use the selected API playbook configuration")
             return value
         if value.get("platform") == "resend":

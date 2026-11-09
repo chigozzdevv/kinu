@@ -94,7 +94,7 @@ from contracts.history import (
     RuntimeDeploymentProgress,
     StageDetail,
 )
-from contracts.http import HttpAuth, HttpAuthScheme, HttpOperation, HttpProviderApi
+from contracts.http import HttpAuth, HttpAuthScheme, HttpJsonMatch, HttpOperation, HttpProviderApi
 from contracts.incident import (
     Confidence,
     CorrelationCandidate,
@@ -262,6 +262,7 @@ __all__ = [
     "GitHubWebhookReceipt",
     "HttpAuth",
     "HttpAuthScheme",
+    "HttpJsonMatch",
     "HttpOperation",
     "HttpProviderApi",
     "Identifier",

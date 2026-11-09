@@ -15,7 +15,7 @@ export type BrowserSetupCapability = {
   revision: number | null
   setupId: string
   token: string
-  providerUrl: string
+  initialUrl: string
 }
 
 type SetupKey = "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "Backspace" | "Enter" | "Tab"
@@ -50,7 +50,7 @@ function send(socket: WebSocket | null, value: object) {
 }
 
 export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSessionProps) {
-  const { gatewayUrl, organisationId, revision, setupId, token, providerUrl } = capability
+  const { gatewayUrl, organisationId, revision, setupId, token, initialUrl } = capability
   const [frame, setFrame] = useState("")
   const [status, setStatus] = useState<"connecting" | "ready" | "closed">("connecting")
   const [error, setError] = useState("")
@@ -173,7 +173,7 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
           token,
         }))
 
-        if (providerUrl) opened.send(JSON.stringify({ type: "action", action: { kind: "navigate", url: providerUrl } }))
+        if (initialUrl) opened.send(JSON.stringify({ type: "action", action: { kind: "navigate", url: initialUrl } }))
         attempts = 0
         requestFrame()
         interval = window.setInterval(() => {
@@ -244,7 +244,7 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
 
       if (frameUrl.current) URL.revokeObjectURL(frameUrl.current)
     }
-  }, [gatewayUrl, organisationId, providerUrl, requestFrame, requestStatus, scheduleFrame, revision, sendSecureInput, setupId, token])
+  }, [gatewayUrl, organisationId, initialUrl, requestFrame, requestStatus, scheduleFrame, revision, sendSecureInput, setupId, token])
 
   useEffect(() => () => abort(), [abort])
 
@@ -320,7 +320,7 @@ function browserSetupCapability(connection: Connection, setup: BrowserSetupRespo
     revision: setup.session.revision,
     setupId: setup.session.id,
     token: setup.token,
-    providerUrl: connection.platform.toLowerCase() === "resend" ? "https://resend.com/login" : "",
+    initialUrl: setup.initial_url,
   }
 }
 

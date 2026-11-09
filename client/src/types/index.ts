@@ -104,11 +104,14 @@ export interface HttpOperation {
   secret_field: string | null
   name_field: string | null
   metadata_fields?: Record<string, string>
+  response_matches?: Array<{ path: string; expected: string }>
 }
 
 export interface HttpProviderApi {
   base_url: string
   supports_overlap: boolean
+  credential_identity_mode?: "response" | "creation-receipt"
+  credential_scopes?: string[] | null
   auth: {
     scheme: "bearer" | "header" | "basic"
     header: string

@@ -100,7 +100,7 @@ async def create(
         created_at=now,
         updated_at=now,
     )
-    if body.platform == "resend":
+    if body.platform == "resend" and not body.api_playbook_id:
         with SecretValue(body.token.get_secret_value().encode()) as token:
             domains = await service.providers.resend.domains(token)
         if not any(item["id"] == body.domain_id for item in domains):

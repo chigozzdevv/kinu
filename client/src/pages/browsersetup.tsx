@@ -10,7 +10,7 @@ function capabilityFromFragment(): BrowserSetupCapability {
     revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : null,
     setupId: fragment.get("setup_id") ?? "",
     token: fragment.get("token") ?? "",
-    providerUrl: fragment.get("provider_url") ?? "",
+    initialUrl: fragment.get("provider_url") ?? "",
   }
 }
 

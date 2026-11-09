@@ -82,11 +82,20 @@ class InventoryService(InventoryCatalog):
             and connection.interface is ConnectionInterface.API
         ):
             api = connection.http
+            legacy_resend = connection.platform == "resend" and connection.api_playbook_id is None
             if (
                 api is None
                 or api.test_credential is None
                 or api.credential_auth is None
-                or api.test_credential.provider_id_field is None
+                or (
+                    api.credential_identity_mode == "response"
+                    and api.test_credential.provider_id_field is None
+                    and not legacy_resend
+                )
+                or (
+                    api.credential_identity_mode == "creation-receipt"
+                    and not api.test_credential.response_matches
+                )
                 or "provider.testCredential" not in connection.capabilities
             ):
                 raise ResourceConflictError(

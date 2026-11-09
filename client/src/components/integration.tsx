@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { providerName } from "../lib/format"
 import { PlatformIcon } from "./platform-icon"
 
-export type IntegrationKind = "email" | "github" | "gmail" | "aws" | "custom-api" | "computer-use" | "vercel" | "railway" | "render" | "resend"
+export type IntegrationKind = "email" | "github" | "gmail" | "aws" | "custom-api" | "computer-use" | "vercel" | "railway" | "render"
 
 type Integration = {
   id: IntegrationKind
@@ -18,7 +18,6 @@ const integrations: Integration[] = [
   { id: "vercel", description: "Projects and variables", action: "Connect" },
   { id: "railway", description: "Projects and variables", action: "Connect" },
   { id: "render", description: "Services and variables", action: "Connect" },
-  { id: "resend", description: "Sending keys", action: "Connect" },
   { id: "aws", description: "Secrets and workloads", action: "Connect" },
   { id: "custom-api", description: "Provider credential API", action: "Configure" },
   { id: "computer-use", description: "Provider actions through a Playbook", action: "Set up" },

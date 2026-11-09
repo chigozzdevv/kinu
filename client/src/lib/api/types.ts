@@ -135,6 +135,7 @@ export interface BrowserSetupResponse {
   token: string
   setup_url: string
   gateway_url: string
+  initial_url: string
   expires_at: string
 }
 

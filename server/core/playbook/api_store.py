@@ -1,7 +1,12 @@
 from datetime import datetime
 
 from contracts import PlaybookState
-from contracts.api_playbook import ApiPlaybook, ApiPlaybookDraft, ApiPlaybookVersion
+from contracts.api_playbook import (
+    ApiPlaybook,
+    ApiPlaybookDraft,
+    ApiPlaybookVersion,
+    validate_creation_scopes,
+)
 from policy import digest
 
 from core.errors import PlaybookError, ResourceConflictError
@@ -49,6 +54,10 @@ class ApiPlaybookStore:
         created_at: datetime,
         source_ids: tuple[str, ...],
     ) -> tuple[ApiPlaybook, ApiPlaybookVersion]:
+        try:
+            validate_creation_scopes(definition)
+        except ValueError as error:
+            raise PlaybookError(str(error)) from error
         if definition_digest != digest(definition):
             raise PlaybookError("The API playbook definition changed")
         async with self._records.write(organisation_id) as rows:
