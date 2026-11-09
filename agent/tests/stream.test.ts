@@ -41,3 +41,11 @@ test("Builder streams fail closed on truncation, tool calls and invalid usage", 
   assert.deepEqual(await collect(stream('{"type":"stop","reason":"invalid_request","errorCode":"model_unavailable"}')),
     [{ type: "stop", reason: "error", errorCode: "model_unavailable" }])
 })
+
+test("long token streams within the playbook budget still complete", async () => {
+  const wire = Array.from({ length: 3000 }, (_, index) => JSON.stringify({ type: "text-delta", text: String(index % 10) }))
+    .concat(JSON.stringify({ type: "stop", reason: "end_turn" })).join("\n")
+  const events = await collect(stream(wire, 4096))
+  assert.equal(events.length, 3001)
+  assert.equal(events.at(-1)?.type, "stop")
+})

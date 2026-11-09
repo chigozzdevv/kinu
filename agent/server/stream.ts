@@ -15,7 +15,7 @@ export async function* gatewayEvents(body: ReadableStream<Uint8Array>): AsyncGen
   const reader = body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true })
   let pending = "", bytes = 0, lines = 0
   function parse(line: string): EngineEvent | null {
-    if (++lines > 2048 || line.length > 32768) throw new Error("Builder stream exceeded its boundary")
+    if (++lines > 16384 || line.length > 32768) throw new Error("Builder stream exceeded its boundary")
     const event = eventSchema.parse(JSON.parse(line))
     if (event.type === "text-delta") return event
     if (event.type === "heartbeat") return { type: "gateway-heartbeat" }
@@ -32,7 +32,7 @@ export async function* gatewayEvents(body: ReadableStream<Uint8Array>): AsyncGen
     while (true) {
       const chunk = await reader.read()
       bytes += chunk.value?.byteLength ?? 0
-      if (bytes > 262144) throw new Error("Builder stream exceeded its boundary")
+      if (bytes > 1048576) throw new Error("Builder stream exceeded its boundary")
       pending += decoder.decode(chunk.value, { stream: !chunk.done })
       let newline: number
       while ((newline = pending.indexOf("\n")) >= 0 || (chunk.done && pending.length)) {
