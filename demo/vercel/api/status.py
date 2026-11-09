@@ -103,7 +103,8 @@ class handler(BaseHTTPRequestHandler):
         self._reply(
             200,
             {
-                "deployment_id": os.environ.get("VERCEL_DEPLOYMENT_ID"),
+                "deployment_id": os.environ.get("VERCEL_DEPLOYMENT_ID")
+                or os.environ.get("RAILWAY_DEPLOYMENT_ID"),
                 "fingerprint": digest[:12] if digest else None,
             },
         )
