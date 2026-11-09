@@ -60,13 +60,14 @@ async def prepare(
         ):
             raise ResourceConflictError("Choose a connected API credential provider")
         value = await adapter.read(variable)
+        secret_fingerprint = fingerprint(value.bytes()) if value is not None else None
         automatic = choice.provider_id is None and provider.interface is ConnectionInterface.BROWSER
         if automatic:
             if value is None:
                 raise ResourceConflictError(
                     "Browser providers require a readable workload variable"
                 )
-            provider_id = fingerprint(value.bytes())[:32]
+            provider_id = (secret_fingerprint or "")[:32]
             metadata = [
                 ProviderCredentialMetadata(
                     provider_id=provider_id,
@@ -165,7 +166,7 @@ async def prepare(
                 current,
                 key,
                 reference,
-                fingerprint(value.bytes()) if value else None,
+                secret_fingerprint,
             )
         )
     return tuple(result)
