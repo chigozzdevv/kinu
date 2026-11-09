@@ -129,7 +129,7 @@ class Setups:
             ),
             None,
         )
-        if not first or not first.checkpoint or not first.checkpoint.required_text:
+        if not first or not first.checkpoint:
             raise ResourceConflictError("Login verification requires a key-page checkpoint")
         try:
             try:
