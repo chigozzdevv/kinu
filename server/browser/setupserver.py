@@ -30,6 +30,17 @@ class Live:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
+# Login screens behind bot checks load captcha assets from these hosts. They are
+# allowed for the interactive setup only; rotation keeps the playbook's strict list.
+_LOGIN_DOMAINS = (
+    "hcaptcha.com",
+    "*.hcaptcha.com",
+    "*.hcaptcha.ai",
+    "challenges.cloudflare.com",
+    "*.cloudflare.com",
+)
+
+
 class Setups:
     def __init__(self, catalog: Catalog, launcher: BrowserFactory | None = None) -> None:
         self.catalog, self.launcher = catalog, launcher or Launcher()
@@ -58,8 +69,9 @@ class Setups:
         version = await self.catalog.definition(connection)
         stack = AsyncExitStack()
         try:
+            extras = tuple(dict.fromkeys((*extra, *_LOGIN_DOMAINS)))
             tab = await stack.enter_async_context(
-                self.launcher.open(version.definition, extra_domains=extra)
+                self.launcher.open(version.definition, extra_domains=extras)
             )
             now, token, setup_id = datetime.now(UTC), secrets.token_urlsafe(32), new_id("setup")
             session = SetupSession(
@@ -69,7 +81,9 @@ class Setups:
                 secret_container=f"browser://{identity}",
                 token_hash=hashlib.sha256(token.encode()).hexdigest(),
                 subject=subject,
-                allowed_domains=tuple(dict.fromkeys((*version.definition.allowed_domains, *extra))),
+                allowed_domains=tuple(
+                    dict.fromkeys((*version.definition.allowed_domains, *extras))
+                ),
                 status=SetupStatus.READY,
                 worker_instance="executor",
                 internal_address="private",
