@@ -287,6 +287,24 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
     onSelectRotation(run.id)
     setCreating(false)
   } })
+  const retry = useMutation({
+    mutationFn: () => {
+      const run = selectedRun.data
+      if (!run) throw new Error("Rotation is unavailable")
+      return api.startRotation({
+        credential_id: run.credential_id,
+        control_version: run.control_version,
+        reason: "Retry after failed rotation",
+        urgency: run.trigger?.urgency ?? "urgent",
+      })
+    },
+    onSuccess: async (run) => {
+      queryClient.setQueryData(["rotation", run.id], run)
+      await queryClient.invalidateQueries({ queryKey: ["rotations"] })
+      setSelectedId(run.id)
+      onSelectRotation(run.id)
+    },
+  })
   const recover = useMutation({
     mutationFn: () => api.recoverRotation(selectedId, selectedRun.data!.revision),
     onSuccess: async (run) => {
@@ -368,7 +386,7 @@ export function RotationsPage({ activeRunId, onSelectRotation, onNavigateApprova
       <PageHeader titleInBreadcrumb eyebrow="Operations / Rotations" title={credential?.display_name ?? "Rotation"} titlePrefix={<Provider value={credential?.provider ?? "kinu"} label={false} />} onBack={() => { setSelectedId(""); onSelectRotation("") }} actions={<>
         {selected.status === "paused" && selected.stage === "approval" && <Button onClick={onNavigateApproval}>Review approval <Clock3 className="size-3.5" /></Button>}
         {selected.status === "cleanup-required" && active.role === "administrator" && <Button onClick={() => { recover.reset(); setConfirmingRecovery(true) }}>Recover rotation</Button>}
-        {selected.status === "failed" && <Button onClick={() => retryRotation(selected.credential_id)}>Retry run</Button>}
+        {selected.status === "failed" && ["trigger", "preflight", "plan"].includes(selected.stage) && <Button onClick={() => retry.mutate()} disabled={retry.isPending}>{retry.isPending ? "Retrying…" : "Retry run"}</Button>}
       </>} />
       <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[11px] text-[var(--ink-soft)]">
         <span className="font-semibold text-[var(--ink)]">{selected.status === "compensated" ? selected.recovery_mode === "rollback" ? "Rolled back" : "Recovered" : titleCase(selected.status)}</span>
