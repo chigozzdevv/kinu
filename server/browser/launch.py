@@ -70,6 +70,7 @@ class Launcher:
                 args=[
                     "--no-sandbox",
                     "--no-proxy-server",
+                    "--disable-blink-features=AutomationControlled",
                     "--host-resolver-rules=" + rules,
                     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
                 ],
@@ -85,6 +86,14 @@ class Launcher:
                     accept_downloads=False,
                     service_workers="block",
                     viewport={"width": 1280, "height": 800},
+                    locale="en-US",
+                    user_agent=(
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        f"(KHTML, like Gecko) Chrome/{browser.version} Safari/537.36"
+                    ),
+                )
+                await context.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
                 )
                 await context.route_web_socket("**/*", lambda route: route.close())
                 page = await context.new_page()
