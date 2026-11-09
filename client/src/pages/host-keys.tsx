@@ -200,13 +200,6 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
         {setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}
       </div>}
-      {step === 0 && !canContinue && <p className="text-[11px] text-[var(--ink-muted)]">
-        {!variable?.readable
-          ? "This variable is not readable, so Kinu cannot import its value. Use a plain or encrypted production variable."
-          : !unclaimed
-          ? "This variable already has a credential or a pending key setup."
-          : "Complete the required fields to continue."}
-      </p>}
       {mappings.length > 1 && <p className="text-[11px] text-[var(--ink-soft)]">{mappings.length} variables selected</p>}
       {!mapping && keys.isError && <RetryNotice onRetry={() => keys.refetch()}>Couldn’t load provider keys.</RetryNotice>}
     </div>}
