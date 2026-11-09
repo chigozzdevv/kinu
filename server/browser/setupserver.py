@@ -75,7 +75,7 @@ class Setups:
                 internal_address="private",
                 created_at=now,
                 updated_at=now,
-                expires_at=now + timedelta(minutes=10),
+                expires_at=now + timedelta(minutes=20),
             )
             key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
             self.live[setup_id] = Live(session, connection, tab, stack, key)

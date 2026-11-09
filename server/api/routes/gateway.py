@@ -6,7 +6,7 @@ from typing import cast
 from core.auth import Permission
 from core.auth.browser import BrowserAuth
 from core.config import Settings
-from core.errors import AuthorizationError, KinuError
+from core.errors import AuthorizationError, KinuError, ResourceNotFoundError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
@@ -40,7 +40,7 @@ async def setup(websocket: WebSocket) -> None:
             isinstance(value, str) and 1 <= len(value) <= 256 for value in (org, identity, token)
         ):
             raise ValueError
-        async with asyncio.timeout(600):
+        async with asyncio.timeout(1200):
             while True:
                 current = await browser.store.get(cookie)
                 if current.identity.subject != initial.identity.subject:
@@ -52,17 +52,28 @@ async def setup(websocket: WebSocket) -> None:
                 data = json.loads(text)
                 if not isinstance(data, dict):
                     raise ValueError
-                result = await api.private.call(
-                    "/browser",
-                    {
-                        "operation": "stream",
-                        "organisation_id": org,
-                        "setup_id": identity,
-                        "subject": current.identity.subject,
-                        "token": token,
-                        "data": data,
-                    },
-                )
+                try:
+                    result = await api.private.call(
+                        "/browser",
+                        {
+                            "operation": "stream",
+                            "organisation_id": org,
+                            "setup_id": identity,
+                            "subject": current.identity.subject,
+                            "token": token,
+                            "data": data,
+                        },
+                    )
+                except ResourceNotFoundError:
+                    await websocket.close(code=4403)
+                    return
+                except AuthorizationError:
+                    raise
+                except KinuError as error:
+                    await websocket.send_json(
+                        {"type": "error", "message": str(error)}
+                    )
+                    continue
                 if result.get("type") == "frame":
                     await websocket.send_bytes(base64.b64decode(result["image"], validate=True))
                 else:

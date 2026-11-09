@@ -191,7 +191,11 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
         return
       }
       try {
-        const message = JSON.parse(String(event.data)) as { type?: string; public_key?: string; succeeded?: boolean; authenticated?: boolean }
+        const message = JSON.parse(String(event.data)) as { type?: string; public_key?: string; succeeded?: boolean; authenticated?: boolean; message?: string }
+        if (message.type === "error") {
+          setError(message.message || "That interaction could not be completed. Try again.")
+          return
+        }
         if (message.type === "secure-key" && message.public_key) {
           void publicKeyFromPem(message.public_key).then(async (imported) => {
             key.current = imported
