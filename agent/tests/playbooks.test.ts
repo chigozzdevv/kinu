@@ -45,3 +45,28 @@ test("API playbooks use provider operations without browser instructions", async
   assert.deepEqual(await draft({ ...input, execution: "api" }, apiEngine, "test"), { error: "Add the provider identity endpoint." })
   assert.equal(playbookSchema.safeParse({ ...input, execution: "shell" }).success, false)
 })
+
+test("browser playbooks ground selectors in sources and add the Resend receipt verifier", async () => {
+  let browserPrompt = ""
+  const capture: AgentEngine = { ...createBuilderEngine(), async *stream(options) {
+    browserPrompt = options.systemPrompt
+    yield { type: "text-delta", text: '{"error":"Add the exact dialog controls."}' }
+    yield { type: "stop", reason: "end_turn" }
+  } }
+  await draft({ ...input, objective: 'Build a browser credential-rotation procedure for the exact platform "resend".' }, capture, "test")
+  assert.match(browserPrompt, /only when that exact label appears/)
+  assert.match(browserPrompt, /\[role="dialog"\] button\[type="submit"\]/)
+  assert.match(browserPrompt, /\$\{old_provider_id\}/)
+  assert.match(browserPrompt, /resend-receipt/)
+  assert.match(browserPrompt, /https:\/\/api\.resend\.com/)
+
+  let genericPrompt = ""
+  const generic: AgentEngine = { ...createBuilderEngine(), async *stream(options) {
+    genericPrompt = options.systemPrompt
+    yield { type: "text-delta", text: '{"error":"Add the issuer identity endpoint."}' }
+    yield { type: "stop", reason: "end_turn" }
+  } }
+  await draft({ ...input, objective: "Build a browser procedure" }, generic, "test")
+  assert.doesNotMatch(genericPrompt, /resend-receipt/)
+  assert.match(genericPrompt, /read-only issuer identity endpoint/)
+})
