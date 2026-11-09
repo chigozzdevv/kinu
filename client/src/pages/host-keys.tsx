@@ -193,13 +193,20 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
           <option value="">Select key</option>{availableKeys.map((item) => <option key={item.provider_id} value={"key:" + item.provider_id}>{item.name ?? item.provider_id}</option>)}
           {canCreate && !otherChoices && <option value="create">Create managed key…</option>}
         </SelectControl></Field>}
-        <Field label={newKey ? "Health URL (required)" : "Health URL"} wide><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
+        <Field label={newKey ? "Health URL (required)" : "Health URL"}><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
         {newKey && selectedProvider?.interface === "api" && fixedScopes === null && !(selectedProvider.platform === "resend" && !selectedProvider.api_playbook_id) && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
       </FormGrid>}
       {setup && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
         <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
         {setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}
       </div>}
+      {step === 0 && !canContinue && <p className="text-[11px] text-[var(--ink-muted)]">
+        {!variable?.readable
+          ? "This variable is not readable, so Kinu cannot import its value. Use a plain or encrypted production variable."
+          : !unclaimed
+          ? "This variable already has a credential or a pending key setup."
+          : "Complete the required fields to continue."}
+      </p>}
       {mappings.length > 1 && <p className="text-[11px] text-[var(--ink-soft)]">{mappings.length} variables selected</p>}
       {!mapping && keys.isError && <RetryNotice onRetry={() => keys.refetch()}>Couldn’t load provider keys.</RetryNotice>}
     </div>}
