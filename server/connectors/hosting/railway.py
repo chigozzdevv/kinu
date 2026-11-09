@@ -12,25 +12,25 @@ class Railway:
         self.client = client
 
     async def projects(self) -> tuple[Project, ...]:
+        data = await self.client.graphql(
+            """query {
+          externalWorkspaces {
+            id
+            name
+            projects { id name }
+          }
+        }""",
+            {},
+        )
         result: list[Project] = []
-        after = None
-        for _ in range(10):
-            data = await self.client.graphql(
-                """query($after: String) {
-              projects(first: 100, after: $after) {
-                edges { node { id name } } pageInfo { hasNextPage endCursor }
-              }
-            }""",
-                {"after": after},
-            )
-            page = data["projects"]
-            result.extend(
-                Project(id=item["node"]["id"], name=item["node"]["name"]) for item in page["edges"]
-            )
-            if not page["pageInfo"]["hasNextPage"]:
-                return tuple(result)
-            after = page["pageInfo"]["endCursor"]
-        raise ConnectorError("host-limit", "Select an account with fewer than 1,000 projects")
+        seen: set[str] = set()
+        for workspace in data["externalWorkspaces"]:
+            for item in workspace["projects"]:
+                if item["id"] in seen:
+                    continue
+                seen.add(item["id"])
+                result.append(Project(id=item["id"], name=item["name"]))
+        return tuple(result)
 
     async def variables(self, project: str) -> tuple[Variable, ...]:
         data = await self.client.graphql(
