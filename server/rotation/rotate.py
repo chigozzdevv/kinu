@@ -254,6 +254,13 @@ class Rotation:
                     ).run
             return run
         except Exception as error:
+            logging.getLogger("kinu.rotation").warning(
+                "rotation %s failed at %s: %s: %s",
+                run_id,
+                getattr(error, "stage", ""),
+                type(error).__name__,
+                error,
+            )
             current = await repository.get(org, run_id)
             if (
                 not current.lease
