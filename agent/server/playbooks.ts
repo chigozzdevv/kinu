@@ -63,7 +63,7 @@ export function browserSystemPrompt(schema: string, resend: boolean): string {
     "Bind new key names to ${replacement_provider_display_name}, and revocation to ${old_provider_id} or ${old_provider_path}. " +
     "Use only those variables and ${old_provider_display_name}. " +
     "All protected flags are false: credential controls supply approvals. Include exact public allowed_domains and a login_url_pattern. " +
-    "Ground every selector in the supplied sources: use kind role with name, or kind label or text, only when that exact label appears in the sources. " +
+    "Use the supplied instructions and links as the source of truth. When they name provider controls, URLs, or labels, use those exact strings; for common controls on the linked page you may use standard accessible names. " +
     "Prefer role with name for buttons, links and menuitems, and label for form fields. " +
     'Structural CSS is allowed only for dialog submission: [role="dialog"] button[type="submit"], ' +
     'and for an input whose exact placeholder is quoted in the sources: input[placeholder="..."]. ' +
