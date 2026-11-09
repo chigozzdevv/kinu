@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
+from urllib.parse import unquote, urlsplit
 
 from contracts import BrowserActionKind, BrowserPolicy, PlaybookDraft
 from core.errors import ResourceConflictError
@@ -66,6 +67,15 @@ class Launcher:
             login_url_pattern=definition.login_url_pattern,
         )
         rules = await pins(domains) if pin else ""
+        proxy = None
+        proxy_url = os.environ.get("KINU_BROWSER_PROXY", "").strip()
+        if proxy_url:
+            parsed = urlsplit(proxy_url)
+            proxy = {"server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"}
+            if parsed.username:
+                proxy["username"] = unquote(parsed.username)
+            if parsed.password:
+                proxy["password"] = unquote(parsed.password)
         arguments = [
             "--no-sandbox",
             "--no-proxy-server",

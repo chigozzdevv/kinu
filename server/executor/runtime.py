@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from time import time
@@ -153,7 +154,10 @@ async def runtime(config: ExecutorSettings) -> AsyncIterator[Runtime]:
         assert config.vault_key is not None
         vault = Vault(private, config.vault_key, config.oauth_apps)
         await vault.initialize()
-        async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as http:
+        proxy = os.environ.get("KINU_EGRESS_PROXY", "").strip() or None
+        async with httpx.AsyncClient(
+            timeout=15, follow_redirects=False, trust_env=False, proxy=proxy
+        ) as http:
             service = Runtime(config, database, vault, http, queue)
             await service.mail_store.initialize()
             await service.hosts.grants.initialize()
