@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 
 from connectors.base.errors import ConnectorError
@@ -257,7 +258,7 @@ class Rotation:
             logging.getLogger("kinu.rotation").warning(
                 "rotation %s failed at %s: %s: %s",
                 run_id,
-                getattr(error, "stage", ""),
+                run.stage.value,
                 type(error).__name__,
                 error,
             )
