@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any
@@ -29,37 +30,49 @@ class Client:
     ) -> Any:
         if not path.startswith("/") or path.startswith("//"):
             raise ConnectorError("host-path", "Invalid hosting operation")
-        try:
-            async with self.http.stream(
-                method,
-                self.origin + path,
-                headers={"Authorization": "Bearer " + self.token},
-                params=self.query | (query or {}),
-                json=body,
-                timeout=20,
-                follow_redirects=False,
-            ) as response:
-                data = bytearray()
-                async for chunk in response.aiter_bytes():
-                    data.extend(chunk)
-                    if len(data) > 2_097_152:
-                        raise ConnectorError("host-limit", "Hosting response exceeded its limit")
-                if not response.is_success:
-                    logging.getLogger("kinu.connectors").warning(
-                        "hosting API %s %s rejected with %s: %s",
-                        method,
-                        path,
-                        response.status_code,
-                        bytes(data[:400]).decode("utf-8", "replace"),
+        for attempt in range(4):
+            try:
+                async with self.http.stream(
+                    method,
+                    self.origin + path,
+                    headers={"Authorization": "Bearer " + self.token},
+                    params=self.query | (query or {}),
+                    json=body,
+                    timeout=20,
+                    follow_redirects=False,
+                ) as response:
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        data.extend(chunk)
+                        if len(data) > 2_097_152:
+                            raise ConnectorError(
+                                "host-limit", "Hosting response exceeded its limit"
+                            )
+                    challenged = (
+                        response.status_code == 403
+                        and b"Vercel Security Checkpoint" in data
                     )
-                    raise ConnectorError(
-                        "host-request", f"Hosting API rejected the request ({response.status_code})"
-                    )
-                if response.status_code == 204 or not data:
-                    return {}
-                return json.loads(data)
-        except (httpx.HTTPError, ValueError):
-            raise ConnectorError("host-unavailable", "Hosting API is unavailable") from None
+                    if challenged and attempt < 3:
+                        await asyncio.sleep(0.5 * (2**attempt))
+                        continue
+                    if not response.is_success:
+                        logging.getLogger("kinu.connectors").warning(
+                            "hosting API %s %s rejected with %s: %s",
+                            method,
+                            path,
+                            response.status_code,
+                            bytes(data[:400]).decode("utf-8", "replace"),
+                        )
+                        raise ConnectorError(
+                            "host-request",
+                            f"Hosting API rejected the request ({response.status_code})",
+                        )
+                    if response.status_code == 204 or not data:
+                        return {}
+                    return json.loads(data)
+            except (httpx.HTTPError, ValueError):
+                raise ConnectorError("host-unavailable", "Hosting API is unavailable") from None
+        raise ConnectorError("host-request", "Hosting API rejected the request (403)")
 
     async def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         result = await self.call(
