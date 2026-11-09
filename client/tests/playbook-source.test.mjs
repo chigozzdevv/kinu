@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { apiSourceError } from "../src/lib/playbook-source.ts"
+import { apiSourceError, linkError, parseLinks } from "../src/lib/playbook-source.ts"
 
 test("API instructions accept prose, docs links, and valid request/response JSON", () => {
   for (const source of [
@@ -19,4 +19,14 @@ test("malformed API JSON is identified before generation, including a bad output
     assert.match(apiSourceError(source), /JSON is invalid/)
   }
   assert.match(apiSourceError('Request:\n```json\n{"name":"replacement"}\n```\nResponse:\n```json\n{"id":}\n```'), /JSON example 2 is invalid/)
+})
+
+test("link sources accept newlines, commas and spaces, and reject non-https or excessive links", () => {
+  assert.deepEqual(parseLinks("https://a.example/x, https://b.example/y"), ["https://a.example/x", "https://b.example/y"])
+  assert.deepEqual(parseLinks("https://a.example/x\nhttps://b.example/y"), ["https://a.example/x", "https://b.example/y"])
+  assert.deepEqual(parseLinks("https://a.example/x https://b.example/y"), ["https://a.example/x", "https://b.example/y"])
+  assert.deepEqual(parseLinks("https://a.example/x, https://a.example/x"), ["https://a.example/x"])
+  assert.equal(linkError("https://resend.com/docs/create-an-api-key, https://resend.com/docs/dashboard/api-keys/introduction"), undefined)
+  assert.match(linkError("not-a-link") ?? "", /https/)
+  assert.match(linkError(Array.from({ length: 6 }, (_, index) => `https://a.example/${index}`).join("\n")) ?? "", /five/)
 })

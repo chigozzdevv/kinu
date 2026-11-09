@@ -20,3 +20,18 @@ export function apiSourceError(source: string): string | undefined {
     }
   }
 }
+
+const linkBoundary = /[\r\n]+|,\s*|\s+(?=https?:\/\/)/i
+
+export function parseLinks(value: string): string[] {
+  return [...new Set(value.split(linkBoundary).map((url) => url.trim()).filter(Boolean))]
+}
+
+export function linkError(value: string): string | undefined {
+  if (!value.trim()) return undefined
+  const links = parseLinks(value)
+  if (links.length > 5) return "Add up to five documentation links."
+  if (links.some((link) => !/^https:\/\/\S+$/i.test(link))) {
+    return "Each link must be a public https:// address."
+  }
+}
