@@ -33,7 +33,8 @@ export class EmptyCompletionError extends Error {
 
 
 const resendSelectors =
-  'For Resend also use these exact controls: the one-time secret is css input[value^="re_"]; ' +
+  'These Resend selectors are approved exceptions to the no-invented-CSS rule; use them verbatim. ' +
+  'Resend controls:  the one-time secret is css input[value^="re_"]; ' +
   'the key identifier and display name are css table a[href^="/api-keys/"]:has-text("${replacement_provider_display_name}") with provider_id_attribute "href" and provider_id_path "/api-keys/"; ' +
   'the dialog submit is css [role="dialog"] button[type="submit"]; the retirement confirmation input is css input[placeholder="Enter API Key name"]; ' +
   'the create button is role button name "Create API key", the name field is role textbox name "Name", the permission field is label "Permission" value "Sending access", and the domain field is label "Domain"; the key list selector is css table a[href^="/api-keys/"]:has(:text-matches(".+")) with credential_ids_attribute "href" and credential_id_path "/api-keys/". '
@@ -81,7 +82,10 @@ export async function draft(input: Input, engine: AgentEngine, model: string, si
     abortSignal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000),
     systemPrompt: input.execution === "api"
       ? apiSystemPrompt(JSON.stringify(input.schema))
-      : browserSystemPrompt(JSON.stringify(input.schema), /resend/i.test(input.objective)),
+      : browserSystemPrompt(
+          JSON.stringify(input.schema),
+          /resend/i.test(input.objective + "\n" + input.sources.map((source) => source.text).join("\n")),
+        ),
     messages: [{ role: "user", content: [{ type: "text", text: JSON.stringify({ objective: input.objective, sources: input.sources }) }] }],
   })) {
     if (event.type === "text-delta") {
