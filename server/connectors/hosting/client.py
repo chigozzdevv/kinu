@@ -83,6 +83,9 @@ class Client:
             or result.get("errors")
             or not isinstance(result.get("data"), dict)
         ):
+            logging.getLogger("kinu.connectors").warning(
+                "hosting graphql rejected: %s", (result or {}).get("errors")
+            )
             raise ConnectorError("host-query", "Hosting API rejected this operation")
         data: dict[str, Any] = result["data"]
         return data
