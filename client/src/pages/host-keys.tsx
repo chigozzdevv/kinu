@@ -171,13 +171,12 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         <Field label="Project"><SelectControl value={project} disabled={!eligibleProjects.length} onChange={(event) => { save.reset(); setTracking(""); setForm({ ...emptyForm, project: event.target.value }) }}>
           <option value="">Select project</option>{eligibleProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </SelectControl></Field>
-        <Field label="Variable"><SelectControl value={form.variable} disabled={!project || !availableVariables.size} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
+        <Field label="Key"><SelectControl value={form.variable} disabled={!project || !availableVariables.size} onChange={(event) => update({ variable: event.target.value, createReference: "", scopes: "" })}>
           <option value="">Select variable</option>{[...availableVariables.values()].map((item) => <option key={item.reference} value={item.reference}>
             {variableLabel(item)}
           </option>)}
         </SelectControl></Field>
       </FormGrid>
-      {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Variables that include Production are supported.</p>}
       {projects.isError && missingProjectNames && !project && <RetryNotice onRetry={() => projects.refetch()}>Couldn’t load project names from {connection.display_name}.</RetryNotice>}
       {variables.isError && !mapping && <RetryNotice onRetry={() => variables.refetch()}>Couldn’t load variables from {connection.display_name}.</RetryNotice>}
       {mapped.isError && <RetryNotice onRetry={() => mapped.refetch()}>Couldn’t check which variables have already been added.</RetryNotice>}
@@ -188,7 +187,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         <ResourceSelect label="Provider" value={provider} onChange={chooseProvider} addLabel="Connect provider" onAdd={() => setDependency("provider")}>
           <option value="">Select provider</option>{providers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
         </ResourceSelect>
-        <Field label="Key"><SelectControl value={newKey ? "create" : choices[variable.reference] ? "key:" + choices[variable.reference] : ""} disabled={!selectedProvider || keys.isLoading} onChange={(event) => chooseKey(event.target.value)}>
+        <Field label="Provider key"><SelectControl value={newKey ? "create" : choices[variable.reference] ? "key:" + choices[variable.reference] : ""} disabled={!selectedProvider || keys.isLoading} onChange={(event) => chooseKey(event.target.value)}>
           <option value="">Select key</option>{availableKeys.map((item) => <option key={item.provider_id} value={"key:" + item.provider_id}>{item.name ?? item.provider_id}</option>)}
           {canCreate && !otherChoices && <option value="create">Create managed key…</option>}
         </SelectControl></Field>
