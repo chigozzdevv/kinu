@@ -3,9 +3,9 @@ import { z } from "zod"
 
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0)
 const eventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text-delta"), text: z.string().max(16384) }),
+  z.object({ type: z.literal("text-delta"), text: z.string().max(131072) }),
   z.object({ type: z.literal("heartbeat") }),
-  z.object({ type: z.enum(["thinking-delta", "reasoning-delta"]), text: z.string().max(16384) }),
+  z.object({ type: z.enum(["thinking-delta", "reasoning-delta"]), text: z.string().max(131072) }),
   z.object({ type: z.literal("usage"), inputTokens: count, outputTokens: count,
     creditsUsed: z.number().finite().nonnegative().optional() }),
   z.object({ type: z.literal("stop"), reason: z.string(), errorCode: z.string().max(64).optional() }),
@@ -15,7 +15,7 @@ export async function* gatewayEvents(body: ReadableStream<Uint8Array>): AsyncGen
   const reader = body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true })
   let pending = "", bytes = 0, lines = 0
   function parse(line: string): EngineEvent | null {
-    if (++lines > 16384 || line.length > 32768) throw new Error("Builder stream exceeded its boundary")
+    if (++lines > 65536 || line.length > 262144) throw new Error(`Builder stream exceeded its boundary: lines=${lines} line=${line.length}`)
     const event = eventSchema.parse(JSON.parse(line))
     if (event.type === "text-delta") return event
     if (event.type === "heartbeat") return { type: "gateway-heartbeat" }
@@ -32,7 +32,7 @@ export async function* gatewayEvents(body: ReadableStream<Uint8Array>): AsyncGen
     while (true) {
       const chunk = await reader.read()
       bytes += chunk.value?.byteLength ?? 0
-      if (bytes > 1048576) throw new Error("Builder stream exceeded its boundary")
+      if (bytes > 4194304) throw new Error(`Builder stream exceeded its boundary: bytes=${bytes}`)
       pending += decoder.decode(chunk.value, { stream: !chunk.done })
       let newline: number
       while ((newline = pending.indexOf("\n")) >= 0 || (chunk.done && pending.length)) {
@@ -43,7 +43,7 @@ export async function* gatewayEvents(body: ReadableStream<Uint8Array>): AsyncGen
         if (event) yield event
         if (event?.type === "stop") return
       }
-      if (pending.length > 32768) throw new Error("Builder stream exceeded its boundary")
+      if (pending.length > 262144) throw new Error(`Builder stream exceeded its boundary: pending=${pending.length}`)
       if (chunk.done) throw new Error("Builder stream ended before completion")
     }
   } finally {

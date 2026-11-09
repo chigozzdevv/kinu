@@ -110,7 +110,7 @@ test("playbook generation shares the workspace Builder grant, model and daily al
     assert.equal(request.headers.get("authorization"), "Bearer test-access-private")
     const body = await request.json() as { model: string; max_tokens: number; messages: unknown }
     assert.equal(body.model, "gpt-6-luna")
-    assert.equal(body.max_tokens, 12288)
+    assert.equal(body.max_tokens, 16384)
     assert.equal(JSON.stringify(body).includes("test-access-private"), false)
     return new Response([
       { type: "text-delta", text: JSON.stringify({ playbook_draft: { name: "Generated issuer procedure", platform: "issuer" } }) },

@@ -7,7 +7,7 @@ const input = { id: "task_one", objective: "Build a browser procedure", sources:
 function engine(text: string, stop: "end_turn" | "max_tokens" = "end_turn", complete = true): AgentEngine {
   return { ...createBuilderEngine(), async *stream(options) {
     assert.deepEqual(options.tools, [])
-    assert.equal(options.maxOutputTokens, 12288)
+    assert.equal(options.maxOutputTokens, 16384)
     assert.match(options.systemPrompt, /replacement_provider_display_name/)
     yield { type: "text-delta", text }
     if (complete) yield { type: "stop", reason: stop }
@@ -24,7 +24,7 @@ test("playbook generation uses bounded structured text without tools or video", 
 
 test("unfinished or oversized model output cannot become a draft", async () => {
   await assert.rejects(draft(input, engine('{"playbook_draft":{}}', "end_turn", false), "test"), /incomplete/)
-  await assert.rejects(draft(input, engine('{"playbook_draft":{}}', "max_tokens"), "test"), /complete/)
+  await assert.rejects(draft(input, engine('{"playbook_draft":{}}', "max_tokens"), "test"), /whole output budget/)
   await assert.rejects(draft(input, engine('not JSON'), "test"))
   await assert.rejects(draft(input, engine('x'.repeat(128001)), "test"), /too large/)
   const tools: AgentEngine = { ...createBuilderEngine(), async *stream() {
@@ -69,4 +69,10 @@ test("browser playbooks ground selectors in sources and add the Resend receipt v
   await draft({ ...input, objective: "Build a browser procedure" }, generic, "test")
   assert.doesNotMatch(genericPrompt, /resend-receipt/)
   assert.match(genericPrompt, /read-only issuer identity endpoint/)
+})
+
+test("a bare draft is wrapped and an empty reasoning budget is retryable", async () => {
+  const bare = { name: "Issuer", platform: "issuer", steps: [{ id: "one" }] }
+  assert.deepEqual(await draft(input, engine(JSON.stringify(bare)), "test"), { playbook_draft: bare })
+  await assert.rejects(draft(input, engine("", "max_tokens"), "test"), /whole output budget/)
 })

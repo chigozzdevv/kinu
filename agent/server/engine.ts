@@ -27,6 +27,7 @@ export function builderEngine(accessToken: string, request: typeof fetch = fetch
       if (!Number.isInteger(requested) || requested <= 0 || requested > 16384) throw new Error("Builder output budget is invalid")
       const body = JSON.stringify({ model: options.model, messages, system: options.systemPrompt,
         max_tokens: Math.max(256, requested),
+        ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
       })
       if (Buffer.byteLength(body) > 1_100_000) throw new Error("Builder request is too large")
       const response = await request(new Request(gateway, { method: "POST", redirect: "error",
