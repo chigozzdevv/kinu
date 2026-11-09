@@ -104,7 +104,7 @@ class Worker:
         version = await self.catalog.definition(connection)
         config = version.definition.verifier
         if config is None:
-            raise ResourceConflictError("Configure this playbook's credential verifier")
+            return ()
         first = next(
             (
                 step

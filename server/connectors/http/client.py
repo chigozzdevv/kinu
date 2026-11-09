@@ -68,6 +68,9 @@ class HttpProviderConnector:
             await self._headers(connection, api.auth),
         )
 
+    async def probe_available(self, connection: Connection) -> bool:
+        return True
+
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:
         api = _api(connection)
         headers = await self._headers(connection, api.auth)

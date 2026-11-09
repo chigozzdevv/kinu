@@ -77,6 +77,7 @@ class Effects:
         )
         await acquire(self.hosts.database, state, run.id)
         await self.provider.preflight(state.provider, run)
+        probe = await self.provider.probe_available(state.provider)
         await progress("provider-checked")
         if (
             await self.versions.current(state.store, state.credential.secret_resource)
@@ -94,15 +95,17 @@ class Effects:
                 state.store, state.credential.secret_reference
             ) as value:
                 expected = fingerprint(value.bytes())
-            await self.identity(
-                state,
-                {
-                    "provider_id": state.current.provider_id,
-                    "secret_reference": state.credential.secret_reference,
-                },
-            )
-        metadata = await self.provider.metadata(state.provider)
-        _active(await self.metadata(state, state.current.provider_id or ""), state)
+            if probe:
+                await self.identity(
+                    state,
+                    {
+                        "provider_id": state.current.provider_id,
+                        "secret_reference": state.credential.secret_reference,
+                    },
+                )
+        metadata = await self.provider.metadata(state.provider) if probe else ()
+        if probe:
+            _active(await self.metadata(state, state.current.provider_id or ""), state)
         await progress("credential-checked")
         management_fingerprint = await self.provider.auth_fingerprint(state.provider)
         deployments = {}
@@ -141,13 +144,16 @@ class Effects:
         await progress("apps-checked")
         return {
             "deployments": deployments,
-            "provider_ids": [item["provider_id"] for item in metadata],
+            "provider_ids": (
+                [item["provider_id"] for item in metadata] if probe else [state.current.provider_id]
+            ),
         }
 
     async def issue(self, state: Snapshot, run_id: str) -> dict[str, Any]:
         from core.storage.runs import RunStore
 
         run = await RunStore(self.hosts.database).get(state.credential.organisation_id, run_id)
+        probe = await self.provider.probe_available(state.provider)
         await validate(
             self.hosts.database, state, {"run_id": run_id, "fencing_token": run.fencing_token}
         )
@@ -169,7 +175,8 @@ class Effects:
                 for item in initial.output["deployments"].values()
             ):
                 raise ConnectorError("provider-create", "Replacement reused the previous secret")
-            _active(await self.metadata(state, response.result["provider_id"]), state)
+            if probe:
+                _active(await self.metadata(state, response.result["provider_id"]), state)
             reference = await self.versions.record(
                 state.store, state.credential.secret_resource, stable("version", run_id), value
             )
@@ -183,7 +190,8 @@ class Effects:
             }
 
     async def access(self, state: Snapshot, created: dict[str, Any]) -> dict[str, Any]:
-        await self.identity(state, created)
+        if await self.provider.probe_available(state.provider):
+            await self.identity(state, created)
         return {"stored": True, "plaintext_isolated": True}
 
     async def deploy(self, state: Snapshot, created: dict[str, Any], run_id: str) -> dict[str, Any]:
@@ -195,8 +203,9 @@ class Effects:
     async def verify(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any]
     ) -> dict[str, Any]:
-        await self.identity(state, created)
-        _active(await self.metadata(state, created["provider_id"]), state)
+        if await self.provider.probe_available(state.provider):
+            await self.identity(state, created)
+            _active(await self.metadata(state, created["provider_id"]), state)
         await self.rollout.verify(state, created, deployment)
         return {"consumer_healthy": True, "consumers": len(state.targets)}
 
@@ -244,16 +253,19 @@ class Effects:
             != created["secret_reference"]
         ):
             raise ConnectorError("host-state", "Current generation or observation changed")
-        _active(await self.metadata(state, state.current.provider_id or ""), state)
+        probe = await self.provider.probe_available(state.provider)
+        if probe:
+            _active(await self.metadata(state, state.current.provider_id or ""), state)
         await validate(self.hosts.database, state, created)
         await self.provider.revoke_credential(state.provider, state.current.provider_id or "")
-        if await self.versions.has_value(state.store, state.credential.secret_reference):
+        readable = await self.versions.has_value(state.store, state.credential.secret_reference)
+        if probe and readable:
             with await self.versions.access_for(
                 state.store, state.credential.secret_reference
             ) as value:
                 if await self.provider.test_credential(state.provider, value) not in {401, 403}:
                     raise ConnectorError("provider-retirement", "Retired key was not rejected")
-        else:
+        elif not readable:
             initial = await self.journal.get(
                 state.credential.organisation_id, created["run_id"], Stage.PREFLIGHT
             )
@@ -274,7 +286,8 @@ class Effects:
     async def rollback(
         self, state: Snapshot, created: dict[str, Any], deployment: dict[str, Any] | None
     ) -> bool:
-        _active(await self.metadata(state, state.current.provider_id or ""), state)
+        if await self.provider.probe_available(state.provider):
+            _active(await self.metadata(state, state.current.provider_id or ""), state)
         if not await self.rollout.rollback(state, created, created["run_id"]):
             return False
         current = await self.versions.current(state.store, state.credential.secret_resource)

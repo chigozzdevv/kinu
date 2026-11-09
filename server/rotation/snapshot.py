@@ -76,8 +76,7 @@ async def snapshot(database: Database, org: str, credential_id: str, controls: s
                 playbook.playbook_id != provider.playbook_id
                 or playbook.state is not PlaybookState.PUBLISHED
                 or playbook.digest != digest(playbook.definition)
-                or not verifier
-                or not verifier.supports_overlap
+                or (verifier is not None and not verifier.supports_overlap)
                 or not set(playbook.definition.allowed_domains) <= set(provider.allowed_resources)
             ):
                 raise ResourceConflictError(

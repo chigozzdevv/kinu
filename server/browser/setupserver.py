@@ -56,8 +56,6 @@ class Setups:
         if connection.archived_at:
             raise ResourceConflictError("Connection is archived")
         version = await self.catalog.definition(connection)
-        if version.definition.verifier is None:
-            raise ResourceConflictError("Configure this playbook's credential verifier first")
         stack = AsyncExitStack()
         try:
             tab = await stack.enter_async_context(

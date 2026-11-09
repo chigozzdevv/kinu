@@ -21,7 +21,7 @@ from contracts import (
     RotationRun,
     Stage,
 )
-from core.errors import ResourceConflictError
+from core.errors import ResourceConflictError, ResourceNotFoundError
 from core.storage.records import Records
 from core.storage.runs import RunStore
 
@@ -49,6 +49,17 @@ class Providers(HttpProviderConnector):
         self.resend = Resend(authorizations, self.receipts)
         self.resend_browser = BrowserResend(self.catalog, browser, self.resend, self.receipts)
         self.proofs = self.catalog.vault.database.collection("browser_keys")
+
+    async def probe_available(self, connection: Connection) -> bool:
+        if connection.interface is not ConnectionInterface.BROWSER or _legacy_resend_browser(
+            connection
+        ):
+            return True
+        try:
+            definition = (await self.catalog.definition(connection)).definition
+        except (ResourceConflictError, ResourceNotFoundError):
+            return False
+        return definition.verifier is not None
 
     async def preflight(self, connection: Connection, run: RotationRun) -> None:
         if connection.interface is ConnectionInterface.BROWSER:
@@ -83,7 +94,7 @@ class Providers(HttpProviderConnector):
         version = await self.catalog.definition(connection)
         config = version.definition.verifier
         if config is None:
-            raise ResourceConflictError("Configure the browser credential verifier")
+            return ()
         result = []
         for identity in await self.browser.ids(connection):
             receipt = await self.receipts.metadata(connection, identity)
@@ -168,7 +179,7 @@ class Providers(HttpProviderConnector):
             return await self.resend_browser.test_credential(connection, value)
         config = (await self.catalog.definition(connection)).definition.verifier
         if config is None:
-            raise ResourceConflictError("Configure the browser credential verifier")
+            return 0
         status, metadata = await self.probe.check(config, value)
         if config.mode == "creation-receipt" and metadata.get("status") == "active":
             return 200
