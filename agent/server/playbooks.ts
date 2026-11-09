@@ -71,6 +71,7 @@ export function browserSystemPrompt(schema: string, resend: boolean): string {
     (resend ? resendSelectors : "") +
     "If a required control or detail is missing, return error listing exactly what to add. " +
     "A verifier is optional: include one only when the sources describe a read-only identity endpoint, and omit the field otherwise. Never invent a verifier. " +
+    "When the objective names a provider domain, use that exact domain in the domain-selection step; never substitute example.com or another domain. " +
     "When the sources describe the provider key list, include a generic credential_ids selector (and attribute/path for linked IDs) so drift detection works without a verifier. " +
     "Schema: " + schema
 }
