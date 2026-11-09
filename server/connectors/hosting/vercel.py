@@ -34,21 +34,18 @@ class Vercel:
             targets = item.get("target", [])
             if not isinstance(targets, list):
                 targets = [targets]
-            if len(targets) != 1:
+            if "production" not in targets or item.get("type") == "system":
                 continue
-            for environment in targets:
-                if environment != "production" or item.get("type") == "system":
-                    continue
-                result.append(
-                    Variable(
-                        reference=f"vercel://{project}/{environment}/{item['id']}",
-                        project_id=project,
-                        environment=environment,
-                        name=item["key"],
-                        key_id=item["id"],
-                        readable=item.get("type") in {"plain", "encrypted"},
-                    )
+            result.append(
+                Variable(
+                    reference=f"vercel://{project}/production/{item['id']}",
+                    project_id=project,
+                    environment="production",
+                    name=item["key"],
+                    key_id=item["id"],
+                    readable=item.get("type") in {"plain", "encrypted"},
                 )
+            )
         return tuple(result)
 
     async def read(self, variable: Variable) -> SecretValue | None:
@@ -68,15 +65,17 @@ class Vercel:
         if not selected or selected.get("key") != variable.name:
             raise ConnectorError("host-variable", "Selected variable changed")
         targets = selected.get("target", [])
+        if not isinstance(targets, list):
+            targets = [targets]
         if (
-            targets != [variable.environment]
+            variable.environment not in targets
             or selected.get("gitBranch")
             or selected.get("customEnvironmentIds")
             or selected.get("type") == "system"
         ):
             raise ConnectorError(
                 "host-shared-variable",
-                "Use a variable scoped to one environment before rotating it",
+                "Use a variable that includes the production environment before rotating it",
             )
         await self.client.call(
             "PATCH", self._path(variable), body={"value": value.bytes().decode()}

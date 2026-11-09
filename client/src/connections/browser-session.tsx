@@ -217,9 +217,14 @@ export function BrowserSetupSession({ capability, onComplete }: BrowserSetupSess
       opened.onclose = (event) => {
         if (!active || completed.current || opened !== socket.current) return
         clearTimers()
-        if (event.code === 4401 || event.code === 4403) {
+        if (event.code === 4401) {
           setStatus("closed")
-          setError("This secure session is not authorized. Close and sign in again.")
+          setError("This secure session is not authorized. Sign in again and retry.")
+          return
+        }
+        if (event.code === 4403) {
+          setStatus("closed")
+          setError("This browser setup expired or was closed. Start it again.")
           return
         }
         if (attempts < 15) {

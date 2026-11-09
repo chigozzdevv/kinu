@@ -177,7 +177,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
           </option>)}
         </SelectControl></Field>
       </FormGrid>
-      {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Only production variables are supported.</p>}
+      {connection.platform === "vercel" && <p className="text-[11px] text-[var(--ink-muted)]">Variables that include Production are supported.</p>}
       {projects.isError && missingProjectNames && !project && <RetryNotice onRetry={() => projects.refetch()}>Couldn’t load project names from {connection.display_name}.</RetryNotice>}
       {variables.isError && !mapping && <RetryNotice onRetry={() => variables.refetch()}>Couldn’t load variables from {connection.display_name}.</RetryNotice>}
       {mapped.isError && <RetryNotice onRetry={() => mapped.refetch()}>Couldn’t check which variables have already been added.</RetryNotice>}

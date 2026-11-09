@@ -62,6 +62,12 @@ async def test_vercel_discovers_metadata_and_keeps_secret_values_private() -> No
                         "type": "system",
                         "target": ["production"],
                     },
+                    {
+                        "id": "shared",
+                        "key": "SHARED_KEY",
+                        "type": "plain",
+                        "target": ["production", "preview"],
+                    },
                 ]
             },
         )
@@ -72,8 +78,9 @@ async def test_vercel_discovers_metadata_and_keeps_secret_values_private() -> No
         )
         assert (await host.projects())[0].name == "App"
         selected = await host.variables("project")
-        assert len(selected) == 1 and not selected[0].readable
-        assert selected[0].environment_label == "production"
+        assert len(selected) == 2 and not selected[0].readable
+        assert [item.environment_label for item in selected] == ["production", "production"]
+        assert selected[1].name == "SHARED_KEY"
         assert SECRET not in selected[0].model_dump_json()
         assert await host.read(selected[0]) is None
         assert len(calls) == 2
@@ -81,9 +88,7 @@ async def test_vercel_discovers_metadata_and_keeps_secret_values_private() -> No
 
 
 @pytest.mark.parametrize("targets", [["production"], ["production", "preview"]])
-async def test_vercel_updates_only_one_selected_variable_and_rejects_shared_targets(
-    targets: list[str],
-) -> None:
+async def test_vercel_updates_a_variable_that_includes_production(targets: list[str]) -> None:
     writes = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -97,13 +102,20 @@ async def test_vercel_updates_only_one_selected_variable_and_rejects_shared_targ
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
         host = Vercel(Client(http, "token", "https://api.vercel.com"))
-        if len(targets) > 1:
-            with pytest.raises(ConnectorError, match="one environment"):
-                await host.write(variable(), SecretValue(SECRET.encode()))
-            assert not writes
-        else:
+        await host.write(variable(), SecretValue(SECRET.encode()))
+        assert writes == [{"value": SECRET}]
+
+
+async def test_vercel_rejects_a_variable_outside_production() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"envs": [{"id": "key", "key": "API_KEY", "target": ["preview"]}]}
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        host = Vercel(Client(http, "token", "https://api.vercel.com"))
+        with pytest.raises(ConnectorError, match="production"):
             await host.write(variable(), SecretValue(SECRET.encode()))
-            assert writes == [{"value": SECRET}]
 
 
 async def test_vercel_deploys_the_previous_source_and_checks_project_before_rollback() -> None:
