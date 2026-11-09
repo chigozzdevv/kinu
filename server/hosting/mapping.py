@@ -240,6 +240,7 @@ class Mappings:
                     state=GenerationState.ACTIVE,
                     attempt_id=identity("import", key),
                     secret_reference=first.reference,
+                    fingerprint=first.fingerprint,
                     created_at=now,
                 ),
                 org,

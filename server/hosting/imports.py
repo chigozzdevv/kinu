@@ -28,6 +28,7 @@ class Prepared:
     existing: ManagedCredential | None
     credential_id: str
     reference: str
+    fingerprint: str | None = None
 
 
 async def prepare(
@@ -155,5 +156,16 @@ async def prepare(
         finally:
             if value:
                 value.clear()
-        result.append(Prepared(choice, variable, provider, metadata[0], current, key, reference))
+        result.append(
+            Prepared(
+                choice,
+                variable,
+                provider,
+                metadata[0],
+                current,
+                key,
+                reference,
+                fingerprint(value.bytes()) if value else None,
+            )
+        )
     return tuple(result)
