@@ -122,7 +122,7 @@ class handler(BaseHTTPRequestHandler):
             self._reply(503, {"state": "provider-unavailable"})
             return
 
-        accepted = access == "sending_access"
+        accepted = access in {"sending_access", "full_access"}
         self._reply(
             200,
             {
