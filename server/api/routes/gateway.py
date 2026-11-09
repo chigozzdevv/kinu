@@ -6,7 +6,7 @@ from typing import cast
 from core.auth import Permission
 from core.auth.browser import BrowserAuth
 from core.config import Settings
-from core.errors import KinuError
+from core.errors import AuthorizationError, KinuError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
@@ -69,5 +69,7 @@ async def setup(websocket: WebSocket) -> None:
                     await websocket.send_json(result)
     except WebSocketDisconnect:
         return
+    except AuthorizationError:
+        await websocket.close(code=4401)
     except (KinuError, ValueError, KeyError, TypeError, TimeoutError):
         await websocket.close(code=4403)

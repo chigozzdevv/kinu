@@ -47,10 +47,10 @@ class Setups:
         self, org: str, identity: str, subject: str, extra: tuple[str, ...]
     ) -> tuple[SetupSession, str]:
         await self.reap()
-        if len(self.live) >= 4 or any(
-            item.session.subject == subject and item.session.organisation_id == org
-            for item in self.live.values()
-        ):
+        for stale in tuple(self.live.values()):
+            if stale.session.subject == subject and stale.session.organisation_id == org:
+                await self.close(stale)
+        if len(self.live) >= 4:
             raise ResourceConflictError("Close the existing browser setup before opening another")
         connection = await InventoryStore(self.catalog.database).get_connection(org, identity)
         if connection.archived_at:
