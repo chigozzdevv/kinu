@@ -140,6 +140,8 @@ async def create_endpoint(
     permissions = await api.access.permissions(identity, organisation_id)
     if Permission.NOTIFICATION_READ not in permissions:
         raise AuthorizationError("principal lacks notification.read")
+    if body.email_address != (identity.email or "").strip().lower():
+        await api.access.require(identity, organisation_id, Permission.NOTIFICATION_WRITE)
     available = {topic.id: topic for topic, permission in TOPICS if permission in permissions}
     if not body.topics.issubset(available):
         raise AuthorizationError("one or more notification types are not available")

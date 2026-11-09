@@ -233,6 +233,15 @@ async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
             headers=headers,
             json={
                 "id": "endpoint_one",
+                "email_address": "owner@acme.example",
+                "topics": ["approvals"],
+            },
+        )
+        foreign = await client.post(
+            "/v1/organisations/org_one/notifications/endpoints",
+            headers=headers,
+            json={
+                "id": "endpoint_foreign",
                 "email_address": "updated@acme.example",
                 "topics": ["approvals"],
             },
@@ -245,7 +254,8 @@ async def test_topics_and_email_endpoint_are_permission_scoped() -> None:
     ]
     assert forbidden.status_code == 403
     assert created.status_code == 201
-    assert created.json()["email_address"] == "updated@acme.example"
+    assert created.json()["email_address"] == "owner@acme.example"
+    assert foreign.status_code == 403
     assert "auth_reference" not in created.json()
     assert "sender" not in created.json()
 

@@ -65,6 +65,10 @@ _KINDS: dict[type[Contract], str] = {
 }
 
 
+def kind_of(model: type[Contract]) -> str:
+    return _KINDS[model]
+
+
 class Records:
     def __init__(self, database: Database) -> None:
         self._database = database

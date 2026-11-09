@@ -1,13 +1,21 @@
 from collections.abc import Callable
 from datetime import datetime
 
-from contracts import MemberRole, Organisation, OrganisationMembership, TeamInvitation
+from contracts import (
+    MemberRole,
+    NotificationEndpoint,
+    Organisation,
+    OrganisationMembership,
+    TeamInvitation,
+)
 from pymongo.asynchronous.client_session import AsyncClientSession
 
 from core.account.service import principal_id
 from core.auth import AuthenticatedIdentity, PrincipalGrant, Role
+from core.auth.identity import actor_for
 from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionConflictError
 from core.storage.database import Database
+from core.storage.records import kind_of
 
 
 class AccountStore:
@@ -190,6 +198,15 @@ class AccountStore:
                 {"$set": {"data": changed.model_dump(mode="json")}},
                 session=session,
             )
+            if current.enabled and not enabled:
+                await self._database.collection("inventory").delete_many(
+                    {
+                        "organisation_id": organisation_id,
+                        "kind": kind_of(NotificationEndpoint),
+                        "data.principal_id": actor_for(current.subject),
+                    },
+                    session=session,
+                )
         return changed
 
     async def revoke_invitation(

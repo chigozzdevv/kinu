@@ -41,6 +41,7 @@ from core.auth import AccessControl, AuthenticatedIdentity, PrincipalGrant, Role
 from core.errors import ResourceNotFoundError
 from core.incident import IncidentService
 from core.inventory import InventoryService
+from core.notification import EmailDeliveryConfiguration, NotificationService
 from core.overview import OverviewService
 from core.playbook import PlaybookService
 from core.workflow import RunWorkflow
@@ -1025,3 +1026,67 @@ async def test_cascading_credential_removal_lets_an_administrator_cancel_stale_a
     assert response.status_code == 200, response.text
     assert approvals.approvals[0].decision is ApprovalDecision.CANCELLED
     assert inventory.stored_credentials[0].archived_at is not None
+
+
+class NotificationEndpoints:
+    def __init__(self) -> None:
+        self.endpoints: tuple[object, ...] = ()
+
+    async def register_endpoint(self, endpoint: object) -> object:
+        self.endpoints = (*self.endpoints, endpoint)
+        return endpoint
+
+    async def list_endpoints(self, organisation_id: str) -> tuple[object, ...]:
+        return self.endpoints
+
+    async def set_endpoint_enabled(self, *args: object, **kwargs: object) -> object:
+        raise AssertionError("not used")
+
+    async def emit(self, notification: object) -> tuple[object, bool]:
+        raise AssertionError("not used")
+
+    async def list_notifications(self, organisation_id: str, limit: int) -> tuple[object, ...]:
+        return ()
+
+    async def mark_read(self, *args: object, **kwargs: object) -> object:
+        raise AssertionError("not used")
+
+
+@pytest.mark.anyio
+async def test_email_notification_endpoints_require_the_callers_address_or_an_administrator() -> (
+    None
+):
+    repository = NotificationEndpoints()
+    notifications = NotificationService(
+        repository,  # type: ignore[arg-type]
+        clock=lambda: NOW,
+        email_delivery=EmailDeliveryConfiguration(
+            "secret://org-one/notifications", "Kinu <noreply@kinu.example>"
+        ),
+    )
+    cases = (
+        (Role.VIEWER, "someone-else@example.com", 403),
+        (Role.VIEWER, IDENTITY.email or "", 201),
+        (Role.ADMINISTRATOR, "shared-security@example.com", 201),
+    )
+    for index, (role, address, expected) in enumerate(cases):
+        configured = ApiServices(
+            access=AccessControl(AccessRepository(role)),
+            notifications=notifications,
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(
+                app=create_app(configured, browser=make_browser(IDENTITY))
+            ),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/v1/organisations/org_one/notifications/endpoints",
+                headers=headers(),
+                json={
+                    "id": f"endpoint_case_{index}",
+                    "email_address": address,
+                    "topics": ["rotation-completed"],
+                },
+            )
+        assert response.status_code == expected, response.text

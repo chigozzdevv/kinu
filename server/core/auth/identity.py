@@ -2,6 +2,11 @@ import hashlib
 from dataclasses import dataclass
 
 
+def actor_for(subject: str) -> str:
+    value = hashlib.sha256(subject.encode()).hexdigest()[:32]
+    return f"actor_{value}"
+
+
 @dataclass(frozen=True, slots=True)
 class AuthenticatedIdentity:
     subject: str
@@ -13,8 +18,7 @@ class AuthenticatedIdentity:
 
     @property
     def actor_id(self) -> str:
-        value = hashlib.sha256(self.subject.encode()).hexdigest()[:32]
-        return f"actor_{value}"
+        return actor_for(self.subject)
 
     @property
     def document_id(self) -> str:

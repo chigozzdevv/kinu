@@ -6,8 +6,10 @@ import pytest
 from api.app import create_app
 from contracts import NotificationKind, Severity
 from core.account import AccountService
+from core.account.service import principal_id
 from core.account.store import AccountStore
-from core.auth import AuthenticatedIdentity
+from core.auth import AuthenticatedIdentity, PrincipalGrant, Role
+from core.auth.identity import actor_for
 from core.config import Settings
 from core.errors import ResourceConflictError, ResourceNotFoundError, RevisionConflictError
 from core.notification import EmailDeliveryConfiguration, NotificationService
@@ -141,3 +143,48 @@ async def test_default_runtime_serves_notification_settings_without_email_delive
         )
         assert response.status_code == 409
         assert response.json()["message"] == "email notifications are not configured"
+
+
+async def test_disabling_a_member_discards_only_their_email_endpoints(
+    database: Database, identity: AuthenticatedIdentity
+) -> None:
+    org = await workspace(database, identity)
+    subject = "member_two"
+    await database.collection("members").insert_one(
+        {
+            "organisation_id": org,
+            "subject": subject,
+            "id": principal_id(subject),
+            "data": PrincipalGrant(
+                subject=subject,
+                roles=frozenset({Role.VIEWER}),
+                email="member-two@example.com",
+                created_at=NOW,
+                updated_at=NOW,
+            ).model_dump(mode="json"),
+        }
+    )
+    service = NotificationService(
+        NotificationStore(database),
+        lambda: NOW,
+        EmailDeliveryConfiguration("secret://email/access/versions/one", "alerts@example.com"),
+    )
+    await service.register_email_endpoint(
+        "endpoint_member",
+        org,
+        actor_for(subject),
+        "member-two@example.com",
+        frozenset({NotificationKind.INCIDENT}),
+    )
+    kept = await service.register_email_endpoint(
+        "endpoint_admin",
+        org,
+        identity.actor_id,
+        "owner@example.com",
+        frozenset({NotificationKind.INCIDENT}),
+    )
+    changed = await AccountStore(database, lambda: NOW).update_member(
+        org, principal_id(subject), 0, Role.VIEWER, False, NOW
+    )
+    assert not changed.enabled
+    assert await NotificationStore(database).list_endpoints(org) == (kept,)

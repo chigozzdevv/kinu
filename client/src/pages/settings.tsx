@@ -215,7 +215,7 @@ function EmailModal({ onClose, defaultEmail, topics }: { onClose: () => void; de
   const ready = Boolean(email.trim() && selected.length)
   return <Modal isOpen onClose={onClose} title="Add email" actions={<Button disabled={!ready || create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Adding…" : "Add email"}</Button>}>
     <div className="space-y-5">
-      <Field label="Email address"><input className={formControl} type="email" value={email} onChange={(event) => { setEmail(event.target.value); create.reset() }} /></Field>
+      <Field label="Email address" hint="Use your own verified address. An administrator can add a shared mailbox."><input className={formControl} type="email" value={email} onChange={(event) => { setEmail(event.target.value); create.reset() }} /></Field>
       <Fieldset label="Notify for">
         <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2">
           {topics.map((topic) => <label key={topic.id} className="flex items-center gap-2.5 text-[11px] text-[var(--ink)]">
