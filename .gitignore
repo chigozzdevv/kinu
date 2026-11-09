@@ -37,3 +37,6 @@ firebase-debug.log*
 
 # Local agent scratch
 .zcode/
+
+# macOS metadata
+._*

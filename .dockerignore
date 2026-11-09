@@ -26,3 +26,5 @@ agent/data
 .deploy/
 .firebase/
 firebase-debug.log*
+
+**/._*
