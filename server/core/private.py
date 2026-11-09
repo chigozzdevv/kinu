@@ -28,7 +28,14 @@ class PrivateClient:
             if response.status_code == 503:
                 raise ResourceSetupRequiredError("Integration setup is incomplete")
             if not response.is_success:
-                raise ResourceConflictError("Connection request failed; check its configuration")
+                message = "Connection request failed; check its configuration"
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict) and isinstance(body.get("message"), str):
+                    message = body["message"][:300] or message
+                raise ResourceConflictError(message)
             return response.json()
         except (httpx.HTTPError, ValueError):
             raise ResourceConflictError("Private service is unavailable; try again") from None
