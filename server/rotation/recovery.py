@@ -173,7 +173,11 @@ class Recovery:
                     for check in ("old_rejected", "replacement_valid", "old_secret_retired")
                 )
             )
-            if not revoked and retired is None and run.current_generation_id:
+            # A failed revoke journal entry records the failed check, not the live
+            # provider outcome. The revoke request may have succeeded before its
+            # rejection probe failed, so reconcile the predecessor with the issuer
+            # before deciding to roll back.
+            if not revoked and run.current_generation_id:
                 async with Records(self.database).read() as rows:
                     predecessor = await rows.get(
                         CredentialGeneration, org, run.current_generation_id

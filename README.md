@@ -1,33 +1,73 @@
 # Kinu
 
-Credential rotation with policy checks, private execution and an audit trail.
+Kinu rotates API keys when they are exposed, nearing expiry, or drifting. It creates replacements
+through provider APIs or isolated browser sessions, deploys and verifies them, then retires the old
+key.
 
-Kinu runs through Docker Compose. MongoDB stores application data, Redis and BullMQ run
-background jobs, and email/password authentication uses opaque cookie sessions. Agent-Native
-shares the dashboard's identity and workspace permissions. Resend delivers account, invitation
-and notification emails.
+## How rotation works
 
-## Run
+1. An alert, schedule, or operator starts a rotation.
+2. Agent-Native proposes a plan within the credential’s controls and published Playbook.
+3. Kinu creates and stores a replacement key, then deploys it to connected workloads.
+4. Kinu verifies and observes the replacement. If required, an administrator approves revocation.
+5. Kinu retires the old key and verifies that the provider rejects it.
 
-Install Docker with Compose, then:
+If a provider or deployment has an uncertain outcome, Kinu holds the rotation and checks saved
+evidence against the live provider and workload before recovery.
 
-```sh
-python3 -m deploy.setup
+### How Kinu uses Agent-Native
+
+For rotation planning, Kinu sends Agent-Native structured context such as the trigger, execution
+method, connected app count, and approval settings. The planning request contains no key values.
+Kinu validates the proposed stages against its workflow; the executor handles provider and browser
+actions.
+
+The [Agent-Native client](server/agents/native.py) sends the planning input through Kinu’s private
+service:
+
+```python
+result = await self.client.call(
+    "/_internal/rotation-plan",
+    {"organisation_id": organisation_id, "input": value},
+    timeout=60,
+)
 ```
 
-Edit `.env`: set `KINU_RESEND_KEY` and `KINU_EMAIL_SENDER` using a domain verified in Resend.
+The executor wires `plan_rotation` and `assess` into rotation in
+[server/executor/runtime.py](server/executor/runtime.py). The context and plan validation are in
+[server/rotation/stages.py](server/rotation/stages.py).
 
-```sh
-make image
-docker compose up -d --no-build
-```
+## Self-host Kinu
 
-Run `python3 -m deploy.setup --link` on the installation host. Open its private setup link,
-create your account and verify your email. Setup grants that account the installation administrator
-role in MongoDB. The link can only initialize the installation once. Regular sign-ups receive no
-installation privileges. The dashboard is at <http://localhost:8080>.
+Kinu runs as a Docker Compose stack. Install Docker Compose and Python 3.12 on the host.
 
-For a public installation, point a domain at the host and set:
+1. Clone this repository and generate the local configuration:
+
+   ```sh
+   python3 -m deploy.setup
+   ```
+
+2. Set `KINU_RESEND_KEY` and `KINU_EMAIL_SENDER` in `.env` using a verified sender domain.
+
+3. Build and start Kinu:
+
+   ```sh
+   make image
+   docker compose up -d --no-build
+   ```
+
+4. Create the first administrator. Run this on the Kinu host, open the private link it prints, and
+   verify the account’s email. The first account becomes the installation administrator.
+
+   ```sh
+   python3 -m deploy.setup --link
+   ```
+
+The dashboard is at `http://localhost:8080` by default.
+
+### Public installation
+
+Point a domain at the host and set these values in `.env`:
 
 ```dotenv
 KINU_ENVIRONMENT=production
@@ -37,265 +77,50 @@ KINU_HTTP_PORT=80
 KINU_HTTPS_PORT=443
 ```
 
-Caddy issues the HTTPS certificate. Only Caddy's ports need public access. MongoDB, Redis,
-the API, Agent-Native and the executor stay on container networks.
-The API trusts forwarded client addresses from private container networks so sign-in limits apply
-to each client. Set `KINU_TRUSTED_PROXIES` to your proxy addresses or CIDRs if you change that
-network layout; keep the API port private.
+Caddy obtains and renews the TLS certificate. Expose ports 80 and 443; keep MongoDB, Redis, and
+application services on private container networks.
 
-`deploy.setup` creates random database passwords and separate encryption/service keys without
-overwriting existing values. Keep `.env`, `.secrets/` and database volumes in your backups.
-Existing database passwords must be changed in MongoDB as well as the configuration. Changing
-an encryption key without migrating its encrypted records makes those records unreadable.
+If another project already owns the host’s public ports, use `deploy/vps.yaml` with the existing
+HTTPS proxy and the external `kinu-edge` network.
 
-Update with `git pull`, `make image`, then `docker compose up -d --no-build`. Index migrations run before
-application services start. `docker compose down` preserves data; adding `--volumes` deletes it.
+### Integrations
 
-Invitations and notification emails use the same Resend settings as sign-in. The worker retries
-queued messages with a stable provider idempotency key and rechecks recipient access before sending.
-Receipts distinguish provider acceptance from delivery. Receipt lookup requires a Resend key with
-read access; sending-only keys can still send email.
+Connect workspace accounts in **Connections** and Builder AI in **Settings → AI**. Integrations
+that need installation credentials or webhooks are listed in [`.env.example`](.env.example); set
+their callback URLs on the public API domain.
 
-## Firebase frontend and VPS backend
+### Backups and updates
 
-The frontend can be deployed separately through Firebase Hosting. Build it with the public
-HTTPS address of the VPS gateway:
+Back up `.env`, `.secrets/`, and Docker volumes. `docker compose down` preserves data;
+`docker compose down --volumes` deletes it. To update:
 
 ```sh
-VITE_API_BASE_URL=https://YOUR_API_HOST npm --prefix client run build
-npx firebase-tools deploy --only hosting:kinu --project YOUR_FIREBASE_PROJECT
+git pull
+make image
+docker compose up -d --no-build
 ```
 
-Set the VPS configuration before starting its containers:
+Keep existing encryption keys. Changing one without migrating its encrypted records makes those
+records unreadable.
 
-```dotenv
-KINU_ENVIRONMENT=production
-KINU_PUBLIC_URL=https://YOUR_SITE.web.app
-KINU_API_PUBLIC_URL=https://YOUR_API_HOST
-KINU_COOKIE_SAMESITE=none
-```
+## Workload health check
 
-The API and agent allow credentialed requests only from `KINU_PUBLIC_URL`. CSRF and workspace
-checks still apply; browser sessions connect directly to the configured VPS gateway over WSS.
-OAuth apps must register their callbacks on `KINU_API_PUBLIC_URL`; Kinu redirects users back
-to the frontend after completing authorization. With separate sites, browser third-party-cookie
-policies still apply. Custom frontend and API domains under the same site can retain `lax` cookies.
-
-On a shared VPS, `deploy/vps.yaml` removes Kinu's host-port bindings and exposes only its web
-gateway to an external `kinu-edge` network. Use it only with an explicitly configured edge proxy.
-Do not attach Kinu's data or application networks to other projects.
-Create `kinu-edge` before running Compose with both `compose.yaml` and `deploy/vps.yaml`.
-Connect the existing HTTPS proxy to that edge network and route the API hostname to
-`kinu-web-1:80`. Retain that network attachment when recreating the proxy.
-
-## Connections
-
-Workspace users connect their accounts through **Connections**. Installation OAuth apps are
-configured on the host. Set the following in `.env` before starting Kinu:
-
-```dotenv
-KINU_VERCEL_SLUG=
-KINU_VERCEL_CLIENT_ID=
-KINU_VERCEL_CLIENT_SECRET=
-KINU_RAILWAY_CLIENT_ID=
-KINU_RAILWAY_CLIENT_SECRET=
-```
-
-Register `/connections/vercel/callback` and `/connections/railway/callback` on the API origin
-(`KINU_API_PUBLIC_URL`, or `KINU_PUBLIC_URL` for single-host installations) with the respective apps. For
-[Vercel](https://vercel.com/docs/integrations/create-integration), enable Projects (read),
-Global Project Environment Variables (read/write), and Deployments (read/write). For
-[Railway](https://docs.railway.com/integrations/oauth/quickstart), register a web OAuth app;
-Kinu requests `openid offline_access project:member` and uses PKCE.
-
-Only the executor and worker receive these credentials. Supply all fields for each provider
-being enabled; partial configuration fails startup without printing credential values.
-Environment configuration takes precedence over older encrypted installation settings.
-Restart the executor and worker after changing it. Direct executor deployments can instead
-mount client secrets and set `KINU_VERCEL_CLIENT_SECRET_FILE` or
-`KINU_RAILWAY_CLIENT_SECRET_FILE` to the mounted container path.
-
-For email alerts, open **Connections → Incident sources → Email** and forward mail to the
-workspace address. Kinu shows Gmail forwarding confirmations in that setup screen and marks
-the connection as receiving when mail arrives. No Gmail OAuth app is required.
-Use **Incidents → Create incident → Simulate** to send a credential-specific test alert to
-your mailbox. Forward mail from `KINU_EMAIL_SENDER` to the workspace address; received tests
-follow the key's controls and can start real rotations. Test requests expire after 30 minutes.
-Automatic forwarded alerts currently require a Resend sender with aligned DKIM,
-an exact credential match, and permitted controls; other senders require review.
-On the host, configure `KINU_INBOUND_EMAIL_DOMAIN`, `KINU_RESEND_KEY`, and
-`KINU_RESEND_WEBHOOK_SECRET`. Enable receiving on a dedicated Resend subdomain and send
-`email.received` webhooks to `/v1/webhooks/resend` on the API origin.
-
-For GitHub, register a GitHub App with read-only Secret scanning alerts and the
-`secret_scanning_alert` event. Set `KINU_GITHUB_APP_SLUG`, `KINU_GITHUB_CLIENT_ID`,
-`KINU_GITHUB_CLIENT_SECRET`, and `KINU_GITHUB_WEBHOOK_SECRET`. Its callback and setup URL
-are `${KINU_PUBLIC_URL}/dashboard/connections?github=1`; its webhook is
-`${KINU_API_PUBLIC_URL}/v1/webhooks/github`. Users choose repositories when installing it.
-
-Existing Gmail connections use Google's read-only OAuth scope. Add exact alert senders and select their credential
-providers after connecting. Kinu reads new matching messages every five minutes, ignores
-attachments, and never sends mailbox bodies to the model. Automatic exposure handling requires
-sender-aligned DKIM using SHA-256 with an RSA key of at least 1024 bits, a unique credential match
-and permitted controls. Senders should use 2048-bit keys where available.
-Invalid signatures require manual review; temporary DNS failures are retried. Existing Gmail OAuth
-connections retain their encrypted installation settings and the callback
-`/connections/gmail/callback` on the API origin. Public Gmail use requires Google's verification;
-Testing applications require test users and have limited refresh-token lifetimes.
-
-Custom API providers accept their management token once. The executor keeps it encrypted and
-reuses that connection across credentials. HTTP operation mappings must declare overlapping keys,
-credential metadata and an authenticated credential test.
-
-Resend has a built-in provider connection. Supply a full-access management token and choose a
-verified sending domain. Workload keys stay sending-only and scoped to that domain. Resend cannot
-identify an existing key from its token, so Kinu only manages keys whose creation it recorded.
-Creation receipts bind the issuer ID, scope and token fingerprint privately; unknown keys cannot
-be imported or retired through this connection.
-
-For Resend browser execution, open the provider connection and choose **Use browser**, then sign
-in through its private browser. Edit an existing credential and select that browser connection.
-Kinu preserves its generation, vault value and consumer bindings; an active rotation blocks the
-switch. The linked API connection verifies receipts and issuer metadata. Creation and retirement
-run through the dashboard with checked names, permissions, domain and key IDs. Kinu records the task
-and pinned playbook version before inference. The agent receives that step's approved controls and
-constraints; its public action explanation streams into the run history with the selected button.
-Redacted screenshots before protected actions and after verified private key capture are encrypted
-in the executor vault for 90 days and available to workspace members who can read the run. The result image is taken with
-page scripts frozen and sensitive fields covered; secret values and screenshots never reach the model.
-
-In **Credentials → Add credential**, choose a hosting account or connect Vercel, Railway or Render.
-Select the project, its key variables and their issuer, then review the rotation controls. Kinu creates inventory and
-consumer bindings automatically and reuses the existing connections across keys. Render uses an
-API key; Vercel and Railway use installation-owned OAuth apps configured on the host. Register the
-exact callback shown there. Vercel needs project, environment-variable and deployment permissions;
-Railway requests project membership and refresh access. No live provider registration is performed
-by the application setup command.
-
-For a first managed key, select a readable workload variable and an API provider, then choose
-**Create managed key**. Supply the workload health URL and, for custom providers, the intended
-key scopes. Kinu creates the key through that provider, captures it privately, installs it, deploys
-the workload and verifies the loaded value before registering its inventory. This flow accepts
-customer project and variable names. Resend's domain and sending-only rules remain in its adapter.
-An existing provider key is left active for its owner to review. Browser providers currently require
-an existing managed key before switching execution to the browser.
-
-Key setup status stays beside the selected variable. **Check and recover** resumes a captured key
-or restores the previous value after a failed deployment. A pending deployment keeps its key;
-an unknown creation, variable write or deployment outcome stays held for account review.
-Retries never blindly repeat those mutations.
-
-Selected keys use Kinu's encrypted private vault. Rotation updates all registered hosting consumers
-before retiring the predecessor. AWS remains optional and uses its separate Lambda/Secrets Manager
-adapter, currently limited to one Lambda consumer per credential. Cloud role setup is separate from
-deploying Kinu. Mixing Lambda and hosting consumers within one rotation is not supported.
-To enable AWS setup in Compose, set `KINU_CONNECTION_PRINCIPALS` to the comma-separated broker
-principal ARNs authorized to assume the managed connection roles, then recreate the API container.
-
-A workload health URL is required before automated rotation. It must call the issuer using the loaded
-key and return fresh proof. Kinu sends a random `X-Kinu-Probe` header; the response must echo it and
-include a SHA-256 fingerprint of each selected variable's runtime value:
+Each managed workload needs an HTTPS health URL. It must check the loaded key with its issuer, echo
+Kinu’s `X-Kinu-Probe` value as `nonce`, and return the SHA-256 fingerprint of each managed variable.
+Never return the key itself; disable response caching.
 
 ```json
-{"ok": true, "nonce": "VALUE_OF_X_KINU_PROBE", "fingerprints": {"API_KEY": "SHA256_OF_LOADED_KEY"}}
+{"ok":true,"nonce":"VALUE_OF_X_KINU_PROBE","fingerprints":{"API_KEY":"SHA256_OF_LOADED_KEY"}}
 ```
 
-After issuer rejection, return `ok: false` and `state: "provider-rejected"` with the same proof fields.
-Do not return raw keys. Disable response caching. Merely returning a fingerprint without checking
-the issuer does not meet this health contract. Every workload using the key must be registered.
-
-Vercel variables must target production only. Preview variables, branch overrides, shared variables,
-and custom environments are excluded. If the predecessor's value is unreadable, its immutable deployment URL
-must support the retirement probe. Its health response must also include
-`"provider_ids": {"API_KEY": "ISSUER_REPORTED_KEY_ID"}`, verified through the issuer. Rotation
-stops if that identity cannot be proved. A failed rollout can restore traffic while leaving the project
-variable on the replacement; Kinu then keeps both keys and holds the run for recovery. It does not
-claim a completed rollback or revoke a key whose configuration may still be in use.
-
-The worker checks expiry and drift every five minutes and queues rotations allowed by each
-credential's controls. Credentials with an active rotation or key setup are excluded from monitoring
-until that work finishes. Gmail sender changes preserve the polling cursor and pending messages.
-The API readiness endpoint and worker health check require a recent worker heartbeat.
-
-Selecting **Before revocation** pauses a rotation after deployment and observation. Another enabled
-workspace administrator must approve it; a manual rotation cannot approve itself. The worker then
-repeats observation and checks the bound action before retirement. Rejection restores the predecessor
-when safe. Expired approvals and requests for more evidence produce a fresh approval after rechecking.
-Approval requests expire after 24 hours; both keys remain active while waiting.
-
-Workspace administrators can open a cleanup-required rotation and choose **Recover rotation**.
-Recovery checks the saved evidence and live provider and workload state before restoring the
-predecessor or finishing registration of an already verified retirement. It releases locks only
-after verifying a safe outcome. Unresolved mutations stay held; expired provider sessions can be
-reconnected while the cleanup lock is retained. Active execution renews its lease throughout long
-deployments and observation. Rotation history supports pagination and direct links to older runs.
-
-## AI and execution
-
-Connect Builder.io under **Settings → AI**. Each workspace authorizes its own Builder account
-and chooses a model. OAuth requests AI invocation and refresh access. The default limit is 100
-calls per workspace per UTC day. An operator can grant a workspace a higher allowance for that
-day without resetting its recorded call count. Builder's credits and account limits still apply.
-
-The model assesses a small structured incident summary. It receives no workload keys, provider
-management tokens or mailbox bodies. Policy checks decide which operations can run. The private
-executor handles secrets and performs provider mutations; Agent-Native has access only to its
-own encrypted grant database. Generic chat, terminals and MCP proxy routes are disabled.
-
-Rotation preserves the old key during deployment and observation. Retirement requires current
-verification evidence. An interrupted mutation is held for evidence review rather than replayed
-blindly. The Chromium smoke test verifies capture barriers, private transfer and context disposal.
-Create a playbook from instructions and public documentation links under **Playbooks → Add playbook**,
-using the workspace's Builder account and selected model. Review the generated draft, then publish it.
-Existing JSON definitions can also be imported.
-Definitions declare exact public hostnames, checked page controls, private capture fields and a
-fixed read-only issuer identity probe or a supported private receipt verifier. Sign in through the
-connection's private browser once.
-Stagehand routes sanitized control choices through the workspace's Builder account; Playwright
-executes approved actions privately. The model never observes the provider page, screenshots or
-login state. Creation closes that browser context after encrypted capture. Each protected step
-can use several AI calls within the shared daily limit.
-
-Browser rotation currently requires a readable predecessor, overlapping issuer keys and registered
-hosting consumers. Procedures require review before publishing. Expired provider sessions require
-reconnecting the connection.
+If the issuer rejects a key, return `{"ok":false,"state":"provider-rejected"}` with the same proof
+fields. Register every workload that uses the credential.
 
 ## Development
 
-Python 3.12 and Node.js 24 are required outside Docker.
+Python 3.12 and Node.js 24 are required. Install dependencies and run the project checks with:
 
 ```sh
 make sync
 make verify
 ```
-
-The storage suite starts an isolated MongoDB replica set. Set `KINU_TEST_REDIS_URL` to isolated
-Redis database 15 to include queue integration tests. No cloud account or model call is needed for
-these checks. Run `python3 -m deploy.check` against a running Compose installation to check routing,
-database isolation and encrypted vault persistence. Run
-`docker compose exec -T executor python < deploy/browser.py` for private capture and Stagehand
-checks with fake keys and mocked inference. The Compose deployment has separate API, executor,
-worker, agent and web image targets.
-
-The dedicated Render sandbox is defined in `examples/render/render.yaml`. It runs `kinu-check` on
-Render's Free plan, with `RESEND_API_KEY=setup-required` until initialization. Connect Render and
-Resend in Kinu, select this service, then run the following on the installation host using the
-workspace, connection, service and administrator IDs from that installation:
-
-```sh
-docker compose exec -T executor python -m hosting.seed \
-  --workspace WORKSPACE_ID --host RENDER_CONNECTION_ID --provider RESEND_CONNECTION_ID \
-  --project RENDER_SERVICE_ID --url https://YOUR_SERVICE.onrender.com/probe --actor ADMIN_ACTOR_ID
-```
-
-This setup command accepts only the dedicated `kinu-check` service and its unchanged placeholder.
-It creates one domain-scoped sending key, stores it privately, deploys it and registers its inventory
-mapping. It never prints the key or sends email. An interrupted attempt requires evidence review;
-rerunning it cannot create another key. A completed attempt returns its existing credential.
-The workload's `/health` endpoint checks liveness; `/probe` verifies the loaded key with Resend.
-
-If setup stopped before installation, `--recover` checks the unchanged placeholder and a private
-creation receipt before retiring the unused key. It archives the attempt and clears its staging
-secret. Setup can then be run again. Recovery refuses installed keys and unknown creation outcomes.
-Use `--resume` to recheck an already captured key and continue installation without issuing another.
-If its recorded deployment is already live, resumption finishes registration without redeploying.
