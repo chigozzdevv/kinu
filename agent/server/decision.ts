@@ -69,8 +69,18 @@ export async function assess(input: z.infer<typeof inputSchema>, engine: AgentEn
     if (!new Set(["rotate", "review", "ignore"]).has(result.decision) || result.decision === "rotate" && !rotate) throw new Error("AI decision exceeds the rotation policy")
     const reason = result.decision === "rotate" ? input.kind === "credential-expiring" ? "expiry-window" : "confirmed-exposure" : result.decision === "review" ? "insufficient-evidence" : "unrelated"
     if (result.reason !== reason || result.decision === "ignore" && input.kind !== "credential-security-review") throw new Error(`AI decision does not match its evidence (${result.decision}/${result.reason})`)
-  } else if (result.decision !== `click-${input.phase}` && result.decision !== "stop" || result.reason !== (result.decision === "stop" ? "control-unavailable" : "approved-control-visible")) {
-    throw new Error("AI decision exceeds the browser phase")
+  } else if (input.stage === "browser") {
+    if (result.decision !== `click-${input.phase}` && result.decision !== "stop" || result.reason !== (result.decision === "stop" ? "control-unavailable" : "approved-control-visible")) {
+      throw new Error("AI decision exceeds the browser phase")
+    }
+  } else {
+    const write = ["POST", "PUT", "PATCH", "DELETE"].includes(input.method.toUpperCase())
+    const approved = write && input.identity_check && (input.phase === "revoke" || input.overlap)
+    const decision = approved ? "execute" : "stop"
+    const reason = approved ? "operation-approved" : "operation-unclear"
+    if (result.decision !== decision || result.reason !== reason) {
+      throw new Error(`AI decision does not match the operation evidence (${result.decision}/${result.reason})`)
+    }
   }
   return result
 }
