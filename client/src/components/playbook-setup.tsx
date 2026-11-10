@@ -30,7 +30,6 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
   const showExecutionSelect = !fixedExecution && !existing
   const [sourceMode, setSourceMode] = useState<"instructions" | "links">("instructions")
   const [source, setSource] = useState("")
-  const [domain, setDomain] = useState("")
   const [sourceTouched, setSourceTouched] = useState(false)
   const [links, setLinks] = useState("")
   const urls = parseLinks(links)
@@ -48,9 +47,7 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
         : initialPlatform
           ? `Build a ${selectedExecution} credential-rotation procedure for the exact platform ${JSON.stringify(slug(initialPlatform))}.`
           : `Build a ${selectedExecution} credential-rotation procedure from the supplied source.`
-      return selectedExecution === "browser" && domain.trim()
-        ? `${base} Use the exact provider domain ${JSON.stringify(domain.trim())} in the domain-selection step; never invent or substitute another domain.`
-        : base
+      return base
     })(),
   }), onSuccess: (result) => { setPrepared(result); setStep(1) } })
   const save = useMutation({ mutationFn: async () => {
@@ -70,14 +67,12 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
   }, onSuccess: (playbook) => onCreated(playbook, selectedExecution) })
   const sourceError = selectedExecution === "api" && sourceMode === "instructions" ? apiSourceError(source) : undefined
   const visibleSourceError = sourceTouched ? sourceError : undefined
-  const domainReady = selectedExecution !== "browser" || /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i.test(domain.trim())
-  const sourceReady = Boolean(execution) && domainReady && (sourceMode === "instructions" ? Boolean(source.trim()) && !sourceError : urls.length > 0 && !urlError)
+  const sourceReady = Boolean(execution) && (sourceMode === "instructions" ? Boolean(source.trim()) && !sourceError : urls.length > 0 && !urlError)
 
   return <SetupPage eyebrow="Inventory / Playbooks" title={existing ? "New playbook version" : !execution ? "Add playbook" : execution === "api" ? "Add API playbook" : "Add Computer Use playbook"} steps={steps} current={step} onBack={() => { setStep(0); save.reset() }} onCancel={onClose} error={(prepare.error ?? save.error)?.message} primary={step === 0 ? <Button onClick={() => { save.reset(); prepare.mutate() }} disabled={!sourceReady || prepare.isPending}>{prepare.isPending ? "Generating…" : "Generate"}</Button> : <Button onClick={() => save.mutate()} disabled={!prepared || save.isPending}>{save.isPending ? "Saving…" : canPublish ? "Publish playbook" : "Save draft"}</Button>}>
     {step === 0 && <div className="space-y-5">
       {showIntroduction && <p className="text-[11px] leading-5 text-[var(--ink-soft)]">A playbook teaches the agent how to use {execution === "api" ? "the API" : execution === "browser" ? "the provider’s website" : "your chosen access method"}.</p>}
       <FormGrid>
-        {selectedExecution === "browser" && <Field label="Provider domain"><input className={formControl} value={domain} disabled={prepare.isPending} onChange={(event) => { setDomain(event.target.value); prepare.reset() }} placeholder="app.example.com" /></Field>}
         {showExecutionSelect && <Field label="Type"><SelectControl value={execution ?? ""} disabled={prepare.isPending} onChange={(event) => { const value = event.target.value as "browser" | "api" | ""; setExecution(value || null); setPrepared(null); setSourceTouched(false); prepare.reset(); save.reset() }}><option value="">Select type</option><option value="api">API</option><option value="browser">Computer use</option></SelectControl></Field>}
         <div role="group" aria-label="Source type" className="flex gap-2 sm:col-span-2">{(["instructions", "links"] as const).map((mode) => <Button key={mode} size="sm" variant={sourceMode === mode ? "primary" : "secondary"} aria-pressed={sourceMode === mode} disabled={prepare.isPending} onClick={() => { setSourceMode(mode); setPrepared(null); prepare.reset(); save.reset() }}>{mode === "instructions" ? "Instructions" : "Links"}</Button>)}</div>
         {sourceMode === "instructions"
