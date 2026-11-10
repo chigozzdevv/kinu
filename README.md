@@ -15,23 +15,37 @@ key.
 If a provider or deployment has an uncertain outcome, Kinu holds the rotation and checks saved
 evidence against the live provider and workload before recovery.
 
-### How Kinu uses Agent-Native
+### Builder AI assists. Kinu executes.
 
-Kinu uses Agent-Native to propose rotation plans, assess eligible email alerts and API actions,
-choose approved browser controls from redacted screenshots, and draft Playbooks. Rotation planning
-uses structured context such as the trigger, execution method, connected app count, and approval
-settings; it does not send key values. Kinu validates the result, while the executor performs
-provider and browser actions.
+Through Agent-Native, Builder AI assists at five points in Kinu. It returns decisions or proposals;
+Kinu validates them, enforces policy, and executes the work.
 
-For browser execution, the [planner](server/browser/planner.py) sends the current redacted screenshot
-and approved control list through the private [Agent-Native client](server/agents/native.py):
+- **Email triage** — assess eligible, authenticated alerts. Kinu checks the evidence and credential
+  policy before starting a rotation.
+- **Rotation planning** — explain a run from bounded facts. Kinu sets the required stage order and
+  controls.
+- **API operations** — assess create or revoke request metadata. Kinu performs the provider call.
+- **Browser steps** — inspect a redacted screenshot and approved controls, then select the control
+  for the current Playbook step. Kinu executes that selection.
+- **Playbook drafts** — turn the objective and captured walkthrough text into a structured draft for
+  review; the model does not run it.
 
 ```python
-async with asyncio.timeout(120):
-    result = Choice.model_validate(await self.agent.navigate(org, request, progress))
+# Email triage
+decision = await self.agent.assess(box.organisation_id, incident_input)
+# Rotation plan
+proposal = await self.planner(run.organisation_id, agent_input)
+# API operation
+decision = await self.assessor(run.organisation_id, ApiInput(...))
+# Browser control
+result = Choice.model_validate(await self.agent.navigate(org, request, progress))
+# Playbook draft
+return await service.agent.build(task)
 ```
 
-The executor wires these operations in [server/executor/runtime.py](server/executor/runtime.py).
+Rotation planning gets operational facts, not key values. Browser selection gets a redacted
+screenshot; API assessment gets operation metadata. Kinu keeps the policy checks and side effects in
+its own services. The shared client is in [server/agents/native.py](server/agents/native.py).
 
 ## Self-host Kinu
 
