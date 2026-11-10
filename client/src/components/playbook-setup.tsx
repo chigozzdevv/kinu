@@ -42,13 +42,16 @@ export function PlaybookSetup({ onClose, onCreated, existing, initialPlatform = 
     sources: sourceMode === "instructions"
       ? [{ id: identifier("source_text"), kind: "text" as const, text: source.trim() }]
       : urls.map((url) => ({ id: identifier("source_link"), kind: "link" as const, resource: url })),
-    objective: existing
-      ? `Build the next ${selectedExecution} credential-rotation procedure. Use the exact name ${JSON.stringify(existing.playbook.name)} and exact platform ${JSON.stringify(existing.playbook.platform)}.`
-      : initialPlatform
-        ? `Build a ${selectedExecution} credential-rotation procedure for the exact platform ${JSON.stringify(slug(initialPlatform))}.` +
-          (selectedExecution === "browser" ? ` Use the exact provider domain ${JSON.stringify(domain.trim())} in the domain-selection step; never invent or substitute another domain.` : "")
-        : `Build a ${selectedExecution} credential-rotation procedure from the supplied source.` +
-          (selectedExecution === "browser" ? ` Use the exact provider domain ${JSON.stringify(domain.trim())} in the domain-selection step; never invent or substitute another domain.` : ""),
+    objective: (() => {
+      const base = existing
+        ? `Build the next ${selectedExecution} credential-rotation procedure. Use the exact name ${JSON.stringify(existing.playbook.name)} and exact platform ${JSON.stringify(existing.playbook.platform)}.`
+        : initialPlatform
+          ? `Build a ${selectedExecution} credential-rotation procedure for the exact platform ${JSON.stringify(slug(initialPlatform))}.`
+          : `Build a ${selectedExecution} credential-rotation procedure from the supplied source.`
+      return selectedExecution === "browser" && domain.trim()
+        ? `${base} Use the exact provider domain ${JSON.stringify(domain.trim())} in the domain-selection step; never invent or substitute another domain.`
+        : base
+    })(),
   }), onSuccess: (result) => { setPrepared(result); setStep(1) } })
   const save = useMutation({ mutationFn: async () => {
     if (!prepared) throw new Error("Generate the playbook first")
