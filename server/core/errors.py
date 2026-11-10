@@ -58,6 +58,10 @@ class ResourceConflictError(KinuError):
     pass
 
 
+class ApproverRequiredError(ResourceConflictError):
+    pass
+
+
 class ResourceSetupRequiredError(KinuError):
     pass
 

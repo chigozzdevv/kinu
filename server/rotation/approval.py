@@ -15,7 +15,12 @@ from core.approval import ApprovalService
 from core.approval.store import ApprovalStore
 from core.audit.writer import AuditWriter
 from core.auth import AuthenticatedIdentity
-from core.errors import ApprovalError, ResourceConflictError, ResourceNotFoundError
+from core.errors import (
+    ApprovalError,
+    ApproverRequiredError,
+    ResourceConflictError,
+    ResourceNotFoundError,
+)
 from core.ids import new_id
 from core.notification import NotificationService
 from core.storage.database import Database
@@ -54,7 +59,7 @@ class RevocationApprovals:
             actor = AuthenticatedIdentity(subject=member["subject"], issuer="local").actor_id
             if actor != run.trigger.actor_id:
                 return
-        raise ResourceConflictError("Add another workspace administrator to approve this rotation")
+        raise ApproverRequiredError("Add another workspace administrator to approve this rotation")
 
     async def current(self, run: RotationRun) -> tuple[Approval, ProtectedAction, str] | None:
         try:

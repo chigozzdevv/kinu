@@ -22,7 +22,12 @@ from contracts import (
 )
 from core.audit.store import AuditStore
 from core.audit.writer import AuditWriter
-from core.errors import LeaseConflictError, ResourceConflictError, ResourceSetupRequiredError
+from core.errors import (
+    ApproverRequiredError,
+    LeaseConflictError,
+    ResourceConflictError,
+    ResourceSetupRequiredError,
+)
 from core.state import RotationMachine
 from core.storage.database import Database
 from core.storage.runs import RunStore
@@ -306,13 +311,20 @@ class Rotation:
                 restored = False
             if restored and created:
                 await discard(self.database, org, stable("generation", run.id))
+            missing_approver = current.stage is Stage.PREFLIGHT and isinstance(
+                error, ApproverRequiredError
+            )
             failure = Failure(
-                code="builder-setup-required"
+                code="approval-approver-required"
+                if missing_approver
+                else "builder-setup-required"
                 if current.stage is Stage.PLAN and isinstance(error, ResourceSetupRequiredError)
                 else "api-rotation-failed"
                 if restored
                 else "api-cleanup-required",
-                message="Connect Builder AI in Settings and start a new rotation."
+                message=str(error)
+                if missing_approver
+                else "Connect Builder AI in Settings and start a new rotation."
                 if current.stage is Stage.PLAN and isinstance(error, ResourceSetupRequiredError)
                 else "Builder AI could not produce a valid plan. Check AI settings and try again."
                 if current.stage is Stage.PLAN

@@ -134,7 +134,7 @@ def test_trigger_history_uses_the_trigger_story_not_internal_gate_checks() -> No
     public = _activity(result, run)
     assert public.summary == "Exposure alert started rotation"
     assert [(item.label, item.value) for item in public.details] == [
-        ("Configured trigger", "GitHub Secret Scanning"),
+        ("Source", "GitHub Secret Scanning"),
         ("Reason", "A credential was found in a public repository."),
     ]
 

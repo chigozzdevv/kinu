@@ -160,12 +160,20 @@ def _stage_presentation(
         if run is None:
             return ("Rotation started", ())
         summary, configured_trigger = _trigger_story(run.trigger.source, run.trigger.kind)
+        manual = run.trigger.kind == "manual" or run.trigger.source.strip().lower() in {
+            "manual",
+            "console",
+            "dashboard",
+            "agent-native",
+        }
+        details = []
+        if not manual:
+            details.append(StageDetail(label="Source", value=configured_trigger))
+        if run.trigger.reason.strip():
+            details.append(StageDetail(label="Reason", value=run.trigger.reason))
         return (
-            summary,
-            (
-                StageDetail(label="Configured trigger", value=configured_trigger),
-                StageDetail(label="Reason", value=run.trigger.reason),
-            ),
+            "Manual rotation" if manual else summary,
+            tuple(details),
         )
     if stage is Stage.PREFLIGHT:
         connections = _string_items(output.get("connections"))
