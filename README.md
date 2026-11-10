@@ -22,26 +22,67 @@ Kinu validates them, enforces policy, and executes the work.
 
 - **Email triage** — assess eligible, authenticated alerts. Kinu checks the evidence and credential
   policy before starting a rotation.
+
+  ```python
+  decision = await self.agent.assess(
+      box.organisation_id,
+      IncidentInput(
+          stage="investigate",
+          kind=signal.event.kind,
+          confidence="verified",
+          candidate_count=1,
+          policy_allows_rotation=True,
+      ),
+  )
+  ```
+
 - **Rotation planning** — explain a run from bounded facts. Kinu sets the required stage order and
   controls.
+
+  ```python
+  proposal = await self.planner(run.organisation_id, agent_input)
+  if proposal.get("stages") != list(PLAN_STAGES):
+      raise ResourceConflictError("Builder AI proposed an invalid rotation plan")
+  ```
+
 - **API operations** — assess create or revoke request metadata. Kinu performs the provider call.
+
+  ```python
+  decision = await self.assessor(
+      self.run.organisation_id,
+      ApiInput(
+          stage="api",
+          phase=phase,
+          method=operation.method,
+          path=operation.path,
+          identity_check=http.test_credential is not None,
+          overlap=http.supports_overlap,
+          scopes_count=len(self.state.credential.scopes),
+      ),
+  )
+  if decision.decision != "execute":
+      raise ResourceConflictError("Builder AI stopped the provider operation")
+  ```
+
 - **Browser steps** — inspect a redacted screenshot and approved controls, then select the control
   for the current Playbook step. Kinu executes that selection.
+
+  ```python
+  result = Choice.model_validate(
+      await self.agent.navigate(org, request, progress)
+  )
+  if result.control not in controls:
+      raise ConnectorError(
+          "browser-control-rejected", "AI could not identify the approved control"
+      )
+  ```
+
 - **Playbook drafts** — turn the objective and captured walkthrough text into a structured draft for
   review; the model does not run it.
 
-```python
-# Email triage
-decision = await self.agent.assess(box.organisation_id, incident_input)
-# Rotation plan
-proposal = await self.planner(run.organisation_id, agent_input)
-# API operation
-decision = await self.assessor(run.organisation_id, ApiInput(...))
-# Browser control
-result = Choice.model_validate(await self.agent.navigate(org, request, progress))
-# Playbook draft
-return await service.agent.build(task)
-```
+  ```python
+  return await service.agent.build(task)
+  ```
 
 Rotation planning gets operational facts, not key values. Browser selection gets a redacted
 screenshot; API assessment gets operation metadata. Kinu keeps the policy checks and side effects in
