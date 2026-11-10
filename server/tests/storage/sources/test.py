@@ -89,7 +89,10 @@ async def source_app(database: Database, identity: AuthenticatedIdentity) -> Any
         private = PrivateClient(private_http, "http://executor", SecretStr("executor-private"))
         app = create_app(
             ApiServices(
-                access=AccessControl(accounts), private=private, github=GitHubBridge(private)
+                access=AccessControl(accounts),
+                accounts=account,
+                private=private,
+                github=GitHubBridge(private),
             ),
             browser=make_browser(identity),
         )
@@ -98,7 +101,11 @@ async def source_app(database: Database, identity: AuthenticatedIdentity) -> Any
         ) as client:
             try:
                 yield SimpleNamespace(
-                    client=client, service=service, one=one.organisation.id, two=two.organisation.id
+                    client=client,
+                    service=service,
+                    one=one.organisation.id,
+                    two=two.organisation.id,
+                    identity_email=identity.email,
                 )
             finally:
                 executor.state.service = previous

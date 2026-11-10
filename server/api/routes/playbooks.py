@@ -304,7 +304,9 @@ async def _generate_definition(
     try:
         definition = PlaybookDraft.model_validate(candidate)
     except ValueError as error:
-        raise PlaybookError(str(error)[:512] or "The generated playbook is invalid") from error
+        raise PlaybookError(
+            "The generated playbook is incomplete. Check its required actions and revocation step."
+        ) from error
     validate_generated(definition)
     if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
         raise PlaybookError("The new version must keep the playbook's name and provider")

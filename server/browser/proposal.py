@@ -65,9 +65,7 @@ class Proposals:
         ]
         if target_display_name:
             instruction_lines.append("Selected provider key name: " + target_display_name)
-        instruction = "\n".join(
-            instruction_lines
-        )
+        instruction = "\n".join(instruction_lines)
         if len(instruction) > 2048 or _unsafe(instruction + label):
             await driver.clear_model_targets()
             raise ResourceConflictError("Browser task contains unsafe or oversized context")
@@ -128,24 +126,24 @@ class Proposals:
             await self.sessions.record_activity(
                 session,
                 ComputerUseActivity(
-                id=stable("activity", session.id + ":" + step.id + ":proposed"),
-                organisation_id=session.organisation_id,
-                session_id=session.id,
-                run_id=session.run_id,
-                step_id=step.id,
-                stage=step.stage,
-                turn=session.step_count + 1,
-                phase=ComputerUseActivityPhase.PROPOSAL,
-                status=ComputerUseActivityStatus.PROPOSED,
-                action={
-                    "browser.type": BrowserActionKind.TYPE,
-                    "browser.select": BrowserActionKind.SELECT,
-                }.get(step.tool, BrowserActionKind.CLICK),
-                intent=controls[selected.control],
-                target=step.id,
-                arguments={"control_id": selected.control},
-                content=selected.summary,
-                recorded_at=datetime.now(UTC),
+                    id=stable("activity", session.id + ":" + step.id + ":proposed"),
+                    organisation_id=session.organisation_id,
+                    session_id=session.id,
+                    run_id=session.run_id,
+                    step_id=step.id,
+                    stage=step.stage,
+                    turn=session.step_count + 1,
+                    phase=ComputerUseActivityPhase.PROPOSAL,
+                    status=ComputerUseActivityStatus.PROPOSED,
+                    action={
+                        "browser.type": BrowserActionKind.TYPE,
+                        "browser.select": BrowserActionKind.SELECT,
+                    }.get(step.tool, BrowserActionKind.CLICK),
+                    intent=controls[selected.control],
+                    target=step.id,
+                    arguments={"control_id": selected.control},
+                    content=selected.summary,
+                    recorded_at=datetime.now(UTC),
                 ),
             )
         except Exception:
@@ -223,8 +221,7 @@ class Proposals:
                 session.organisation_id,
                 "Select the visible element containing the newly created secret value. "
                 "The screenshot redacts values. Do not repeat or infer the secret; "
-                "stop if unclear.\n"
-                + instruction,
+                "stop if unclear.\n" + instruction,
                 controls,
                 image,
                 progress.publish,

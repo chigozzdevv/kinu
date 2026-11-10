@@ -38,9 +38,7 @@ async def attach_test_playbook(
         org, playbook_id, version_id, procedure(DOMAIN, "issuer.example"), actor
     )
     await books.publish(org, playbook_id, version.id, actor)
-    return await books.attach(
-        org, connection.id, connection.revision, playbook_id, version.id
-    )
+    return await books.attach(org, connection.id, connection.revision, playbook_id, version.id)
 
 
 async def check_rotation(database: Database, identity: AuthenticatedIdentity) -> None:

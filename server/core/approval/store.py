@@ -72,14 +72,18 @@ class ApprovalStore:
     async def _is_only_administrator(
         self, rows: RecordTransaction, organisation_id: str, actor_id: str
     ) -> bool:
-        members = await rows.database.collection("members").find(
-            {
-                "organisation_id": organisation_id,
-                "data.enabled": True,
-                "data.roles": "administrator",
-            },
-            session=rows.session,
-        ).to_list()
+        members = (
+            await rows.database.collection("members")
+            .find(
+                {
+                    "organisation_id": organisation_id,
+                    "data.enabled": True,
+                    "data.roles": "administrator",
+                },
+                session=rows.session,
+            )
+            .to_list()
+        )
         administrator_ids = {
             AuthenticatedIdentity(subject=member["subject"], issuer="local").actor_id
             for member in members

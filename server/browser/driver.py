@@ -393,9 +393,7 @@ class BrowserDriver:
             if self.url != origin:
                 raise ResourceConflictError("Browser page changed during visual observation")
             for index, control_id in enumerate(result["controls"], start=1):
-                locator = self._page.locator(
-                    f'[{target_attribute}="{index}"]'
-                )
+                locator = self._page.locator(f'[{target_attribute}="{index}"]')
                 target_handle = await locator.element_handle()
                 if target_handle is None:
                     raise ResourceConflictError("Browser visual target changed during observation")
@@ -668,9 +666,7 @@ class BrowserDriver:
                         "approved select option did not become visible"
                     ) from None
             if await option.count() != 1 or not await option.is_visible():
-                raise ResourceConflictError(
-                    "approved select option is not uniquely visible"
-                )
+                raise ResourceConflictError("approved select option is not uniquely visible")
             await option.click()
         finally:
             await handle.dispose()

@@ -46,9 +46,7 @@ class BrowserResend:
         browser_inventory = definition.verifier.credential_ids if definition.verifier else None
         browser_inventory = browser_inventory or definition.credential_ids
         identities = (
-            await self.browser.ids(connection)
-            if browser_inventory is not None
-            else tuple(account)
+            await self.browser.ids(connection) if browser_inventory is not None else tuple(account)
         )
         if browser_inventory is not None and set(identities) != set(account):
             raise ConnectorError("resend-account", "Browser and verification accounts differ")

@@ -17,25 +17,21 @@ evidence against the live provider and workload before recovery.
 
 ### How Kinu uses Agent-Native
 
-For rotation planning, Kinu sends Agent-Native structured context such as the trigger, execution
-method, connected app count, and approval settings. The planning request contains no key values.
-Kinu validates the proposed stages against its workflow; the executor handles provider and browser
-actions.
+Kinu uses Agent-Native to propose rotation plans, assess eligible email alerts and API actions,
+choose approved browser controls from redacted screenshots, and draft Playbooks. Rotation planning
+uses structured context such as the trigger, execution method, connected app count, and approval
+settings; it does not send key values. Kinu validates the result, while the executor performs
+provider and browser actions.
 
-The [Agent-Native client](server/agents/native.py) sends the planning input through Kinu’s private
-service:
+For browser execution, the [planner](server/browser/planner.py) sends the current redacted screenshot
+and approved control list through the private [Agent-Native client](server/agents/native.py):
 
 ```python
-result = await self.client.call(
-    "/_internal/rotation-plan",
-    {"organisation_id": organisation_id, "input": value},
-    timeout=60,
-)
+async with asyncio.timeout(120):
+    result = Choice.model_validate(await self.agent.navigate(org, request, progress))
 ```
 
-The executor wires `plan_rotation` and `assess` into rotation in
-[server/executor/runtime.py](server/executor/runtime.py). The context and plan validation are in
-[server/rotation/stages.py](server/rotation/stages.py).
+The executor wires these operations in [server/executor/runtime.py](server/executor/runtime.py).
 
 ## Self-host Kinu
 

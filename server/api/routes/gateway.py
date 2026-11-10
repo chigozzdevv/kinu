@@ -70,9 +70,7 @@ async def setup(websocket: WebSocket) -> None:
                 except AuthorizationError:
                     raise
                 except KinuError as error:
-                    await websocket.send_json(
-                        {"type": "error", "message": str(error)}
-                    )
+                    await websocket.send_json({"type": "error", "message": str(error)})
                     continue
                 if result.get("type") == "frame":
                     await websocket.send_bytes(base64.b64decode(result["image"], validate=True))

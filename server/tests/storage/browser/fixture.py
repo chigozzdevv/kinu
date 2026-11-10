@@ -62,8 +62,8 @@ class Planner:
         expected = {
             "open_create": "button: Create API key",
             "name_key": "input",
-            "limit_permission": "combobox",
-            "limit_domain": "combobox",
+            "limit_permission": "combobox: Full access",
+            "limit_domain": "combobox: All domains",
             "create_key": "button: Add",
             "old_menu": "button: More actions",
             "open_retirement": "menuitem: Delete API key",
@@ -75,7 +75,7 @@ class Planner:
         if step == "retire_key" and "button: Retire key" in controls.values():
             return next(key for key, value in controls.items() if value == "button: Retire key")
         options = [key for key, value in controls.items() if value.startswith(expected[step])]
-        return options[-1] if step == "limit_domain" else options[0]
+        return options[0]
 
 
 class Launcher:

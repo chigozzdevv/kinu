@@ -18,7 +18,6 @@ from core.auth import AuthenticatedIdentity
 from core.errors import (
     ApprovalError,
     ApproverRequiredError,
-    ResourceConflictError,
     ResourceNotFoundError,
 )
 from core.ids import new_id

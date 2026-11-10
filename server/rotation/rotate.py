@@ -53,8 +53,7 @@ _CHECK_FAILURES = {
         "Try again later or connect a different runtime."
     ),
     "host-proof": (
-        "The app's health check did not verify the key. "
-        "Check its Health URL and the key value."
+        "The app's health check did not verify the key. Check its Health URL and the key value."
     ),
     "provider-management": "Use a separate provider management credential.",
 }

@@ -107,9 +107,7 @@ def _bind_fixed_scopes(definition: ApiPlaybookDraft) -> ApiPlaybookDraft:
         update={
             "http": http.model_copy(
                 update={
-                    "create_credential": http.create_credential.model_copy(
-                        update={"body": body}
-                    )
+                    "create_credential": http.create_credential.model_copy(update={"body": body})
                 }
             )
         }
@@ -186,7 +184,9 @@ async def generate(
         definition = _bind_fixed_scopes(definition)
         validate_creation_scopes(definition)
     except ValueError as error:
-        raise PlaybookError(str(error)[:512] or "The generated playbook is invalid") from error
+        raise PlaybookError(
+            "The API playbook is incomplete. Check its create and revoke actions."
+        ) from error
     if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
         raise PlaybookError("Keep the playbook's name and provider")
     return DraftResponse(definition=definition)

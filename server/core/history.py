@@ -458,9 +458,7 @@ def _agent_decisions(stage: Stage, output: dict[str, Any]) -> tuple[AgentDecisio
         decisions.append(
             AgentDecisionSummary(
                 agent=AgentKind.OPERATOR,
-                decision=(
-                    "Execute provider operation" if executed else "Stop provider operation"
-                ),
+                decision=("Execute provider operation" if executed else "Stop provider operation"),
                 explanation=(
                     "Builder AI approved the declared provider operation; "
                     "Kinu executed it and verified the result."

@@ -52,6 +52,7 @@ async def report_env(
         credential_id=demo.credential_id,
         path=f"/v1/organisations/{org}/incidents",
         other=source_app.two,
+        account_email=source_app.identity_email,
     )
 
 
@@ -101,7 +102,7 @@ def payload(env: Any) -> dict[str, Any]:
         "details": "Forwarded test alert",
         "simulate": True,
         "source_connection_id": env.box.id,
-        "recipient": "owner@example.com",
+        "recipient": env.account_email,
     }
 
 
@@ -144,7 +145,7 @@ async def test_email_simulation_uses_forwarding_and_key_policy_once(
     async with httpx.AsyncClient(transport=httpx.MockTransport(send)) as http:
         monkeypatch.setattr(env.service, "http", http)
         await env.service.sources.drain()
-    assert len(sent) == 1 and sent[0]["to"] == ["owner@example.com"]
+    assert len(sent) == 1 and sent[0]["to"] == [env.account_email]
     assert "Kinu test reference:" in sent[0]["text"]
     assert "a" * 24 in sent[0]["text"]
     assert "kinu://vault" not in sent[0]["text"]

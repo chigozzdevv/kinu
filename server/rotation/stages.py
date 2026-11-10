@@ -222,9 +222,7 @@ class Stages:
         if stage is Stage.CREATE:
             proposal = None
             if state.playbook is None and state.provider.http is not None:
-                proposal = await self._api_proposal(
-                    "create", state.provider.http.create_credential
-                )
+                proposal = await self._api_proposal("create", state.provider.http.create_credential)
             result = await self.effects.issue(state, run.id)
             if proposal is not None:
                 result["agent_api"] = proposal
@@ -322,9 +320,7 @@ class Stages:
             observation = await self.output(Stage.OBSERVE)
             proposal = None
             if state.playbook is None and state.provider.http is not None:
-                proposal = await self._api_proposal(
-                    "revoke", state.provider.http.revoke_credential
-                )
+                proposal = await self._api_proposal("revoke", state.provider.http.revoke_credential)
             result = await self.effects.revoke(state, created, deployment_output, observation)
             if proposal is not None:
                 result["agent_api"] = proposal

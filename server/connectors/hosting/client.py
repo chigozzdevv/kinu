@@ -49,16 +49,12 @@ class Client:
                                 "host-limit", "Hosting response exceeded its limit"
                             )
                     challenged = (
-                        response.status_code == 403
-                        and b"Vercel Security Checkpoint" in data
+                        response.status_code == 403 and b"Vercel Security Checkpoint" in data
                     )
                     if challenged and attempt < 3:
                         await asyncio.sleep(0.5 * (2**attempt))
                         continue
-                    if (
-                        response.status_code == 403
-                        and b"Vercel Security Checkpoint" in data
-                    ):
+                    if response.status_code == 403 and b"Vercel Security Checkpoint" in data:
                         raise ConnectorError(
                             "host-challenge",
                             "Vercel is challenging this server's IP; "
