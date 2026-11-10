@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import builderIcon from "@iconify-icons/logos/builder-io-icon.js"
 import { Check, Expand, EyeOff, LoaderCircle, MonitorCog, Pause, X, ZoomIn, ZoomOut } from "lucide-react"
-import type { ComputerUseActivity } from "../types"
+import type { ComputerUseActivity, RunStageActivity } from "../types"
 import { api } from "../lib/api"
 import { titleCase } from "../lib/format"
 
@@ -102,6 +102,54 @@ function ActionResponse({ receipt }: { receipt: ComputerUseActivity }) {
       <span>Response</span>
     </div>
     <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-5">{JSON.stringify(response, null, 2)}</pre>
+  </div>
+}
+
+const apiAgentNames: Record<string, string> = {
+  inventory: "Inventory and Exposure Agent",
+  planner: "Builder AI",
+  playbook: "Playbook Builder Agent",
+  operator: "Builder AI",
+}
+
+export function RunApiActivity({ activity, label }: { activity: RunStageActivity; label: string }) {
+  const prompt = activity.summary || `Run ${label.toLowerCase()} for this credential.`
+  const status = activity.status === "succeeded" ? "Succeeded"
+    : activity.status === "failed" ? "Failed"
+    : activity.status === "paused" ? "Paused"
+    : activity.status === "recovered" ? "Recovered"
+    : titleCase(activity.status)
+  return <div className="rotation-transcript mt-5 space-y-6">
+    <div className="rotation-turn space-y-3">
+      <Message actor="kinu">
+        <Explanation text={prompt} streaming={false} />
+        {activity.details.length > 0 && <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[11px] text-white/80 sm:grid-cols-2">
+          {activity.details.map((detail) => <div key={`${detail.label}-${detail.value}`}>
+            <dt className="text-[9px] uppercase tracking-wide text-white/50">{detail.label}</dt>
+            <dd className="mt-0.5 break-words">{detail.value}</dd>
+          </div>)}
+        </dl>}
+      </Message>
+      {activity.agent_decisions.map((decision, index) => <Message key={`${decision.agent}-${index}`} actor="builder">
+        <div className="text-[10px] font-semibold text-[var(--ink-muted)]">{apiAgentNames[decision.agent] ?? titleCase(decision.agent)}</div>
+        <div className="mt-1 font-semibold">{decision.decision}</div>
+        <p className="mt-1 whitespace-pre-line text-[12px] leading-5 text-[var(--ink-soft)]">{decision.explanation}</p>
+      </Message>)}
+      <Message actor="kinu">
+        <div className="flex items-center gap-2 font-semibold">
+          <span className={`grid size-4 shrink-0 place-items-center rounded-full ${activity.status === "succeeded" ? "bg-[var(--ink)]" : "bg-white/20"}`} aria-hidden="true">
+            <Check className="size-2.5 text-white" strokeWidth={3} />
+          </span>
+          <span>{status}</span>
+        </div>
+        {activity.reason && <p className="mt-1 text-[12px] leading-5 text-white/80">{activity.reason}</p>}
+        {(activity.checks.length > 0 || activity.evidence_count > 0) && <p className="mt-1 text-[10px] text-white/60">
+          {activity.checks.length > 0 ? `${activity.checks.length} checks` : ""}
+          {activity.checks.length > 0 && activity.evidence_count > 0 ? " · " : ""}
+          {activity.evidence_count > 0 ? `${activity.evidence_count} evidence item${activity.evidence_count === 1 ? "" : "s"}` : ""}
+        </p>}
+      </Message>
+    </div>
   </div>
 }
 
