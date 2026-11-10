@@ -113,22 +113,21 @@ const apiAgentNames: Record<string, string> = {
 }
 
 export function RunApiActivity({ activity, label }: { activity: RunStageActivity; label: string }) {
-  const prompt = activity.summary || `Run ${label.toLowerCase()} for this credential.`
+  const operation = activity.details.find((detail) => detail.label === "Operation")?.value
+  const method = activity.details.find((detail) => detail.label === "Method")?.value
+  const prompt = operation
+    ? `${operation}${method ? ` via ${method}` : ""}.`
+    : `Run ${label.toLowerCase()} for this credential.`
   const status = activity.status === "succeeded" ? "Succeeded"
     : activity.status === "failed" ? "Failed"
     : activity.status === "paused" ? "Paused"
     : activity.status === "recovered" ? "Recovered"
     : titleCase(activity.status)
+  const StatusIcon = activity.status === "failed" ? X : activity.status === "paused" ? Pause : Check
   return <div className="rotation-transcript mt-5 space-y-6">
     <div className="rotation-turn space-y-3">
       <Message actor="kinu">
         <Explanation text={prompt} streaming={false} />
-        {activity.details.length > 0 && <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[11px] text-white/80 sm:grid-cols-2">
-          {activity.details.map((detail) => <div key={`${detail.label}-${detail.value}`}>
-            <dt className="text-[9px] uppercase tracking-wide text-white/50">{detail.label}</dt>
-            <dd className="mt-0.5 break-words">{detail.value}</dd>
-          </div>)}
-        </dl>}
       </Message>
       {activity.agent_decisions.map((decision, index) => <Message key={`${decision.agent}-${index}`} actor="builder">
         <div className="text-[10px] font-semibold text-[var(--ink-muted)]">{apiAgentNames[decision.agent] ?? titleCase(decision.agent)}</div>
@@ -137,11 +136,12 @@ export function RunApiActivity({ activity, label }: { activity: RunStageActivity
       </Message>)}
       <Message actor="kinu">
         <div className="flex items-center gap-2 font-semibold">
-          <span className={`grid size-4 shrink-0 place-items-center rounded-full ${activity.status === "succeeded" ? "bg-[var(--ink)]" : "bg-white/20"}`} aria-hidden="true">
-            <Check className="size-2.5 text-white" strokeWidth={3} />
+          <span className={`grid size-4 shrink-0 place-items-center rounded-full ${activity.status === "failed" ? "bg-[var(--red)]" : activity.status === "paused" ? "bg-amber-500" : "bg-white/20"}`} aria-hidden="true">
+            <StatusIcon className="size-2.5 text-white" strokeWidth={3} />
           </span>
           <span>{status}</span>
         </div>
+        {activity.summary && activity.summary !== status && <p className="mt-1 text-[12px] leading-5 text-white/80">{activity.summary}</p>}
         {activity.reason && <p className="mt-1 text-[12px] leading-5 text-white/80">{activity.reason}</p>}
         {(activity.checks.length > 0 || activity.evidence_count > 0) && <p className="mt-1 text-[10px] text-white/60">
           {activity.checks.length > 0 ? `${activity.checks.length} checks` : ""}
