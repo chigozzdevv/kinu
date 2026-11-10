@@ -49,6 +49,7 @@ class RevocationApprovals:
         )
 
     async def ensure_approver(self, run: RotationRun) -> None:
+        administrator_ids = set()
         async for member in self.database.collection("members").find(
             {
                 "organisation_id": run.organisation_id,
@@ -57,9 +58,13 @@ class RevocationApprovals:
             }
         ):
             actor = AuthenticatedIdentity(subject=member["subject"], issuer="local").actor_id
+            administrator_ids.add(actor)
             if actor != run.trigger.actor_id:
                 return
-        raise ApproverRequiredError("Add another workspace administrator to approve this rotation")
+        if run.trigger.actor_id not in administrator_ids:
+            raise ApproverRequiredError(
+                "An active workspace administrator must approve this rotation"
+            )
 
     async def current(self, run: RotationRun) -> tuple[Approval, ProtectedAction, str] | None:
         try:

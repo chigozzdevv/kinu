@@ -15,6 +15,7 @@ from contracts import (
 )
 from policy import digest
 
+from core.auth import AuthenticatedIdentity
 from core.errors import ApprovalError, RevisionConflictError
 from core.storage.database import Database
 from core.storage.records import Records, RecordTransaction
@@ -68,6 +69,23 @@ class ApprovalStore:
         ):
             raise ApprovalError("approval requires matching saved verification evidence")
 
+    async def _is_only_administrator(
+        self, rows: RecordTransaction, organisation_id: str, actor_id: str
+    ) -> bool:
+        members = await rows.database.collection("members").find(
+            {
+                "organisation_id": organisation_id,
+                "data.enabled": True,
+                "data.roles": "administrator",
+            },
+            session=rows.session,
+        ).to_list()
+        administrator_ids = {
+            AuthenticatedIdentity(subject=member["subject"], issuer="local").actor_id
+            for member in members
+        }
+        return administrator_ids == {actor_id}
+
     async def create(self, approval: Approval, action: ProtectedAction) -> Approval:
         if redact(action.parameters) != action.parameters:
             raise ApprovalError("protected actions cannot contain secret values")
@@ -119,12 +137,18 @@ class ApprovalStore:
                 raise RevisionConflictError("approval revision changed")
             if current.decision is not ApprovalDecision.PENDING or current.consumed_at is not None:
                 raise ApprovalError("approval already has a decision")
-            if decision is not ApprovalDecision.CANCELLED and (
-                current.expires_at <= decided_at or current.requested_by == actor_id
-            ):
-                raise ApprovalError("approval requires another operator and unexpired evidence")
-            action = await rows.get(ProtectedAction, organisation_id, current.action_id)
             if decision is not ApprovalDecision.CANCELLED:
+                if current.expires_at <= decided_at:
+                    raise ApprovalError("approval evidence has expired")
+                action = await rows.get(ProtectedAction, organisation_id, current.action_id)
+                if current.requested_by == actor_id and not (
+                    decision is ApprovalDecision.APPROVED
+                    and action.kind == "provider.revokeCredential"
+                    and await self._is_only_administrator(rows, organisation_id, actor_id)
+                ):
+                    raise ApprovalError(
+                        "approval requires another operator unless you are the only administrator"
+                    )
                 await self._binding(rows, action)
             changed = current.model_copy(
                 update={
