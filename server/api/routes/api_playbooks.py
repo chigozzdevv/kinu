@@ -84,6 +84,38 @@ async def get_playbook(
     return ApiPlaybookDetail(playbook=book, active_version=active, latest_version=latest)
 
 
+def _bind_fixed_scopes(definition: ApiPlaybookDraft) -> ApiPlaybookDraft:
+    """A single declared permission is fixed: render it as a literal, not a list."""
+    http = definition.http
+    if not http.credential_scopes or len(http.credential_scopes) != 1:
+        return definition
+    single = next(iter(http.credential_scopes))
+
+    def render(value: object, key: str = "") -> object:
+        if value == "${scopes}" and key not in {"scopes", "scope"}:
+            return single
+        if isinstance(value, dict):
+            return {name: render(item, name) for name, item in value.items()}
+        if isinstance(value, list):
+            return [render(item) for item in value]
+        return value
+
+    body = render(http.create_credential.body)
+    if body == http.create_credential.body:
+        return definition
+    return definition.model_copy(
+        update={
+            "http": http.model_copy(
+                update={
+                    "create_credential": http.create_credential.model_copy(
+                        update={"body": body}
+                    )
+                }
+            )
+        }
+    )
+
+
 @router.post("/{playbook_id}/draft", response_model=DraftResponse)
 async def generate(
     organisation_id: Identifier,
@@ -151,6 +183,7 @@ async def generate(
         definition = ApiPlaybookDraft.model_validate(
             result.output.get("playbook_draft", result.output)
         )
+        definition = _bind_fixed_scopes(definition)
         validate_creation_scopes(definition)
     except ValueError as error:
         raise PlaybookError(str(error)[:512] or "The generated playbook is invalid") from error
