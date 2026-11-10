@@ -86,8 +86,7 @@ HTTPS proxy and the external `kinu-edge` network.
 ### Integrations
 
 Connect workspace accounts in **Connections** and Builder AI in **Settings → AI**. Integrations
-that need installation credentials or webhooks are listed in [`.env.example`](.env.example); set
-their callback URLs on the public API domain.
+that need installation credentials or webhooks are listed in [`.env.example`](.env.example).
 
 ### Backups and updates
 
