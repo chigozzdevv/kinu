@@ -196,7 +196,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
         <Field label={newKey ? "Health URL (required)" : "Health URL"}><input className={formControl} type="url" required={newKey} value={endpoint} placeholder="https://app.example.com/health" onChange={(event) => update({ health: { ...health, [variable.reference]: event.target.value } })} /></Field>
         {newKey && selectedProvider?.interface === "api" && fixedScopes === null && !(selectedProvider.platform === "resend" && !selectedProvider.api_playbook_id) && <Field label="Scopes" hint="Separate permissions with spaces or commas." wide><input className={formControl} value={form.scopes} onChange={(event) => update({ scopes: event.target.value })} /></Field>}
       </FormGrid>}
-      {setup && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
+      {setup && setup.phase !== "cancelled" && !mapping && <div className="space-y-2 text-[11px] text-[var(--ink-soft)]" role="status">
         <p>{titleCase(setup.phase)}</p>{setup.message && <p>{setup.message}</p>}
         {setup.phase === "review-required" && <Button variant="secondary" disabled={recover.isPending} onClick={() => recover.mutate(setup.id)}>Check and recover</Button>}
       </div>}

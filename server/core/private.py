@@ -24,7 +24,14 @@ class PrivateClient:
             if len(response.content) > 1_048_576:
                 raise ResourceConflictError("Private service response exceeded its limit")
             if response.status_code == 404:
-                raise ResourceNotFoundError("Resource is unavailable")
+                message = "Resource is unavailable"
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict) and isinstance(body.get("message"), str):
+                    message = body["message"][:300] or message
+                raise ResourceNotFoundError(message)
             if response.status_code == 503:
                 raise ResourceSetupRequiredError("Integration setup is incomplete")
             if not response.is_success:
