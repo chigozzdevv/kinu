@@ -87,7 +87,7 @@ async def prepare(
             ]
             if (
                 len(metadata) != 1
-                or metadata[0].status not in {"active", "enabled"}
+                or metadata[0].status not in {"active", "enabled", "unverified"}
                 or metadata[0].disabled
                 or not metadata[0].kind
             ):

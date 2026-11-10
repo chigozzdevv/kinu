@@ -55,7 +55,7 @@ export function HostKeys({ connection, connections, credentials, playbooks, runt
   const browserKey = selectedProvider?.interface === "browser"
   const fixedScopes = selectedProvider?.interface === "api" ? selectedProvider.http?.credential_scopes ?? null : null
   const keys = useQuery({ queryKey: ["provider-keys", provider], queryFn: () => api.getProviderKeys(provider), enabled: Boolean(selectedProvider) })
-  const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled"].includes(key.status ?? "")) ?? []
+  const availableKeys = keys.data?.filter((key) => !key.disabled && ["active", "enabled", "unverified"].includes(key.status ?? "")) ?? []
   const projectName = eligibleProjects.find((item) => item.id === project)?.name
   const registeredVariables = (mapped.data ?? []).flatMap((entry) => entry.variable?.project_id === project ? [entry.variable] : [])
   const availableVariables = new Map([...registeredVariables, ...(variables.data ?? [])].map((item) => [item.reference, item]))
