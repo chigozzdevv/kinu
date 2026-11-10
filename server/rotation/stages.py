@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from agents.decision import ApiInput, Decision
 from contracts import (
     RotationPlan,
     RotationRun,
@@ -21,6 +22,7 @@ from rotation.ports import Effects, Progress
 from rotation.state import Snapshot
 
 Planner = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
+Assessor = Callable[[str, ApiInput], Awaitable[Decision]]
 
 PLAN_STAGES = (
     "create",
@@ -48,10 +50,12 @@ class Stages:
         run: RotationRun,
         planner: Planner | None = None,
         progress: Progress | None = None,
+        assessor: Assessor | None = None,
     ) -> None:
         self.database, self.effects, self.state, self.run = database, effects, state, run
         self.planner = planner
         self.progress = progress
+        self.assessor = assessor
         self.journal = Journal(database)
 
     async def output(self, stage: Stage) -> dict[str, Any]:
@@ -61,6 +65,28 @@ class Stages:
         if stage is Stage.CREATE:
             return result.output | {"run_id": self.run.id, "fencing_token": self.run.fencing_token}
         return result.output
+
+    async def _api_proposal(self, phase: str, operation: Any) -> dict[str, str] | None:
+        if self.assessor is None or self.state.playbook is not None:
+            return None
+        http = self.state.provider.http
+        if http is None:
+            return None
+        decision = await self.assessor(
+            self.run.organisation_id,
+            ApiInput(
+                stage="api",
+                phase=phase,  # type: ignore[arg-type]
+                method=operation.method,
+                path=operation.path,
+                identity_check=http.test_credential is not None,
+                overlap=http.supports_overlap,
+                scopes_count=len(self.state.credential.scopes),
+            ),
+        )
+        if decision.decision != "execute":
+            raise ResourceConflictError("Builder AI stopped the provider operation")
+        return {"decision": decision.decision, "reason": decision.reason}
 
     async def execute(self, stage: Stage) -> tuple[frozenset[str], dict[str, Any], StageBindings]:
         state, run = self.state, self.run
@@ -194,7 +220,14 @@ class Stages:
                 StageBindings(plan_id=plan.id, plan_hash=digest(plan)),
             )
         if stage is Stage.CREATE:
+            proposal = None
+            if state.playbook is None and state.provider.http is not None:
+                proposal = await self._api_proposal(
+                    "create", state.provider.http.create_credential
+                )
             result = await self.effects.issue(state, run.id)
+            if proposal is not None:
+                result["agent_api"] = proposal
             result["method"] = "browser" if state.playbook else "api"
             await generations.record(self.database, state, target, run.id, result)
             return (
@@ -287,7 +320,14 @@ class Stages:
             )
         if stage is Stage.REVOKE:
             observation = await self.output(Stage.OBSERVE)
+            proposal = None
+            if state.playbook is None and state.provider.http is not None:
+                proposal = await self._api_proposal(
+                    "revoke", state.provider.http.revoke_credential
+                )
             result = await self.effects.revoke(state, created, deployment_output, observation)
+            if proposal is not None:
+                result["agent_api"] = proposal
             result["method"] = "browser" if state.playbook else "api"
             return (
                 frozenset(

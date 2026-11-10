@@ -444,6 +444,23 @@ def _agent_decisions(stage: Stage, output: dict[str, Any]) -> tuple[AgentDecisio
                         explanation=rationale,
                     )
                 )
+    api = output.get("agent_api")
+    if isinstance(api, dict) and stage in {Stage.CREATE, Stage.REVOKE}:
+        executed = api.get("decision") == "execute"
+        decisions.append(
+            AgentDecisionSummary(
+                agent=AgentKind.OPERATOR,
+                decision=(
+                    "Execute provider operation" if executed else "Stop provider operation"
+                ),
+                explanation=(
+                    "Builder AI approved the declared provider operation; "
+                    "Kinu executed it and verified the result."
+                    if executed
+                    else "Builder AI stopped the declared provider operation."
+                ),
+            )
+        )
     for item in _browser_activity(output):
         operator = item.get("operator")
         if not isinstance(operator, dict):

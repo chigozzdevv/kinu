@@ -21,11 +21,23 @@ class BrowserInput(Contract):
     image: str = Field(min_length=16, max_length=1_000_000, pattern=r"^[A-Za-z0-9+/]+={0,2}$")
 
 
-DecisionInput = Annotated[IncidentInput | BrowserInput, Field(discriminator="stage")]
+class ApiInput(Contract):
+    stage: Literal["api"]
+    phase: Literal["create", "revoke"]
+    method: str = Field(min_length=2, max_length=16)
+    path: str = Field(min_length=1, max_length=512)
+    identity_check: bool
+    overlap: bool
+    scopes_count: int = Field(ge=0, le=50)
+
+
+DecisionInput = Annotated[IncidentInput | BrowserInput | ApiInput, Field(discriminator="stage")]
 
 
 class Decision(Contract):
-    decision: Literal["rotate", "review", "ignore", "click-create", "click-revoke", "stop"]
+    decision: Literal[
+        "rotate", "review", "ignore", "click-create", "click-revoke", "execute", "stop"
+    ]
     reason: Literal[
         "confirmed-exposure",
         "expiry-window",
@@ -33,6 +45,8 @@ class Decision(Contract):
         "unrelated",
         "approved-control-visible",
         "control-unavailable",
+        "operation-approved",
+        "operation-unclear",
     ]
 
 

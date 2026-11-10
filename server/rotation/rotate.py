@@ -1,6 +1,8 @@
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
+from agents.decision import ApiInput, Decision
 from connectors.base.errors import ConnectorError
 from contracts import (
     CleanupRunCommand,
@@ -61,9 +63,11 @@ class Rotation:
         loader: Loader,
         region: str,
         planner: Planner | None = None,
+        assessor: Callable[[str, ApiInput], Awaitable[Decision]] | None = None,
     ) -> None:
         self.database, self.effects, self.loader = database, effects, loader
         self.planner = planner
+        self.assessor = assessor
         self.journal = Journal(database)
         self.audit = AuditWriter(AuditStore(database), region, lambda: datetime.now(UTC))
         self.approvals: RevocationApprovals | None = None
@@ -154,7 +158,15 @@ class Rotation:
                 upsert=True,
             )
 
-        stages = Stages(self.database, self.effects, state, run, self.planner, preflight_progress)
+        stages = Stages(
+            self.database,
+            self.effects,
+            state,
+            run,
+            self.planner,
+            preflight_progress,
+            self.assessor,
+        )
         heartbeat = Heartbeat(repository, workflow, run)
         heartbeat.start()
         try:
