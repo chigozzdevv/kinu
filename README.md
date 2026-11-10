@@ -15,29 +15,31 @@ key.
 If a provider or deployment has an uncertain outcome, Kinu holds the rotation and checks saved
 evidence against the live provider and workload before recovery.
 
-### Builder AI assists. Kinu executes.
+### How Kinu uses Agent-Native
 
-Through Agent-Native, Builder AI assists at five points in Kinu. It returns decisions or proposals;
-Kinu validates them, enforces policy, and executes the work.
+Agent-Native connects Kinu to Builder AI for bounded assessments and drafts. Kinu validates each
+response, enforces credential controls, and owns provider calls and browser actions.
 
-- **Email triage** — assess eligible, authenticated alerts. Kinu checks the evidence and credential
-  policy before starting a rotation.
+- **Email triage:** Kinu authenticates the sender and matches the alert to a credential first.
+  Builder AI classifies eligible alerts; Kinu checks the evidence and trigger policy before opening
+  a rotation.
 
   ```python
   decision = await self.agent.assess(
       box.organisation_id,
-      IncidentInput(
-          stage="investigate",
-          kind=signal.event.kind,
-          confidence="verified",
-          candidate_count=1,
-          policy_allows_rotation=True,
-      ),
+      IncidentInput.model_validate({
+          "stage": "investigate",
+          "kind": signal.event.kind,
+          "confidence": "verified",
+          "candidate_count": 1,
+          "policy_allows_rotation": True,
+      }),
   )
   ```
 
-- **Rotation planning** — explain a run from bounded facts. Kinu sets the required stage order and
-  controls.
+- **Rotation planning:** Builder AI receives bounded run context and writes the plan rationale. Kinu
+  fixes the stage order and enforces the credential scopes, connected apps, observation window, and
+  approval requirement.
 
   ```python
   proposal = await self.planner(run.organisation_id, agent_input)
@@ -45,7 +47,9 @@ Kinu validates them, enforces policy, and executes the work.
       raise ResourceConflictError("Builder AI proposed an invalid rotation plan")
   ```
 
-- **API operations** — assess create or revoke request metadata. Kinu performs the provider call.
+- **API operations:** Builder AI assesses a create or revoke request from its method, path, and
+  capability metadata. It never receives the credential; Kinu requires an `execute` decision before
+  making and recording the provider call.
 
   ```python
   decision = await self.assessor(
@@ -64,8 +68,9 @@ Kinu validates them, enforces policy, and executes the work.
       raise ResourceConflictError("Builder AI stopped the provider operation")
   ```
 
-- **Browser steps** — inspect a redacted screenshot and approved controls, then select the control
-  for the current Playbook step. Kinu executes that selection.
+- **Browser steps:** Builder AI sees a redacted screenshot and only the controls allowed for the
+  current Playbook step. Kinu validates its choice; the isolated browser performs it and captures
+  the resulting page.
 
   ```python
   result = Choice.model_validate(
@@ -77,16 +82,17 @@ Kinu validates them, enforces policy, and executes the work.
       )
   ```
 
-- **Playbook drafts** — turn the objective and captured walkthrough text into a structured draft for
-  review; the model does not run it.
+- **Playbook drafts:** Builder AI turns the objective and walkthrough text into a structured API or
+  browser draft. Kinu validates it; a user reviews and publishes it. The model does not execute
+  Playbook steps.
 
   ```python
   return await service.agent.build(task)
   ```
 
-Rotation planning gets operational facts, not key values. Browser selection gets a redacted
-screenshot; API assessment gets operation metadata. Kinu keeps the policy checks and side effects in
-its own services. The shared client is in [server/agents/native.py](server/agents/native.py).
+Rotation planning uses operational facts, not key values. Browser screenshots are redacted, and API
+assessments contain operation metadata. The shared client is in
+[server/agents/native.py](server/agents/native.py).
 
 ## Self-host Kinu
 
