@@ -104,16 +104,18 @@ class Worker:
         version = await self.catalog.definition(connection)
         config = version.definition.verifier
         selector = (
-            config.credential_ids if config is not None else version.definition.credential_ids
+            config.credential_ids
+            if config and config.credential_ids
+            else version.definition.credential_ids
         )
         attribute = (
             config.credential_ids_attribute
-            if config is not None
+            if config and config.credential_ids
             else version.definition.credential_ids_attribute
         )
         path = (
             config.credential_id_path
-            if config is not None
+            if config and config.credential_ids
             else version.definition.credential_id_path
         )
         if selector is None:
@@ -245,12 +247,21 @@ class Worker:
                     }.get(step.tool, BrowserActionKind.CLICK)
                     result_image: tuple[str, str] | None = None
                     if step.tool != "browser.navigate":
-                        if step.selectors:
-                            await tab.driver.locator(step.selectors[0])
-                        await self.proposals.record(session, step, version, tab.driver)
+                        target_id = await self.proposals.record(
+                            session,
+                            step,
+                            version,
+                            tab.driver,
+                            target_display_name=(
+                                str(context["old_provider_display_name"])
+                                if stage is Stage.REVOKE
+                                and context.get("old_provider_display_name")
+                                else None
+                            ),
+                        )
                         await validate(self.database, state, fence)
-                    if step.effect is PlaybookEffect.CREATE_CREDENTIAL:
-                        session = await self.sessions.arm_capture(org, session.id, session.revision)
+                    else:
+                        target_id = None
                     value, url = step.parameters.get("value"), step.parameters.get("url")
                     if (value is not None and not isinstance(value, str)) or (
                         url is not None and not isinstance(url, str)
@@ -260,7 +271,8 @@ class Worker:
                         id=stable("action", session.id + ":" + str(index)),
                         session_id=session.id,
                         kind=kind,
-                        selector=step.selectors[0] if step.selectors else None,
+                        selector=step.selectors[0] if step.selectors and not target_id else None,
+                        control_id=target_id,
                         value=value,
                         url=url,
                         protected=step.effect is not PlaybookEffect.NONE,
@@ -273,12 +285,23 @@ class Worker:
                     try:
                         await tab.driver.execute(action)
                         if step.effect is PlaybookEffect.CREATE_CREDENTIAL:
-                            assert step.secure_field and step.checkpoint
-                            field = await tab.driver.locator(
-                                step.secure_field.selector, require_unique=False
-                            )
-                            await field.wait_for(
-                                state="visible", timeout=min(step.timeout_seconds, 30) * 1000
+                            assert step.secure_field
+                            secret_target = provider_target = None
+                            field = step.secure_field
+                            if field.selector is None or field.provider_id_selector is None:
+                                secret_id, provider_id = await self.proposals.capture_targets(
+                                    session,
+                                    step,
+                                    version,
+                                    tab.driver,
+                                    replacement_name=str(
+                                        context["replacement_provider_display_name"]
+                                    ),
+                                )
+                                secret_target = await tab.driver.take_model_target(secret_id)
+                                provider_target = await tab.driver.take_model_target(provider_id)
+                            session = await self.sessions.arm_capture(
+                                org, session.id, session.revision
                             )
 
                             async def save_image(
@@ -295,22 +318,33 @@ class Worker:
                                     content,
                                 )
 
-                            capture = await SecureCapture(
-                                tab.page,
-                                tab.driver,
-                                Sink(self.versions, run.id),
-                                InventoryStore(self.database),
-                                lambda: datetime.now(UTC),
-                                evidence=save_image,
-                            ).transfer(
-                                stable("capture", run.id),
-                                org,
-                                session.id,
-                                step.secure_field,
-                                step.result_checkpoint or step.checkpoint,
-                                state.store.id,
-                                credential.secret_resource,
-                            )
+                            try:
+                                capture = await SecureCapture(
+                                    tab.page,
+                                    tab.driver,
+                                    Sink(self.versions, run.id),
+                                    InventoryStore(self.database),
+                                    lambda: datetime.now(UTC),
+                                    evidence=save_image,
+                                ).transfer(
+                                    stable("capture", run.id),
+                                    org,
+                                    session.id,
+                                    field,
+                                    step.result_checkpoint or step.checkpoint,
+                                    state.store.id,
+                                    credential.secret_resource,
+                                    secret_target=secret_target,
+                                    provider_id_target=provider_target,
+                                    provider_display_name=str(
+                                        context["replacement_provider_display_name"]
+                                    ),
+                                )
+                            finally:
+                                if secret_target is not None:
+                                    await secret_target.dispose()
+                                if provider_target is not None:
+                                    await provider_target.dispose()
                         elif step.checkpoint:
                             await tab.driver.validate_checkpoint(
                                 step.result_checkpoint or step.checkpoint

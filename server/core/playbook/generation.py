@@ -30,12 +30,12 @@ def validate_generated(definition: PlaybookDraft) -> None:
         raise PlaybookError(
             "The generated procedure uses an unknown key variable. Generate it again."
         )
-    if "[REDACTED]" in serialized or any("*" in domain for domain in definition.allowed_domains):
-        raise PlaybookError(
-            "Add the exact public hostnames and control details to the instructions"
-        )
+    if "[REDACTED]" in serialized:
+        raise PlaybookError("The generated procedure contains redacted content; generate it again")
+    if any("*" in domain for domain in definition.allowed_domains):
+        raise PlaybookError("Use the provider's exact public hostname in the playbook")
     revocation = json.dumps(
         [step.model_dump(mode="json") for step in definition.steps if step.stage is Stage.REVOKE]
     )
     if not any(value in revocation for value in ("${old_provider_id}", "${old_provider_path}")):
-        raise PlaybookError("The generated revocation must identify the key being rotated")
+        raise PlaybookError("Bind revocation to the selected old key ID")

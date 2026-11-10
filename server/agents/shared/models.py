@@ -13,7 +13,8 @@ class PlaybookAgentStep(BaseModel):
     tool: Literal[
         "browser.navigate",
         "browser.click",
-        "browser.fill",
+        "browser.type",
+        "browser.select",
         "browser.secure-capture",
         "browser.revokeCredential",
     ] = Field(
@@ -34,7 +35,7 @@ class PlaybookAgentStep(BaseModel):
         )
     )
     selectors: tuple[Selector, ...] = Field(default=(), max_length=1)
-    checkpoint: PageCheckpoint
+    checkpoint: PageCheckpoint | None = None
     secure_field: SecureField | None = Field(
         default=None,
         description="Required only for the create-credential secure-capture step.",

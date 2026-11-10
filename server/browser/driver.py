@@ -17,7 +17,7 @@ from contracts import (
     StepOutput,
 )
 from core.errors import ResourceConflictError
-from playwright.async_api import Locator, Page, Request, Route
+from playwright.async_api import ElementHandle, Locator, Page, Request, Route
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from browser.url import metadata_url
@@ -32,6 +32,8 @@ class BrowserDriver:
         self._page = page
         self._policy = policy
         self._blocked_egress = False
+        self._model_targets: dict[str, ElementHandle] = {}
+        self._model_control_targets: dict[str, str] = {}
 
     @property
     def url(self) -> str:
@@ -72,13 +74,16 @@ class BrowserDriver:
             await self._page.goto(action.url, wait_until="load")
             await self._settle()
         elif action.kind is BrowserActionKind.CLICK:
-            await (await self.locator(_selector(action))).click()
+            await self._act_on_target(action, "click")
         elif action.kind is BrowserActionKind.TYPE:
             assert action.value is not None
-            await (await self.locator(_selector(action))).fill(action.value)
+            await self._act_on_target(action, "fill", action.value)
         elif action.kind is BrowserActionKind.SELECT:
             assert action.value is not None
-            await self._select_option(_selector(action), action.value)
+            if action.control_id:
+                await self._select_visual_option(action.control_id, action.value)
+            else:
+                await self._select_option(_selector(action), action.value)
         elif action.kind is BrowserActionKind.SCROLL:
             value = _bounded_integer(action.value, -2000, 2000)
             await self._page.mouse.wheel(0, value)
@@ -153,9 +158,14 @@ class BrowserDriver:
             )
 
     async def model_screenshot(
-        self, session: BrowserSession, selector: Selector
-    ) -> tuple[bytes, dict[str, str], str]:
-        """Capture page geometry and only explicitly safe labels for visual inference."""
+        self,
+        session: BrowserSession,
+        selector: Selector | None = None,
+        *,
+        include_text: bool = False,
+        trusted_text: Iterable[str] = (),
+    ) -> tuple[bytes, dict[str, str], str | None]:
+        """Capture a redacted page and retain short-lived handles for visible controls."""
         if (
             session.status is not BrowserStatus.RUNNING
             or session.model_paused
@@ -164,15 +174,27 @@ class BrowserDriver:
             raise ResourceConflictError("Browser model view is blocked during private capture")
         self._check_authentication()
         self.validate_url(self.url)
-        target = await self.locator(selector)
-        handle = await target.element_handle()
-        if handle is None:
+        await self.clear_model_targets()
+        handle = None
+        if selector is not None:
+            target_locator = await self.locator(selector)
+            handle = await target_locator.element_handle()
+        if selector and handle is None:
             raise ResourceConflictError("Approved browser control is unavailable")
         cdp = await self._page.context.new_cdp_session(self._page)
         origin = self.url
         marker = secrets.token_hex(16)
+        target_attribute = f"data-kinu-target-{marker}"
+        trusted = tuple(
+            value for value in trusted_text if isinstance(value, str) and 0 < len(value) <= 256
+        )
         try:
             await cdp.send("Emulation.setScriptExecutionDisabled", {"value": True})
+            if handle is not None:
+                await handle.evaluate(
+                    "(element, attribute) => element.setAttribute(attribute, 'fixed')",
+                    target_attribute,
+                )
             tree = await cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
             pending = [tree["root"]]
             while pending:
@@ -183,27 +205,87 @@ class BrowserDriver:
                 ):
                     raise ResourceConflictError("Page contains unsupported shadow content")
                 pending.extend(node.get("children", ()))
-            result = await handle.evaluate(
-                r"""(target, marker) => {
+            result = await self._page.evaluate(
+                r"""values => {
+              const {marker, includeText, trustedValues} = values;
+              const target = document.querySelector('[data-kinu-target-' + marker + '="fixed"]');
               if (Array.from(document.querySelectorAll('*')).some(e =>
                 e.shadowRoot || e.localName.includes('-') || e.hasAttribute('is')))
                 throw new Error('Page contains unsupported shadow content');
               const safe = new Set(['API keys', 'Create API key', 'Create key', 'Add',
                 'Name', 'Permission', 'Domain', 'Sending access', 'More actions',
                 'Delete API key', 'Delete API Key', 'Delete', 'Revoke', 'Revoke key', 'Retire key',
-                'Cancel', 'Confirm', 'Save', 'Continue', 'Close']);
-              const all = Array.from(document.querySelectorAll(
-                'button, a[href], input:not([type=hidden]), select, textarea, '
-                + '[role=button], [role=menuitem], [role=textbox], [role=combobox]'
-              )).filter(e => {
+                'Cancel', 'Confirm', 'Save', 'Continue', 'Close', 'Secret', 'API key',
+                'Secret key', 'Key ID', 'ID', 'Token', 'Create API Key', 'Copy']);
+              const trusted = new Set(trustedValues || []);
+              const safeWords = new Set(['api', 'key', 'keys', 'secret', 'token', 'name',
+                'permission', 'permissions', 'domain', 'domains', 'sending', 'access', 'scope',
+                'scopes', 'create', 'new', 'add', 'generate', 'delete', 'revoke', 'retire',
+                'more', 'actions', 'cancel', 'confirm', 'save', 'continue', 'close', 'copy',
+                'id', 'identifier', 'type', 'select', 'choose', 'value', 'expires', 'expiration',
+                'never', 'restricted', 'full', 'read', 'write', 'all', 'only']);
+              const safeLabel = value => {
+                const text = (value || '').trim();
+                if (!text || text.length > 80) return false;
+                if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text)
+                    || /\b(?:re_|sk_|rk_|gh[pousr]_|xox[baprs]-)[A-Za-z0-9_-]{12,}/i.test(text)
+                    || /\bBearer\s+[A-Za-z0-9._-]{16,}/i.test(text)
+                    || /\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i.test(text)
+                    || /\b[A-Za-z0-9_-]{32,}\b/.test(text)) return false;
+                if (safe.has(text) || trusted.has(text)) return true;
+                const words = text.toLowerCase().match(/[a-z]+/g) || [];
+                return words.length > 0 && words.every(word => safeWords.has(word));
+              };
+              const visible = e => {
                 const r = e.getBoundingClientRect(), s = getComputedStyle(e);
                 return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0
                   && r.top < innerHeight && r.left < innerWidth
                   && s.visibility === 'visible' && s.display !== 'none';
-              });
-              if (!all.includes(target)) all.push(target);
-              let candidates = all.slice(0, 12);
-              if (!candidates.includes(target)) candidates[11] = target;
+              };
+              const interactive = Array.from(document.querySelectorAll(
+                'button, a[href], input:not([type=hidden]), select, textarea, '
+                + '[role=button], [role=menuitem], [role=textbox], [role=combobox]'
+              )).filter(visible);
+              const interactiveLabel = e => {
+                const labelled = (e.getAttribute('aria-labelledby') || '').split(/\s+/)
+                  .map(id => document.getElementById(id)?.textContent || '').join(' ');
+                const labels = Array.from(e.labels || [])
+                  .map(label => label.textContent || '').join(' ');
+                return (e.getAttribute('aria-label') || labelled || labels || e.textContent || '')
+                  .trim().toLowerCase();
+              };
+              const priority = e => {
+                const label = interactiveLabel(e);
+                const dialog = e.closest('dialog, [role=dialog], [aria-modal=true]') ? 1000 : 0;
+                const keyAction = new RegExp(
+                  'api key|secret|token|key id|identifier|create|generate|add|revoke|delete|'
+                  + 'name|permission|domain'
+                ).test(label) ? 100 : 0;
+                const input = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) ? 10 : 0;
+                return dialog + keyAction + input;
+              };
+              interactive.sort((left, right) => priority(right) - priority(left));
+              const textual = includeText ? Array.from(document.querySelectorAll('body *'))
+                .filter(e => !e.children.length && (e.textContent || '').trim().length > 0
+                  && visible(e) && !['SCRIPT', 'STYLE', 'SVG', 'PATH'].includes(e.tagName))
+                .sort((left, right) => {
+                  const score = element => {
+                    const text = (element.textContent || '').trim();
+                    const words = text.toLowerCase();
+                    return (trusted.has(text) ? 100 : 0)
+                      + (/\b(api|key|secret|token|id|identifier|created|copy)\b/.test(words)
+                        ? 40 : 0)
+                      + (/^[A-Za-z0-9:_-]{12,}$/.test(text) ? 20 : 0)
+                      + (safeLabel(text) ? 10 : 0);
+                  };
+                  return score(right) - score(left);
+                }) : [];
+              const all = Array.from(new Set(includeText
+                ? [...interactive.slice(0, 8), ...textual]
+                : interactive));
+              if (target && !all.includes(target)) all.unshift(target);
+              const candidates = all.slice(0, 12);
+              if (target && !candidates.includes(target)) candidates[11] = target;
               if (candidates.some(e => e.getBoundingClientRect().width < 1))
                 throw new Error('Browser control is not visible');
               if (document.querySelector('[data-kinu-model-safe], [data-kinu-model-pseudo]')
@@ -230,7 +312,7 @@ class BrowserDriver:
                 e.style.setProperty('filter', 'none', 'important');
                 e.style.setProperty('mix-blend-mode', 'normal', 'important');
                 e.style.setProperty('box-shadow', 'none', 'important');
-                if (e.children.length === 0 && safe.has((e.textContent || '').trim())) {
+                if (e.children.length === 0 && safeLabel(e.textContent || '')) {
                   e.setAttribute('data-kinu-model-safe', '');
                   e.style.setProperty('color', '#151515', 'important');
                   e.style.setProperty('-webkit-text-fill-color', '#151515', 'important');
@@ -269,6 +351,7 @@ class BrowserDriver:
               document.documentElement.appendChild(overlay);
               const controls = {};
               candidates.forEach((e, index) => {
+                e.setAttribute('data-kinu-target-' + marker, String(index + 1));
                 const id = 'control_' + (index + 1), box = e.getBoundingClientRect();
                 const clone = e.cloneNode(true);
                 clone.querySelectorAll('kbd, svg, [aria-hidden=true]').forEach(n => n.remove());
@@ -281,17 +364,24 @@ class BrowserDriver:
                 const rawKind = e.getAttribute('role') || e.tagName.toLowerCase();
                 const kind = ['button', 'menuitem', 'textbox', 'combobox', 'input',
                   'select', 'textarea', 'a'].includes(rawKind) ? rawKind : 'control';
-                controls[id] = kind + (safe.has(text) ? ': ' + text : '');
-                const marker = document.createElement('span');
-                marker.textContent = String(index + 1);
-                marker.style.cssText = 'position:fixed;left:' + Math.max(0, box.left)
+                controls[id] = kind + (safeLabel(text) ? ': ' + text : '');
+                const badge = document.createElement('span');
+                badge.textContent = String(index + 1);
+                badge.style.cssText = 'position:fixed;left:' + Math.max(0, box.left)
                   + 'px;top:' + Math.max(0, box.top - 20) + 'px;background:#111;'
                   + 'padding:3px 5px;border-radius:3px;';
-                overlay.appendChild(marker);
+                overlay.appendChild(badge);
               });
-              return { controls, approved: 'control_' + (candidates.indexOf(target) + 1) };
+              return {
+                controls,
+                approved: target ? 'control_' + (candidates.indexOf(target) + 1) : null
+              };
             }""",
-                marker,
+                {
+                    "marker": marker,
+                    "includeText": include_text,
+                    "trustedValues": trusted,
+                },
             )
             masks = self._page.locator(
                 "input, textarea, select, [contenteditable], iframe, canvas, video, img, svg, "
@@ -302,7 +392,20 @@ class BrowserDriver:
             )
             if self.url != origin:
                 raise ResourceConflictError("Browser page changed during visual observation")
+            for index, control_id in enumerate(result["controls"], start=1):
+                locator = self._page.locator(
+                    f'[{target_attribute}="{index}"]'
+                )
+                target_handle = await locator.element_handle()
+                if target_handle is None:
+                    raise ResourceConflictError("Browser visual target changed during observation")
+                target_id = secrets.token_urlsafe(24)
+                self._model_targets[target_id] = target_handle
+                self._model_control_targets[control_id] = target_id
             return image, result["controls"], result["approved"]
+        except Exception:
+            await self.clear_model_targets()
+            raise
         finally:
             try:
                 await self._page.evaluate(
@@ -316,13 +419,18 @@ class BrowserDriver:
                     element.removeAttribute('data-kinu-model-safe');
                     element.removeAttribute('data-kinu-model-pseudo');
                   }
+                  for (const element of document.querySelectorAll(
+                    '[data-kinu-target-' + marker + ']'
+                  ))
+                    element.removeAttribute('data-kinu-target-' + marker);
                   delete window.__kinuModelStyles;
                 }""",
                     marker,
                 )
             finally:
                 await cdp.detach()
-                await handle.dispose()
+                if handle is not None:
+                    await handle.dispose()
 
     async def live_screenshot(
         self,
@@ -406,9 +514,12 @@ class BrowserDriver:
             raise ResourceConflictError("model coordinate does not hit the approved control")
 
     async def validate_step(self, step: PlaybookStep) -> None:
-        if step.checkpoint is None:
-            raise ResourceConflictError("browser step has no deterministic checkpoint")
-        await self.validate_checkpoint(step.checkpoint)
+        if step.checkpoint is not None:
+            await self.validate_checkpoint(step.checkpoint)
+        else:
+            self._check_blocked_egress()
+            self._check_authentication()
+            self.validate_url(self._page.url)
         for selector in step.selectors:
             await self.locator(selector)
         for condition in step.conditions:
@@ -422,12 +533,15 @@ class BrowserDriver:
                 raise ResourceConflictError("browser control differs from its approved value")
 
     async def validate_checkpoint(self, checkpoint: PageCheckpoint) -> None:
-        self._check_blocked_egress()
-        self._check_authentication()
-        self.validate_url(self._page.url)
+        self.validate_current_page()
         if not fnmatch.fnmatchcase(self._page.url, checkpoint.url_pattern):
             raise ResourceConflictError("browser URL does not match the approved checkpoint")
         await self._validate_text(checkpoint.required_text, checkpoint.forbidden_text)
+
+    def validate_current_page(self) -> None:
+        self._check_blocked_egress()
+        self._check_authentication()
+        self.validate_url(self._page.url)
 
     async def extract(self, outputs: tuple[StepOutput, ...]) -> dict[str, str]:
         values: dict[str, str] = {}
@@ -511,6 +625,83 @@ class BrowserDriver:
         if await option.count() != 1 or not await option.is_visible():
             raise ResourceConflictError("approved select option is not uniquely visible")
         await option.click()
+
+    async def _act_on_target(
+        self, action: BrowserAction, operation: str, value: str | None = None
+    ) -> None:
+        if action.control_id:
+            handle = await self.take_model_target(action.control_id)
+            try:
+                if not await handle.is_visible():
+                    raise ResourceConflictError("Selected browser control is no longer visible")
+                if operation == "click":
+                    await handle.click()
+                else:
+                    assert value is not None
+                    await handle.fill(value)
+            finally:
+                await handle.dispose()
+            return
+        target = await self.locator(_selector(action))
+        if operation == "click":
+            await target.click()
+        else:
+            assert value is not None
+            await target.fill(value)
+
+    async def _select_visual_option(self, control_id: str, value: str) -> None:
+        handle = await self.take_model_target(control_id)
+        try:
+            if not await handle.is_visible():
+                raise ResourceConflictError("Selected browser control is no longer visible")
+            if (await handle.evaluate("element => element.tagName.toLowerCase()")) == "select":
+                await handle.select_option(label=value)
+                return
+            await handle.click()
+            option = self._page.get_by_role("option", name=value, exact=True)
+            count = await option.count()
+            if count == 0 or (count == 1 and not await option.is_visible()):
+                try:
+                    await option.wait_for(state="visible", timeout=_CHECKPOINT_TIMEOUT_MS)
+                except PlaywrightTimeoutError:
+                    raise ResourceConflictError(
+                        "approved select option did not become visible"
+                    ) from None
+            if await option.count() != 1 or not await option.is_visible():
+                raise ResourceConflictError(
+                    "approved select option is not uniquely visible"
+                )
+            await option.click()
+        finally:
+            await handle.dispose()
+
+    async def take_model_target(self, target_id: str) -> ElementHandle:
+        target = self._model_targets.pop(target_id, None)
+        if target is None:
+            raise ResourceConflictError("Browser visual target expired")
+        for control_id, current in tuple(self._model_control_targets.items()):
+            if current == target_id:
+                self._model_control_targets.pop(control_id, None)
+        return target
+
+    async def claim_model_target(self, control_id: str) -> str:
+        target_id = self._model_control_targets.get(control_id)
+        if target_id is None or target_id not in self._model_targets:
+            raise ResourceConflictError("Builder selected a control outside the screenshot")
+        return target_id
+
+    async def clear_model_targets(self, keep: Iterable[str] = ()) -> None:
+        retained = set(keep)
+        for target_id in tuple(self._model_targets):
+            if target_id in retained:
+                continue
+            target = self._model_targets.pop(target_id)
+            await target.dispose()
+        self._model_control_targets = {
+            control_id: target_id
+            for control_id, target_id in self._model_control_targets.items()
+            if target_id in retained and target_id in self._model_targets
+        }
 
     async def same_element(self, left: Selector, right: Selector) -> bool:
         left_locator = await self.locator(left)

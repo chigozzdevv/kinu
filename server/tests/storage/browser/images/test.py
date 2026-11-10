@@ -123,6 +123,7 @@ async def test_model_view_redacts_unrecognised_values_and_blocks_private_capture
         from pathlib import Path
 
         Path("/tmp/kinu-model-view.png").write_bytes(image)
+        assert selected is not None
         assert controls[selected] == "button: Create key"
         await tab.page.evaluate("""() => {
           document.querySelector('#text').textContent = 'private-value-bbbbbbbb';

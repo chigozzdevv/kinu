@@ -3,6 +3,7 @@ import hashlib
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from browser.driver import BrowserDriver
 from browser.identity import normalize
@@ -15,8 +16,9 @@ from contracts import (
     PageCheckpoint,
     SecureCaptureResult,
     SecureField,
+    Selector,
 )
-from playwright.async_api import Locator, Page
+from playwright.async_api import ElementHandle, Locator, Page
 
 from capture.evidence import snapshot
 
@@ -79,21 +81,36 @@ class SecureCapture:
         organisation_id: str,
         session_id: str,
         field: SecureField,
-        checkpoint: PageCheckpoint,
+        checkpoint: PageCheckpoint | None,
         sink_connection_id: str,
         secret_resource: str,
         access_token: SecretValue | None = None,
+        *,
+        secret_target: ElementHandle | None = None,
+        provider_id_target: ElementHandle | None = None,
+        provider_display_name: str | None = None,
     ) -> SecureCaptureResult:
-        await self._checkpoint(checkpoint)
-        locator = await self._driver.locator(field.selector)
-        provider = await self._driver.locator(field.provider_id_selector)
+        if checkpoint is None:
+            self._driver.validate_current_page()
+        else:
+            await self._checkpoint(checkpoint)
+        locator = secret_target or await self._required_locator(field.selector, "secret")
+        provider = provider_id_target or await self._required_locator(
+            field.provider_id_selector, "provider key ID"
+        )
         raw = await _read(locator)
         provider_id = await self._identity(provider, field)
-        provider_display_name = await _provider_display_name(self._driver, field)
+        display_name = (
+            await _provider_display_name(self._driver, field)
+            if field.provider_display_name_selector
+            else provider_display_name
+        )
         if not raw or len(raw) > 16384:
             raise CaptureError("declared secure field is empty or exceeds the capture limit")
         if not provider_id or len(provider_id) > 256:
             raise CaptureError("declared provider identifier is empty or invalid")
+        if provider_id == raw.strip():
+            raise CaptureError("provider identifier cannot be the captured secret")
         return await self._store_and_mask(
             capture_id,
             organisation_id,
@@ -103,7 +120,7 @@ class SecureCapture:
             secret_resource,
             raw,
             provider_id,
-            provider_display_name,
+            display_name,
             locator,
             access_token,
         )
@@ -114,15 +131,18 @@ class SecureCapture:
         organisation_id: str,
         session_id: str,
         field: SecureField,
-        checkpoint: PageCheckpoint,
+        checkpoint: PageCheckpoint | None,
         supplied: bytearray,
         sink_connection_id: str,
         secret_resource: str,
         access_token: SecretValue | None = None,
     ) -> SecureCaptureResult:
-        await self._checkpoint(checkpoint)
-        locator = await self._driver.locator(field.selector)
-        provider = await self._driver.locator(field.provider_id_selector)
+        if checkpoint is None:
+            self._driver.validate_current_page()
+        else:
+            await self._checkpoint(checkpoint)
+        locator = await self._required_locator(field.selector, "secret")
+        provider = await self._required_locator(field.provider_id_selector, "provider key ID")
         try:
             raw = supplied.decode("utf-8", errors="strict")
         except UnicodeDecodeError as error:
@@ -133,6 +153,8 @@ class SecureCapture:
         provider_display_name = await _provider_display_name(self._driver, field)
         if not provider_id or len(provider_id) > 256:
             raise CaptureError("declared provider identifier is empty or invalid")
+        if provider_id == raw.strip():
+            raise CaptureError("provider identifier cannot be the captured secret")
         return await self._store_and_mask(
             capture_id,
             organisation_id,
@@ -147,15 +169,47 @@ class SecureCapture:
             access_token,
         )
 
-    async def _identity(self, locator: Locator, field: SecureField) -> str:
+    async def _identity(self, locator: Locator | ElementHandle, field: SecureField) -> str:
+        async def linked_id() -> str | None:
+            href = await locator.get_attribute("href")
+            if not href:
+                return None
+            link, origin = urlsplit(href), urlsplit(self._page.url)
+            if (
+                link.scheme not in {"", "https"}
+                or (link.netloc and link.netloc != origin.netloc)
+                or link.query
+                or link.fragment
+            ):
+                return None
+            candidate = link.path.rstrip("/").rsplit("/", 1)[-1]
+            try:
+                return normalize(candidate, None, self._page.url)
+            except ValueError:
+                return None
+
         try:
-            return normalize(
-                await _read(locator, field.provider_id_attribute),
-                field.provider_id_path,
-                self._page.url,
-            )
+            if field.provider_id_selector is None and isinstance(locator, ElementHandle):
+                linked = await linked_id()
+                if linked:
+                    return linked
+            raw = await _read(locator, field.provider_id_attribute)
+            try:
+                return normalize(raw, field.provider_id_path, self._page.url)
+            except ValueError:
+                if field.provider_id_attribute != "text" or field.provider_id_path:
+                    raise
+                linked = await linked_id()
+                if linked:
+                    return linked
+                raise
         except ValueError:
             raise CaptureError("declared provider identifier is invalid") from None
+
+    async def _required_locator(self, selector: Selector | None, name: str) -> Locator:
+        if selector is None:
+            raise CaptureError(f"redacted screenshot did not identify the {name}")
+        return await self._driver.locator(selector)
 
     async def _store_and_mask(
         self,
@@ -168,7 +222,7 @@ class SecureCapture:
         raw: str,
         provider_id: str,
         provider_display_name: str | None,
-        locator: Locator,
+        locator: Locator | ElementHandle,
         access_token: SecretValue | None,
     ) -> SecureCaptureResult:
         secret_bytes = bytearray(raw.encode())
@@ -290,7 +344,7 @@ async def _provider_display_name(driver: BrowserDriver, field: SecureField) -> s
     return value
 
 
-async def _read(locator: Locator, attribute: str = "text") -> str:
+async def _read(locator: Locator | ElementHandle, attribute: str = "text") -> str:
     if attribute == "href":
         value = await locator.get_attribute("href")
         return value.strip() if value else ""

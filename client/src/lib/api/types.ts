@@ -39,9 +39,9 @@ export interface PlaybookDefinition {
     parameters: Record<string, string | number | boolean | string[]>
     protected: boolean
     evidence_checks: string[]
-    selectors: Array<{ kind: "role" | "label" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean }>
-    checkpoint: { url_pattern: string; required_text: string[]; forbidden_text: string[] }
-    secure_field: { name: Identifier; selector: { kind: "role" | "label" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean }; provider_id_selector: { kind: "role" | "label" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean } } | null
+    selectors?: Array<{ kind: "role" | "label" | "field" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean }>
+    checkpoint?: { url_pattern: string; required_text: string[]; forbidden_text: string[] } | null
+    secure_field?: { name: Identifier; selector?: { kind: "role" | "label" | "field" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean } | null; provider_id_selector?: { kind: "role" | "label" | "field" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean } | null; provider_id_attribute?: "text" | "value" | "href"; provider_id_path?: string | null; provider_display_name_selector?: { kind: "role" | "label" | "field" | "text" | "test-id" | "css"; value: string; name: string | null; exact: boolean } | null } | null
     outputs: never[]
     timeout_seconds: number
     retry_limit: number

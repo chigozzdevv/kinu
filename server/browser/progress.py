@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 
 from contracts import (
@@ -23,6 +24,11 @@ class Progress:
     async def publish(self, content: str) -> None:
         if not content or content == self.content:
             return
+        if re.search(
+            r"\b(?:re_|sk_|rk_)[A-Za-z0-9_-]{12,}|\bBearer\s+[A-Za-z0-9._-]{16,}",
+            content,
+        ):
+            raise ResourceConflictError("Browser explanation contains credential-like content")
         self.count += 1
         if self.count > 192 or len(content) > 4096:
             raise ResourceConflictError("Browser explanation exceeded its budget")

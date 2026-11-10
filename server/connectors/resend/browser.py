@@ -41,8 +41,16 @@ class BrowserResend:
         source = await self.source(connection)
         assert source.http
         account = {item["provider_id"]: item for item in await self.api.metadata(source)}
-        identities = await self.browser.ids(connection)
-        if set(identities) != set(account):
+        version = await self.catalog.definition(connection)
+        definition = version.definition
+        browser_inventory = definition.verifier.credential_ids if definition.verifier else None
+        browser_inventory = browser_inventory or definition.credential_ids
+        identities = (
+            await self.browser.ids(connection)
+            if browser_inventory is not None
+            else tuple(account)
+        )
+        if browser_inventory is not None and set(identities) != set(account):
             raise ConnectorError("resend-account", "Browser and verification accounts differ")
         result = []
         for identity in identities:

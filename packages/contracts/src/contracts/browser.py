@@ -67,6 +67,7 @@ class BrowserAction(Contract):
     session_id: Identifier
     kind: BrowserActionKind
     selector: Selector | None = None
+    control_id: str | None = Field(default=None, min_length=1, max_length=128)
     value: str | None = Field(default=None, max_length=4096)
     url: str | None = Field(default=None, max_length=2048)
     protected: bool = False
@@ -82,8 +83,11 @@ class BrowserAction(Contract):
         if (
             self.kind in {BrowserActionKind.CLICK, BrowserActionKind.TYPE, BrowserActionKind.SELECT}
             and not self.selector
+            and not self.control_id
         ):
-            raise ValueError("interactive actions require a selector")
+            raise ValueError("interactive actions require a selector or visual control")
+        if self.selector is not None and self.control_id is not None:
+            raise ValueError("browser actions cannot mix fixed and visual targets")
         if self.kind in {BrowserActionKind.TYPE, BrowserActionKind.SELECT} and self.value is None:
             raise ValueError("input actions require a value")
         return self

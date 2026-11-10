@@ -272,7 +272,9 @@ class Providers(HttpProviderConnector):
         try:
             version = await self.catalog.definition(connection)
             verifier = version.definition.verifier
-            if verifier and verifier.mode == "creation-receipt":
+            if _legacy_resend_browser(connection):
+                await self.resend_browser.remember(connection, capture.provider_id, value)
+            elif verifier and verifier.mode == "creation-receipt":
                 await self.receipts.remember(
                     connection,
                     capture.provider_id,

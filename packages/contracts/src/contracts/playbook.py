@@ -47,8 +47,8 @@ class PageCheckpoint(Contract):
 
 class SecureField(Contract):
     name: Identifier
-    selector: Selector
-    provider_id_selector: Selector
+    selector: Selector | None = None
+    provider_id_selector: Selector | None = None
     provider_id_attribute: str = Field(default="text", pattern=r"^(text|value|href)$")
     provider_id_path: str | None = Field(
         default=None, pattern=r"^/(?:[A-Za-z0-9._-]+/)*$", max_length=256
@@ -73,7 +73,7 @@ class BrowserProbe(Contract):
     base_url: str = Field(min_length=12, max_length=1024)
     auth: HttpAuth
     operation: HttpOperation
-    credential_ids: Selector
+    credential_ids: Selector | None = None
     credential_ids_attribute: Literal["text", "value", "href"] = "text"
     credential_id_path: str | None = Field(
         default=None, pattern=r"^/(?:[A-Za-z0-9._-]+/)*$", max_length=256
@@ -150,11 +150,8 @@ class PlaybookStep(OperationStep):
                 raise ValueError("browser navigation must not declare a selector")
             if not isinstance(self.parameters.get("url"), str):
                 raise ValueError("browser navigation requires a URL parameter")
-        if selection:
-            if len(self.selectors) != 1:
-                raise ValueError("browser selection requires exactly one selector")
-            if not isinstance(self.parameters.get("value"), str):
-                raise ValueError("browser selection requires an option label")
+        if selection and not isinstance(self.parameters.get("value"), str):
+            raise ValueError("browser selection requires an option label")
         if self.effect == PlaybookEffect.CREATE_CREDENTIAL and (
             self.stage != Stage.CREATE
             or self.tool != "browser.secure-capture"
@@ -168,7 +165,14 @@ class PlaybookStep(OperationStep):
             and self.secure_field is not None
             and self.selectors
             and self.selectors[0]
-            in {self.secure_field.selector, self.secure_field.provider_id_selector}
+            in {
+                selector
+                for selector in (
+                    self.secure_field.selector,
+                    self.secure_field.provider_id_selector,
+                )
+                if selector is not None
+            }
         ):
             raise ValueError(
                 "secure capture must target the credential creation control, not captured output"
@@ -179,12 +183,8 @@ class PlaybookStep(OperationStep):
             or self.secure_field is not None
         ):
             raise ValueError("credential revocation must use the protected browser revoke tool")
-        if self.tool.startswith("browser.") and not navigation and not self.selectors:
-            raise ValueError("browser actions require deterministic selectors")
         if self.tool.startswith("browser.") and len(self.selectors) > 1:
             raise ValueError("each browser step must target exactly one control")
-        if self.tool.startswith("browser.") and self.checkpoint is None:
-            raise ValueError("browser actions require a deterministic page checkpoint")
         return self
 
 
@@ -216,7 +216,9 @@ class PlaybookDraft(Contract):
 
     @model_validator(mode="after")
     def validate_browser_procedure(self) -> "PlaybookDraft":
-        if (self.credential_ids_attribute == "href") != bool(self.credential_id_path):
+        if self.credential_ids is not None and (
+            (self.credential_ids_attribute == "href") != bool(self.credential_id_path)
+        ):
             raise ValueError("linked key identifiers require an explicit path prefix")
         if not self.allowed_domains or not self.login_url_pattern:
             raise ValueError("browser playbooks require domains and a login URL pattern")
