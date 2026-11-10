@@ -153,9 +153,7 @@ async def generate(
         )
         validate_creation_scopes(definition)
     except ValueError as error:
-        raise PlaybookError(
-            "Bind key permissions in create, then add list, credential check and revoke details."
-        ) from error
+        raise PlaybookError(str(error)[:512] or "The generated playbook is invalid") from error
     if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
         raise PlaybookError("Keep the playbook's name and provider")
     return DraftResponse(definition=definition)

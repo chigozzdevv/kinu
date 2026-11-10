@@ -304,9 +304,7 @@ async def _generate_definition(
     try:
         definition = PlaybookDraft.model_validate(candidate)
     except ValueError as error:
-        raise PlaybookError(
-            "Could not build a usable procedure. Add more details and try again."
-        ) from error
+        raise PlaybookError(str(error)[:512] or "The generated playbook is invalid") from error
     validate_generated(definition)
     if existing and (definition.name, definition.platform) != (existing.name, existing.platform):
         raise PlaybookError("The new version must keep the playbook's name and provider")
