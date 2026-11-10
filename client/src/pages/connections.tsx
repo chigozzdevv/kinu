@@ -26,6 +26,7 @@ import { GmailSetup } from "../connections/gmail"
 import { BrowserSetupModal } from "../connections/browser-session"
 import { disconnectImpact, openBrowserSetup, requiresBrowserAuthentication } from "../connections/management"
 import { ConnectionSetup } from "../connections/setup"
+import { useOrganisation } from "../lib/useorganisation"
 
 function roleLabel(connection: Connection) {
   return connection.roles.map(titleCase).join(", ")
@@ -33,6 +34,7 @@ function roleLabel(connection: Connection) {
 
 export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }: { initialConnectionId?: string; onSelectConnection: (connectionId: string) => void }) {
   const features = useFeatures()
+  const { active } = useOrganisation()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
@@ -44,6 +46,7 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const [editing, setEditing] = useState(false)
   const [creatingPlaybook, setCreatingPlaybook] = useState(false)
   const [draftNotice, setDraftNotice] = useState(false)
+  const [changingPlaybook, setChangingPlaybook] = useState(false)
   const [initialSelectionHandled, setInitialSelectionHandled] = useState(false)
   const [editName, setEditName] = useState("")
   const [browserSetup, setBrowserSetup] = useState<BrowserSetupResponse | null>(null)
@@ -60,11 +63,26 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
   const currentSelected = connectionDetail.data ?? selected
   const platformPlaybooks = useMemo(() => (playbooks.data ?? []).filter((item) => item.platform === currentSelected?.platform), [playbooks.data, currentSelected?.platform])
   const browserPlaybooks = useMemo(() => platformPlaybooks.filter((item) => item.active_version_id), [platformPlaybooks])
+  const browserAccess = currentSelected
+    ? connections.data?.find((item) => item.interface === "browser" && item.verification_connection_id === currentSelected.id && !item.archived_at)
+    : undefined
+  const prepareBrowser = useMutation({
+    mutationFn: (connectionId: string) => api.prepareProviderBrowser(connectionId),
+    onSuccess: async (connection) => {
+      queryClient.setQueryData(["connections", connection.id], connection)
+      setSelected(connection)
+      setTab("access")
+      onSelectConnection(connection.id)
+      await queryClient.invalidateQueries({ queryKey: ["connections"] })
+    },
+  })
   const attach = useMutation({
     mutationFn: ({ connection, playbook }: { connection: Connection; playbook: Playbook }) => api.attachPlaybook(connection, playbook.id, playbook.active_version_id!),
     onSuccess: async (connection) => {
       queryClient.setQueryData(["connections", connection.id], connection)
       setSelected(connection)
+      setChangingPlaybook(false)
+      setDraftNotice(false)
       await queryClient.invalidateQueries({ queryKey: ["connections"] })
     },
   })
@@ -101,6 +119,8 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
 
   useEffect(() => {
     setSelectedPlaybookVersion("")
+    setChangingPlaybook(false)
+    setDraftNotice(false)
   }, [currentSelected?.id])
 
   useEffect(() => {
@@ -144,18 +164,37 @@ export function ConnectionsPage({ initialConnectionId = "", onSelectConnection }
     await queryClient.invalidateQueries({ queryKey: ["playbooks"] })
     setSelectedPlaybookVersion(playbook.active_version_id ?? "")
     setDraftNotice(!playbook.active_version_id)
+    setChangingPlaybook(true)
     setCreatingPlaybook(false)
   }} />
 
   if (currentSelected) return <DetailPage>
     {playbookNotice}
-    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{["email", "github"].includes(currentSelected.platform) && <Button onClick={() => { setSetupIntegration(currentSelected.platform as IntegrationKind); setCreating(true) }}>{currentSelected.platform === "email" ? "Manage forwarding" : "Manage repositories"}</Button>}{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
+    <PageHeader eyebrow="Inventory / Connections" title={currentSelected.display_name} onBack={() => { setSelected(null); onSelectConnection("") }} actions={<>{["email", "github"].includes(currentSelected.platform) && <Button onClick={() => { setSetupIntegration(currentSelected.platform as IntegrationKind); setCreating(true) }}>{currentSelected.platform === "email" ? "Manage forwarding" : "Manage repositories"}</Button>}{["vercel", "railway", "render"].includes(currentSelected.platform) && <Button onClick={() => setHostSetup({ id: currentSelected.id, platform: currentSelected.platform as HostingPlatform })}>Manage projects</Button>}{currentSelected.platform === "gmail" && currentSelected.authorization_reference === `gmail://${currentSelected.id}` && <Button onClick={() => setGmailSetupId(currentSelected.id)}>Manage Gmail</Button>}{currentSelected.id.startsWith("aws_") && currentSelected.authorization_reference === `aws-role://${currentSelected.id}` && currentSelected.status === "setup-required" && <Button onClick={() => setAwsSetupId(currentSelected.id)} disabled={!features.data?.aws_connections}>Finish setup</Button>}{active.role === "administrator" && features.data?.browser_setup && currentSelected.platform === "resend" && currentSelected.interface === "api" && <Button variant="secondary" onClick={() => { if (browserAccess) { setSelected(browserAccess); setTab("access"); onSelectConnection(browserAccess.id) } else prepareBrowser.mutate(currentSelected.id) }} disabled={prepareBrowser.isPending}>{prepareBrowser.isPending ? "Preparing…" : browserAccess ? "Manage browser access" : "Add browser access"}</Button>}{currentSelected.interface === "browser" && currentSelected.playbook_version_id && requiresBrowserAuthentication(currentSelected) && <Button onClick={() => openBrowser(currentSelected)} disabled={open.isPending || !features.data?.browser_setup}>{open.isPending ? "Provisioning…" : "Connect"}</Button>}<Button variant="secondary" onClick={() => { setEditName(currentSelected.display_name); updateConnection.reset(); archiveConnection.reset(); setEditing(true) }}>Edit</Button></>} />
     <DetailTabs items={[{ id: "overview", label: "Overview" }, { id: "access", label: currentSelected.interface === "browser" ? "Browser access" : "Access" }]} value={tab} onChange={setTab} />
     <DetailCard>
       {tab === "overview" && <DetailList><Detail label="Platform"><Provider value={currentSelected.platform} /></Detail><Detail label="Roles">{roleLabel(currentSelected)}</Detail><Detail label="Interface">{titleCase(currentSelected.interface)}</Detail><Detail label="Authorization">{currentSelected.platform === "email" ? "Signed webhook" : titleCase(currentSelected.authorization)}</Detail><Detail label="Status"><Badge variant={connectionStatus(currentSelected.status).variant}>{connectionStatus(currentSelected.status).label}</Badge></Detail><Detail label="Updated">{formatDate(currentSelected.updated_at, true)}</Detail></DetailList>}
-      {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5"><DetailList><Detail label="Playbook">{(playbooks.data ?? []).find((item) => item.active_version_id === currentSelected.playbook_version_id)?.name ?? currentSelected.playbook_version_id ?? "Not attached"}</Detail><Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail></DetailList>{!currentSelected.playbook_version_id && <div className="space-y-3">{draftNotice && <Notice>Saved as draft — an administrator can publish it from Playbooks.</Notice>}<ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => { setDraftNotice(false); setCreatingPlaybook(true) }}><option value="">Select playbook</option>{platformPlaybooks.map((item) => item.active_version_id ? <option key={item.id} value={item.active_version_id}>{item.name}</option> : <option key={item.id} value="" disabled>{item.name} (draft)</option>)}</ResourceSelect><Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || attach.isPending}>Attach playbook</Button></div>}</div> : <DetailList>{currentSelected.api_playbook_id && <Detail label="Playbook">{(apiPlaybooks.data ?? []).find((item) => item.id === currentSelected.api_playbook_id)?.name ?? currentSelected.api_playbook_id}</Detail>}{currentSelected.api_playbook_version_id && <Detail label="Pinned version">{currentSelected.api_playbook_version_id}</Detail>}<Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
+      {tab === "access" && (currentSelected.interface === "browser" ? <div className="max-w-[620px] space-y-5">
+        <DetailList>
+          <Detail label="Playbook">{(playbooks.data ?? []).find((item) => item.id === currentSelected.playbook_id)?.name ?? currentSelected.playbook_id ?? "Not attached"}</Detail>
+          <Detail label="Session expires">{currentSelected.authorization_expires_at ? formatDate(currentSelected.authorization_expires_at, true) : currentSelected.authorization_reference ? "Stored session" : "Authentication required"}</Detail>
+        </DetailList>
+        {currentSelected.playbook_version_id && !changingPlaybook
+          ? <Button variant="secondary" size="sm" onClick={() => { setSelectedPlaybookVersion(currentSelected.playbook_version_id ?? ""); setDraftNotice(false); setChangingPlaybook(true) }}>Change playbook</Button>
+          : <div className="space-y-3">
+            {draftNotice && <Notice>Saved as draft — an administrator can publish it from Playbooks.</Notice>}
+            <ResourceSelect label="Playbook" value={selectedPlaybookVersion} onChange={setSelectedPlaybookVersion} addLabel="Add playbook" onAdd={() => { setDraftNotice(false); setCreatingPlaybook(true) }}>
+              <option value="">Select playbook</option>
+              {platformPlaybooks.map((item) => item.active_version_id ? <option key={item.id} value={item.active_version_id}>{item.name}</option> : <option key={item.id} value="" disabled>{item.name} (draft)</option>)}
+            </ResourceSelect>
+            <div className="flex gap-2">
+              <Button onClick={() => { const playbook = browserPlaybooks.find((item) => item.active_version_id === selectedPlaybookVersion); if (playbook) attach.mutate({ connection: currentSelected, playbook }) }} disabled={!selectedPlaybookVersion || selectedPlaybookVersion === currentSelected.playbook_version_id || attach.isPending}>Attach playbook</Button>
+              {currentSelected.playbook_version_id && <Button variant="ghost" onClick={() => { setSelectedPlaybookVersion(currentSelected.playbook_version_id ?? ""); setChangingPlaybook(false) }}>Cancel</Button>}
+            </div>
+          </div>}
+      </div> : <DetailList>{currentSelected.api_playbook_id && <Detail label="Playbook">{(apiPlaybooks.data ?? []).find((item) => item.id === currentSelected.api_playbook_id)?.name ?? currentSelected.api_playbook_id}</Detail>}{currentSelected.api_playbook_version_id && <Detail label="Pinned version">{currentSelected.api_playbook_version_id}</Detail>}<Detail label="Allowed resources">{currentSelected.allowed_resources.join(", ")}</Detail><Detail label="Capabilities">{currentSelected.capabilities.length}</Detail><Detail label="Last validated">{currentSelected.last_validated_at ? formatDate(currentSelected.last_validated_at, true) : "Never"}</Detail></DetailList>)}
     </DetailCard>
-    {(attach.error || open.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error)?.message}</div>}
+    {(attach.error || open.error || prepareBrowser.error) && <div role="alert" className="mt-5 rounded-xl bg-[var(--red-soft)] p-3 text-[10px] text-[var(--red)]">{(attach.error ?? open.error ?? prepareBrowser.error)?.message}</div>}
     <ManageResourceModal isOpen={editing} onClose={() => setEditing(false)} title="Edit connection" resourceLabel="connection" onSave={() => updateConnection.mutate()} onDelete={() => archiveConnection.mutate()} deleteTitle="Disconnect connection?" deleteDescription={disconnectImpact(currentSelected)} deleteTriggerLabel="Disconnect" deleteActionLabel="Disconnect" deletingActionLabel="Disconnecting…" dependencies={[
       { label: "Credentials", items: graph.data!.credentials.filter((credential) => currentSelected.id === credential.connection_id || currentSelected.id === credential.secret_store_connection_id).map((credential) => credential.display_name) },
       { label: "Services", items: graph.data!.services.filter((service) => currentSelected.id === service.runtime_connection_id || service.telemetry_connection_ids.includes(currentSelected.id)).map((service) => service.display_name) },

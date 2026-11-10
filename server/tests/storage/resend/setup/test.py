@@ -17,6 +17,7 @@ from executor.provider import Providers
 from hosting.browser import Browsers
 from rotation.snapshot import snapshot
 from tests.storage.browser.fixture import Planner
+from tests.storage.resend.browser.rotation import attach_test_playbook
 from tests.storage.resend.fixture import Platform
 from tests.storage.resend.rotation import setup
 
@@ -55,6 +56,7 @@ async def test_switching_to_browser_keeps_one_credential_and_vault_version_and_r
             await browsers.select(
                 org, credential.id, target.id, credential.revision, identity.actor_id
             )
+        target = await attach_test_playbook(database, org, target, identity.actor_id)
         target = await mappings.hosts.inventory.replace_connection(
             target.model_copy(
                 update={

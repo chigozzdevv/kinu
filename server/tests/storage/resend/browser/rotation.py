@@ -4,9 +4,13 @@ import httpx
 from browser.catalog import Catalog
 from browser.setupserver import Setups
 from browser.worker import Worker
+from connectors.resend.book import procedure
 from connectors.resend.browser import BrowserResend
-from contracts import CreateRunCommand, RunStatus, Trigger
+from contracts import Connection, CreateRunCommand, RunStatus, Trigger
 from core.auth import AuthenticatedIdentity
+from core.inventory.store import InventoryStore
+from core.playbook import PlaybookService
+from core.playbook.store import PlaybookStore
 from core.storage.database import Database
 from core.storage.history import HistoryStore
 from core.storage.runs import RunStore
@@ -19,8 +23,24 @@ from rotation.rotate import Rotation
 from rotation.snapshot import loader
 from tests.storage.browser.fixture import Planner, executable
 from tests.storage.resend.browser.fixture import Launcher
-from tests.storage.resend.fixture import Platform
+from tests.storage.resend.fixture import DOMAIN, Platform
 from tests.storage.resend.rotation import setup
+
+
+async def attach_test_playbook(
+    database: Database, org: str, connection: Connection, actor: str
+) -> Connection:
+    books = PlaybookService(
+        PlaybookStore(database), lambda: datetime.now(UTC), InventoryStore(database)
+    )
+    playbook_id, version_id = "playbook_resend_browser", "version_resend_browser"
+    _, version = await books.create_version(
+        org, playbook_id, version_id, procedure(DOMAIN, "issuer.example"), actor
+    )
+    await books.publish(org, playbook_id, version.id, actor)
+    return await books.attach(
+        org, connection.id, connection.revision, playbook_id, version.id
+    )
 
 
 async def check_rotation(database: Database, identity: AuthenticatedIdentity) -> None:
@@ -58,6 +78,7 @@ async def check_rotation(database: Database, identity: AuthenticatedIdentity) ->
         )
         browsers = Browsers(mappings, providers)
         target = await browsers.prepare(org, "provider_resend", identity.actor_id)
+        target = await attach_test_playbook(database, org, target, identity.actor_id)
         setups = Setups(catalog, launcher)
         session, token = await setups.begin(org, target.id, identity.subject, ())
         await setups.stream(

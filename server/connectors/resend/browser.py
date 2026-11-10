@@ -8,7 +8,6 @@ from core.storage.records import Records
 
 from connectors.base import SecretValue
 from connectors.base.errors import ConnectorError
-from connectors.resend.book import procedure
 from connectors.resend.client import CreationRecords, Resend
 from connectors.resend.config import scopes
 
@@ -33,10 +32,9 @@ class BrowserResend:
 
     async def validate(self, connection: Connection) -> Connection:
         source = await self.source(connection)
-        domain = await self.api.selected_domain(source)
         version = await self.catalog.definition(connection)
-        if version.definition != procedure(domain["id"], domain["name"]):
-            raise ResourceConflictError("Publish the reviewed Resend browser procedure")
+        if version.definition.platform != connection.platform:
+            raise ResourceConflictError("Attach a published Resend computer-use playbook")
         return source
 
     async def metadata(self, connection: Connection) -> tuple[dict[str, Any], ...]:

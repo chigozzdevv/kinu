@@ -159,8 +159,7 @@ async def test_browser_receipts_verify_with_read_only_calls_and_preserve_account
                 )
             ),
         )
-        with pytest.raises(ResourceConflictError, match="reviewed"):
-            await adapter.validate(browser)
+        assert await adapter.validate(browser) == source
         with pytest.raises(ResourceConflictError, match="archived"):
             await inventory.replace_connection(
                 source.model_copy(update={"archived_at": now, "revision": 1}), 0
